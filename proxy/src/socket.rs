@@ -116,7 +116,7 @@ impl Socket {
         Ok(())
     }
 
-    /// Receive first `BUFFER_SIZE` packets of a buffer.
+    /// Receive a packet with up to `BUFFER_SIZE` bytes into `buf`.
     #[allow(dead_code)]
     pub fn recv(&self, buf: &[u8; BUFFER_SIZE]) -> Result<isize, String> {
         let n = unsafe { recv(self.fd, buf.as_ptr() as *mut c_void, buf.len(), 0) };
@@ -127,8 +127,8 @@ impl Socket {
         Ok(n)
     }
 
-    /// Receive first `BUFFER_SIZE` packets of a buffer, and fill in socket
-    /// address information.
+    /// Receive a packet with up to `BUFFER_SIZE` bytes into `buf`, and
+    /// fill in socket address information.
     pub fn recvfrom(
         &self,
         addr: &mut sockaddr_ll,
