@@ -304,6 +304,8 @@ Defines an emulated network in mininet with one intermediate hop between the
 client and the server. The 1st link is between the client / data receiver (h1)
 and the proxy (p1), and the 2nd link is between the proxy (p1) and the
 server / data sender (h2).
+Each link has a node (e1, e2) that emulates link properties (e.g., delay, loss,
+bandwidth, jitter). Pacing is configured on each host interface.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
@@ -377,6 +379,8 @@ class OneHopNetwork(EmulatedNetwork):
 """
 Defines an emulated network in mininet that directly connects the client /
 data receiver (h1) to the server / data sender (h2) with a single link.
+The link has a node (e1) that emulates link properties (e.g., delay, loss,
+bandwidth, jitter). Pacing is configured on each host interface.
 """
 class DirectNetwork(EmulatedNetwork):
     def __init__(self, delay, loss, bw, jitter, qdisc, pacing):
