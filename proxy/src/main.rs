@@ -37,17 +37,21 @@ fn main() {
                 &mut buffer,
             );
             if res.is_err() {
+                error!("recvfrom: {:?}", res.err());
                 continue;
             }
             let n = res.unwrap();
+            if n < 0 { continue; }
             trace!("received {} bytes on {:?}", n, iface);
 
             let iface = &ifaces[(i + 1) % ifaces.len()];
             let res = iface.send(&buffer, n.try_into().unwrap());
             if res.is_err() {
+                error!("send: {:?}", res.err());
                 continue;
             }
             let n = res.unwrap();
+            if n < 0 { continue; }
             trace!("sent {} bytes on {:?}", n, iface);
         }
     }

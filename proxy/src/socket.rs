@@ -8,13 +8,19 @@ use std::ffi::CString;
 pub const DEFAULT_MTU: usize = 1500;
 pub const BUFFER_SIZE: usize = DEFAULT_MTU; // MTU
 
+/// Structure representing a raw socket.
 #[derive(Debug, Clone)]
 pub struct Socket {
+    /// File descriptor for read/write ops
     pub fd: i32,
+    /// Interface name (e.g., "eth0")
     interface: String,
+    /// Interface name (e.g., "eth0") as CString
     interface_c: CString,
 }
 
+/// Wrapper for sockaddr_ll
+/// See https://man7.org/linux/man-pages/man7/packet.7.html
 pub struct SockAddr {}
 
 impl SockAddr {
@@ -142,17 +148,19 @@ impl Socket {
             )
         };
         if n < 0 {
-            // error!("failed to recv: {}", n);
-            return Err(format!("recv: {}", n));
+            let errno = unsafe { *libc::__errno_location() };
+            if errno != libc::EAGAIN && errno != libc::EWOULDBLOCK {
+                return Err(format!("recv: {}", n));
+            }
         }
         Ok(n)
     }
 
     /// Write `BUFFER_SIZE` bytes to buffer.
+    /// This should ideally represent a single packet.
     pub fn send(&self, buf: &[u8; BUFFER_SIZE], nbytes: usize) -> Result<isize, String> {
         let n = unsafe { write(self.fd, buf.as_ptr() as *const c_void, nbytes) };
         if n < 0 {
-            error!("failed to write: {}", n);
             return Err(format!("write: {}", n));
         }
         Ok(n)
