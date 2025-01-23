@@ -405,7 +405,7 @@ class OneHopNetwork(EmulatedNetwork):
             self.popen(self.p1, "brctl addif br0 p1-eth1")
             self.popen(self.p1, "ip link set dev br0 up")
             # IP needs to be assigned to bridge; put on same subnet as h1
-            self.p1.cmd(f'ip addr add {self._ip(1).replace('10', '11')} dev br0')
+            self.p1.cmd(f"ip addr add {self._ip(1).replace('10', '11')} dev br0")
             # Don't forward packets destined for the proxy
             self.p1.cmd(f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
             self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
