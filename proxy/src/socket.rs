@@ -1,12 +1,7 @@
 use libc::*;
-use log::{debug, error};
+use log::debug;
 use std::ffi::CString;
-
-// Ethernet (14), IP (20), TCP/UDP (8) headers
-// The randomly-encrypted payload in a QUIC packet with a short header is at
-// offset 63.
-pub const DEFAULT_MTU: usize = 1500;
-pub const BUFFER_SIZE: usize = DEFAULT_MTU; // MTU
+use crate::BUFFER_SIZE;
 
 /// Structure representing a raw socket.
 #[derive(Debug, Clone)]
@@ -14,9 +9,12 @@ pub struct Socket {
     /// File descriptor for read/write ops
     pub fd: i32,
     /// Interface name (e.g., "eth0")
-    interface: String,
+    pub interface: String,
     /// Interface name (e.g., "eth0") as CString
     interface_c: CString,
+    /// Caller-provided identifier that received packets
+    /// will be marked with; generally an index in an array
+    pub id: u16,
 }
 
 /// Wrapper for sockaddr_ll
@@ -39,17 +37,18 @@ impl SockAddr {
 
 impl Socket {
     /// Create a raw socket and bind it to a specific interface.
-    pub fn new(interface: String) -> Result<Self, String> {
+    pub fn new(interface: String, id: u16) -> Result<Self, String> {
         let protocol = (ETH_P_ALL as i16).to_be() as c_int;
         let fd = unsafe { socket(AF_PACKET, SOCK_RAW, protocol) };
         if fd < 0 {
             Err(format!("socket: {}", fd))
         } else {
-            debug!("opened socket with fd={}", fd);
+            debug!("opened socket with fd={}, interface={}, id={}", fd, interface, id);
             let sock = Self {
                 fd,
                 interface: interface.clone(),
                 interface_c: CString::new(interface).unwrap(),
+                id,
             };
             sock.bind(protocol)?;
             sock.set_promiscuous()?;
@@ -92,7 +91,7 @@ impl Socket {
 
     /// Set the network card in promiscuous mode.
     pub fn set_promiscuous(&self) -> Result<(), String> {
-        debug!("setting the network card to promiscuous mode");
+        debug!("setting {} to promiscuous mode", self.interface);
         let mut ethreq = ifreq {
             ifr_name: [0; IF_NAMESIZE],
             ifr_ifru: __c_anonymous_ifr_ifru { ifru_flags: 0 },
@@ -116,19 +115,9 @@ impl Socket {
         Ok(())
     }
 
-    /// Receive a packet with up to `BUFFER_SIZE` bytes into `buf`.
-    #[allow(dead_code)]
-    pub fn recv(&self, buf: &[u8; BUFFER_SIZE]) -> Result<isize, String> {
-        let n = unsafe { recv(self.fd, buf.as_ptr() as *mut c_void, buf.len(), 0) };
-        if n < 0 {
-            error!("failed to recv: {}", n);
-            return Err(format!("recv: {}", n));
-        }
-        Ok(n)
-    }
-
     /// Receive a packet with up to `BUFFER_SIZE` bytes into `buf`, and
     /// fill in socket address information.
+    /// This is a blocking operation.
     pub fn recvfrom(
         &self,
         addr: &mut sockaddr_ll,
@@ -142,16 +131,14 @@ impl Socket {
                 self.fd,
                 buf.as_ptr() as *mut c_void,
                 buf.len(),
-                MSG_DONTWAIT,
+                0,
                 (addr as *mut sockaddr_ll) as _,
                 &mut socklen,
             )
         };
         if n < 0 {
             let errno = unsafe { *libc::__errno_location() };
-            if errno != libc::EAGAIN && errno != libc::EWOULDBLOCK {
-                return Err(format!("recv: {}", n));
-            }
+            return Err(format!("recv: {}", errno));
         }
         Ok(n)
     }
