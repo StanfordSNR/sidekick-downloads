@@ -251,9 +251,9 @@ class EmulatedNetwork:
             if p.stderr and stderr:
                 print(p.stderr.strip(), file=sys.stderr)
             if p.returncode != 0:
-                print(f'{cmd} = {p.returncode}', file=sys.stderr)
+                ERROR(f'{cmd} = {p.returncode}')
                 if raise_error:
-                    exit(1)
+                    raise ValueError(f'{cmd} = {p.returncode}')
             return
 
         # Execute the command on a mininet host in the background
@@ -292,9 +292,9 @@ class EmulatedNetwork:
         elif exitcode == LINUX_TIMEOUT_EXITCODE:
             return True
         else:
-            print(f'{host}({cmd}) = {exitcode}', file=sys.stderr)
+            ERROR(f'{host}({cmd}) = {exitcode}')
             if raise_error:
-                exit(1)
+                raise ValueError(f'{host}({cmd}) = {p.returncode}')
 
     def stop(self):
         for p in self.background_processes:
