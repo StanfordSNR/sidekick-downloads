@@ -306,7 +306,7 @@ and the proxy (p1), and the 2nd link is between the proxy (p1) and the
 server / data sender (h2).
 Each link has a node (e1, e2) that emulates link properties (e.g., delay, loss,
 bandwidth, jitter). Pacing is configured on each host interface.
-e1 also performs routing from h1 to h2.
+e2 also handles L3 routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
@@ -341,28 +341,28 @@ class OneHopNetwork(EmulatedNetwork):
             'e2-eth1': self.e2,
         }
 
-        # Setup routing and forwarding (e1 acts as router)
-        self.popen(self.e1, "ifconfig e1-eth0 0")
-        self.popen(self.e1, "ifconfig e1-eth1 0")
-        self.popen(self.e1, "ifconfig e1-eth0 hw ether 00:00:00:00:01:01")
-        self.popen(self.e1, "ifconfig e1-eth1 hw ether 00:00:00:00:01:02")
-        self.popen(self.e1, "ip addr add 172.16.1.1/24 brd + dev e1-eth0")
-        self.popen(self.e1, "ip addr add 172.16.2.1/24 brd + dev e1-eth1")
-        self.e1.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
+        # Setup routing and forwarding (e2 acts as router)
+        self.popen(self.e2, "ifconfig e2-eth0 0")
+        self.popen(self.e2, "ifconfig e2-eth1 0")
+        self.popen(self.e2, "ifconfig e2-eth0 hw ether 00:00:00:00:01:01")
+        self.popen(self.e2, "ifconfig e2-eth1 hw ether 00:00:00:00:01:02")
+        self.popen(self.e2, "ip addr add 172.16.1.1/24 brd + dev e2-eth0")
+        self.popen(self.e2, "ip addr add 172.16.2.1/24 brd + dev e2-eth1")
+        self.e2.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
         self.popen(self.h1, "ip route add 172.16.2.0/24 via 172.16.1.1")
         self.popen(self.h2, "ip route add 172.16.1.0/24 via 172.16.2.1")
 
-        # Set up transparent bridging on p1 and e2
+        # Set up transparent bridging on p1 and e1
         # \note if p1 is running a proxy that *also* bridges, then the kernel
         # bridge will be removed. `pepsal` does not bridge packets on its own.
         self.popen(self.p1, "brctl addbr br0")
         self.popen(self.p1, "brctl addif br0 p1-eth0")
         self.popen(self.p1, "brctl addif br0 p1-eth1")
         self.popen(self.p1, "ip link set dev br0 up")
-        self.popen(self.e2, "brctl addbr br0")
-        self.popen(self.e2, "brctl addif br0 e2-eth0")
-        self.popen(self.e2, "brctl addif br0 e2-eth1")
-        self.popen(self.e2, "ip link set dev br0 up")
+        self.popen(self.e1, "brctl addbr br0")
+        self.popen(self.e1, "brctl addif br0 e1-eth0")
+        self.popen(self.e1, "brctl addif br0 e1-eth1")
+        self.popen(self.e1, "ip link set dev br0 up")
 
 
         # Configure link latency, delay, bandwidth, and queue size
