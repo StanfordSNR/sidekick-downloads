@@ -318,9 +318,10 @@ class OneHopNetwork(EmulatedNetwork):
                                    mac=self._mac(1))
         self.h2 = self.net.addHost('h2', ip=self._ip(2),
                                    mac=self._mac(2))
-        self.p1 = self.net.addHost('p1')
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
+        self.p1 = self.net.addHost('p1', ip={self._ip(1).replace('10', '11')},
+                                   mac=self._mac(3))
 
         # Add links
         self.net.addLink(self.h1, self.e1)
@@ -359,11 +360,15 @@ class OneHopNetwork(EmulatedNetwork):
         self.popen(self.p1, "brctl addif br0 p1-eth0")
         self.popen(self.p1, "brctl addif br0 p1-eth1")
         self.popen(self.p1, "ip link set dev br0 up")
+        # IP needs to be assigned to bridge; put on same subnet as h1
+        self.p1.cmd(f'sudo ip addr add {self.p1.IP().pop()} dev br0')
+        # Don't forward packets destined for the proxy
+        self.p1.cmd(f'sudo ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
+
         self.popen(self.e1, "brctl addbr br0")
         self.popen(self.e1, "brctl addif br0 e1-eth0")
         self.popen(self.e1, "brctl addif br0 e1-eth1")
         self.popen(self.e1, "ip link set dev br0 up")
-
 
         # Configure link latency, delay, bandwidth, and queue size
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
