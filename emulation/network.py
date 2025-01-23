@@ -344,11 +344,11 @@ and the proxy (p1), and the 2nd link is between the proxy (p1) and the
 server / data sender (h2).
 Each link has a node (e1, e2) that emulates link properties (e.g., delay, loss,
 bandwidth, jitter). Pacing is configured on each host interface.
-e1 also performs routing from h1 to h2.
+e2 also handles L3 routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
-                 qdisc, pacing):
+                 qdisc, pacing, bridge_proxy=True):
         super().__init__()
 
         # Add hosts, switches, and network emulation nodes
@@ -356,11 +356,9 @@ class OneHopNetwork(EmulatedNetwork):
                                    mac=self._mac(1))
         self.h2 = self.net.addHost('h2', ip=self._ip(2),
                                    mac=self._mac(2))
-        # Comment(GY): 172.16.2.1 is both the router's public IP and the
-        # IP of the r1-eth0 interface?
-        self.p1 = self.net.addHost('p1', ip='172.16.1.1')
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
+        self.p1 = self.net.addHost('p1', ip=self._ip(1).replace('10', '11'))
 
         # Add links
         self.net.addLink(self.h1, self.e1)
@@ -381,29 +379,42 @@ class OneHopNetwork(EmulatedNetwork):
             'e2-eth1': self.e2,
         }
 
-        # Setup routing and forwarding (e1 acts as router)
-        self.popen(self.e1, "ifconfig e1-eth0 0")
-        self.popen(self.e1, "ifconfig e1-eth1 0")
-        self.popen(self.e1, "ifconfig e1-eth0 hw ether 00:00:00:00:01:01")
-        self.popen(self.e1, "ifconfig e1-eth1 hw ether 00:00:00:00:01:02")
-        self.popen(self.e1, "ip addr add 172.16.1.1/24 brd + dev e1-eth0")
-        self.popen(self.e1, "ip addr add 172.16.2.1/24 brd + dev e1-eth1")
-        self.e1.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
+        # Setup routing and forwarding (e2 acts as router)
+        self.popen(self.e2, "ifconfig e2-eth0 0")
+        self.popen(self.e2, "ifconfig e2-eth1 0")
+        self.popen(self.e2, "ifconfig e2-eth0 hw ether 00:00:00:00:01:01")
+        self.popen(self.e2, "ifconfig e2-eth1 hw ether 00:00:00:00:01:02")
+        self.popen(self.e2, "ip addr add 172.16.1.1/24 brd + dev e2-eth0")
+        self.popen(self.e2, "ip addr add 172.16.2.1/24 brd + dev e2-eth1")
+        self.e2.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
         self.popen(self.h1, "ip route add 172.16.2.0/24 via 172.16.1.1")
         self.popen(self.h2, "ip route add 172.16.1.0/24 via 172.16.2.1")
 
-        # Set up transparent bridging on p1 and e2
-        # \note if p1 is running a proxy that *also* bridges, then the kernel
-        # bridge will be removed. `pepsal` does not bridge packets on its own.
-        self.popen(self.p1, "brctl addbr br0")
-        self.popen(self.p1, "brctl addif br0 p1-eth0")
-        self.popen(self.p1, "brctl addif br0 p1-eth1")
-        self.popen(self.p1, "ip link set dev br0 up")
-        self.popen(self.e2, "brctl addbr br0")
-        self.popen(self.e2, "brctl addif br0 e2-eth0")
-        self.popen(self.e2, "brctl addif br0 e2-eth1")
-        self.popen(self.e2, "ip link set dev br0 up")
-
+        # Set up transparent bridging
+        self.popen(self.e1, "brctl addbr br0")
+        self.popen(self.e1, "brctl addif br0 e1-eth0")
+        self.popen(self.e1, "brctl addif br0 e1-eth1")
+        self.popen(self.e1, "ip link set dev br0 up")
+        self.popen(self.p1, "ifconfig p1-eth0 0")
+        self.popen(self.p1, "ifconfig p1-eth1 0")
+        if bridge_proxy:
+            self.popen(self.p1, "ifconfig p1-eth0 0")
+            self.popen(self.p1, "ifconfig p1-eth1 0")
+            self.popen(self.p1, "brctl addbr br0")
+            self.popen(self.p1, "brctl addif br0 p1-eth0")
+            self.popen(self.p1, "brctl addif br0 p1-eth1")
+            self.popen(self.p1, "ip link set dev br0 up")
+            # IP needs to be assigned to bridge; put on same subnet as h1
+            self.p1.cmd(f'ip addr add {self._ip(1).replace('10', '11')} dev br0')
+            # Don't forward packets destined for the proxy
+            self.p1.cmd(f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
+            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
+        else:
+            self.popen(self.p1, "ifconfig p1-eth0 0")
+            self.popen(self.p1, "ifconfig p1-eth1 0")
+            self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '11')} dev p1-eth0")
+            self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '12')} dev p1-eth1")
+            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
 
         # Configure link latency, delay, bandwidth, and queue size
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
