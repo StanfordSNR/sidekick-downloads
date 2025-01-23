@@ -248,11 +248,12 @@ class EmulatedNetwork:
             assert timeout is None
             assert logfile is None
             assert func is None
-            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            p = subprocess.run(cmd, shell=True, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if p.stdout and stdout:
-                print(p.stdout.strip(), file=sys.stderr)
+                console_logger(p.stdout.strip())
             if p.stderr and stderr:
-                print(p.stderr.strip(), file=sys.stderr)
+                console_logger(p.stderr.strip())
             if p.returncode != 0:
                 ERROR(f'{cmd} = {p.returncode}')
                 if raise_error:
@@ -280,9 +281,9 @@ class EmulatedNetwork:
                        stderr=subprocess.PIPE, text=True)
         for line, stream in read_subprocess_pipe(p):
             if stream == p.stdout and stdout:
-                print(line, end='', file=sys.stderr)
+                console_logger(line.strip())
             if stream == p.stderr and stderr:
-                print(line, end='', file=sys.stderr)
+                console_logger(line.strip())
             if logfile is not None:
                 with open(logfile, 'a') as f:
                     f.write(line)
