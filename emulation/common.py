@@ -49,10 +49,8 @@ def read_subprocess_pipe(p):
     while p.poll() is None:
         ready, _, _ = select.select([p.stdout, p.stderr], [], [])
         for stream in ready:
-            line = stream.readline()
-            if not line:
-                continue
-            yield (line, stream)
+            for line in stream.readlines():
+                yield (line, stream)
     stdout, stderr = p.communicate()
     for line in stdout.splitlines(keepends=True):
         yield (line, p.stdout)
