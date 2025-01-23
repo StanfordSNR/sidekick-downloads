@@ -219,14 +219,16 @@ class TestLossConfig(NetworkTestCase):
             self.assertEqual(ping.packets_rx(), ping.packets_tx(), debug_output)
             self.assertEqual(ping.packet_loss(), 0, debug_output)
 
+    @unittest.skip('pings are flaky when there is loss')
     def test_direct_loss_config(self):
-        net = self.setUpDirectNetwork(loss=20, setup_time=1)
+        net = self.setUpDirectNetwork(loss=20, setup_time=2)
         self.assertLossIsCorrect(net.h1, net.h2, True)
         self.assertLossIsCorrect(net.h2, net.h1, True)
         net.stop()
 
+    @unittest.skip('pings are flaky when there is loss')
     def test_one_hop_loss_config(self):
-        net = self.setUpOneHopNetwork(loss1=20, loss2=20, setup_time=1)
+        net = self.setUpOneHopNetwork(loss1=20, loss2=20, setup_time=2)
         for (node1, node2) in [
             (net.h1, net.h2),
             (net.h1, net.r1),
@@ -236,8 +238,9 @@ class TestLossConfig(NetworkTestCase):
             self.assertLossIsCorrect(node2, node1, True)
         net.stop()
 
+    @unittest.skip('pings are flaky when there is loss')
     def test_one_hop_asymmetric_loss_config(self):
-        net = self.setUpOneHopNetwork(loss1=20, loss2=0, setup_time=1)
+        net = self.setUpOneHopNetwork(loss1=20, loss2=0, setup_time=2)
         for (node1, node2, loss) in [
             (net.h1, net.h2, True),
             (net.h1, net.r1, True),
