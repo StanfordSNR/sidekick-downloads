@@ -16,8 +16,9 @@ class EmulatedNetwork:
         self.net = Mininet(controller=None, link=TCLink)
         self.iface_to_host = {}
 
-        # Keep track of background processes for cleanup
+        # Keep track of background processes/threads for cleanup
         self.background_processes = []
+        self.background_threads = []
 
     @staticmethod
     def _mac(digit):
@@ -227,7 +228,8 @@ class EmulatedNetwork:
           exitcode.
 
         Returns:
-        - If a background process, returns the background process.
+        - If a background process, returns the process and the thread that is
+          handling the background process.
         - If not, returns True if there was a timeout and False if the process
           executed to completion.
         - For non-zero exitcodes, exits the program unless configured not to.
@@ -265,13 +267,14 @@ class EmulatedNetwork:
             assert timeout is None
             p = host.popen(cmd.split(), stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE, text=True)
-            self.background_processes.append(p)
             thread = threading.Thread(
                 target=handle_background_process,
                 args=(p, logfile, func),
             )
             thread.start()
-            return p
+            self.background_processes.append(p)
+            self.background_threads.append(thread)
+            return (p, thread)
 
         # Execute the command synchronously, possibly with a timeout
         cmd_input = cmd.split()
@@ -305,6 +308,8 @@ class EmulatedNetwork:
         for p in self.background_processes:
             p.terminate()
             p.wait()
+        for thread in self.background_threads:
+            thread.join()
         if self.net is not None:
             self.net.stop()
 

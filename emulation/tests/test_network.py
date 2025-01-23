@@ -350,10 +350,7 @@ class TestPopen(NetworkTestCase):
         # Run a simple command to completion
         cmd = 'true'
         self.assertEqual(len(log), 0)
-        p = self.net.popen(host, cmd, background=background,
-                console_logger=logger)
-        if background:
-            p.wait()
+        self.net.popen(host, cmd, background=background, console_logger=logger)
         self.assertEqual(len(log), 1)
 
         # Check the prefix and suffix of the logged command
@@ -425,25 +422,39 @@ class TestPopen(NetworkTestCase):
             processes = filter(lambda p: p.returncode is None, processes)
             return len(list(processes))
 
+        def count_active_background_threads():
+            threads = self.net.background_threads
+            threads = filter(lambda t: t.is_alive(), threads)
+            return len(list(threads))
+
         # Start two background processes
         self.assertEqual(len(self.net.background_processes), 0)
-        p1 = self.net.popen(host, cmd, background=True)
+        self.assertEqual(len(self.net.background_threads), 0)
+        p1, t1 = self.net.popen(host, cmd, background=True)
         self.assertEqual(len(self.net.background_processes), 1)
-        p2 = self.net.popen(host, cmd, background=True)
+        self.assertEqual(len(self.net.background_threads), 1)
+        p2, t2 = self.net.popen(host, cmd, background=True)
         self.assertEqual(len(self.net.background_processes), 2)
+        self.assertEqual(len(self.net.background_threads), 2)
         self.assertIsNone(p1.returncode, 'p1 is still running')
         self.assertIsNone(p2.returncode, 'p2 is still running')
+        self.assertTrue(t1.is_alive(), 't1 is still alive')
+        self.assertTrue(t2.is_alive(), 't2 is still alive')
         self.assertEqual(count_active_background_processes(), 2)
+        self.assertEqual(count_active_background_threads(), 2)
 
         # Terminate one background process
         p1.terminate()
         p1.wait()
+        t1.join()
         self.assertEqual(count_active_background_processes(), 1)
+        self.assertEqual(count_active_background_threads(), 1)
 
         # Stop the entire emulation
         self.net.stop()
         self.stopped = True
         self.assertEqual(count_active_background_processes(), 0)
+        self.assertEqual(count_active_background_threads(), 0)
 
     def _test_callback_function(self, host, background, seq=10):
         # Define the callback function. The function can interact with objects
@@ -457,12 +468,11 @@ class TestPopen(NetworkTestCase):
         cmd = f'seq {seq}'
         p = self.net.popen(host, cmd, background=background, func=count_even)
         if background:
-            p.wait()
+            p[0].wait()
+            p[1].join()
         self.assertEqual(total_even[0], seq // 2)
 
     def test_callback_function(self):
-        # NOTE: 1st test inconsistently invokes the callback function,
-        # the 2nd test never invokes the callback function
         self._test_callback_function(self.net.h1, False)
         self._test_callback_function(self.net.h1, True)
 
@@ -478,8 +488,10 @@ class TestPopen(NetworkTestCase):
             p2 = self.net.popen(host, stderr_cmd, background=background,
                     logfile=logfile.name, raise_error=False)
             if background:
-                p1.wait()
-                p2.wait()
+                p1[0].wait()
+                p2[0].wait()
+                p1[1].join()
+                p2[1].join()
 
         def count_string(log, string):
             log = filter(lambda line: string in line, log)
@@ -504,7 +516,5 @@ class TestPopen(NetworkTestCase):
             contents_after_two_runs)
 
     def test_appends_output_to_logfile(self):
-        # NOTE: The 1st test seems to pass consistently while the 2nd test
-        # seems to sometimes only log partial output to the logfile.
         self._test_appends_output_to_logfile(background=False)
         self._test_appends_output_to_logfile(background=True)

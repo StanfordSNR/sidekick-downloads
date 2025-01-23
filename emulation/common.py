@@ -58,12 +58,19 @@ def read_subprocess_pipe(p):
         yield (line, p.stderr)
 
 def handle_background_process(p, logfile, func):
-    with open(logfile, 'a') if logfile else None as f:
-        for line, stream in read_subprocess_pipe(p):
-            if f is not None:
-                f.write(line)
+    # Only call the callback function
+    if logfile is None:
+        for line, _ in read_subprocess_pipe(p):
             if func is not None:
                 func(line)
+        return
+
+    # Both write to the logfile and call the callback function
+    with open(logfile, 'a') as f:
+        for line, _ in read_subprocess_pipe(p):
+            if func is not None:
+                func(line)
+            f.write(line)
 
 def get_linux_version():
     proc = subprocess.run(['uname', '-r'], capture_output=True, text=True, check=True)
