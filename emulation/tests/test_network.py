@@ -237,3 +237,12 @@ class TestLossConfig(NetworkTestCase):
         ]:
             self.assertLossIsCorrect(node1, node2, loss)
             self.assertLossIsCorrect(node2, node1, loss)
+
+
+class TestBandwidthConfig(NetworkTestCase):
+    pass
+
+
+class TestQdiscConfig(NetworkTestCase):
+    pass
+
