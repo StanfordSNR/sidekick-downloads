@@ -1,4 +1,5 @@
 import unittest
+import time
 from network import *
 
 
@@ -57,16 +58,23 @@ class NetworkTestCase(unittest.TestCase):
         self._stderr = sys.stderr
         sys.stderr = open(os.devnull, 'w')
 
-    def setUpOneHopNetwork(self, delay1=1, delay2=10, loss1=0, loss2=0,
-                           bw1=50, bw2=10, jitter1=None, jitter2=None,
-                           qdisc='red', pacing=False) -> OneHopNetwork:
+    def setUpOneHopNetwork(
+        self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
+        jitter1=None, jitter2=None, qdisc='red', pacing=False, setup_time=0,
+    ) -> OneHopNetwork:
         net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
                             jitter1, jitter2, qdisc, pacing)
+        if setup_time > 0:
+            time.sleep(setup_time)
         return net
 
-    def setUpDirectNetwork(self, delay=10, loss=0, bw=10, jitter=None,
-                           qdisc='red', pacing=False) -> DirectNetwork:
+    def setUpDirectNetwork(
+        self, delay=10, loss=0, bw=10, jitter=None, qdisc='red', pacing=False,
+        setup_time=0,
+    ) -> DirectNetwork:
         net = DirectNetwork(delay, loss, bw, jitter, qdisc, pacing)
+        if setup_time > 0:
+            time.sleep(setup_time)
         return net
 
     def ping(self, node1, node2, n=1) -> PingResult:
@@ -206,12 +214,12 @@ class TestLossConfig(NetworkTestCase):
             self.assertEqual(ping.packet_loss(), 0, debug_output)
 
     def test_direct_loss_config(self):
-        net = self.setUpDirectNetwork(loss=20)
+        net = self.setUpDirectNetwork(loss=20, setup_time=1)
         self.assertLossIsCorrect(net.h1, net.h2, True)
         self.assertLossIsCorrect(net.h2, net.h1, True)
 
     def test_one_hop_loss_config(self):
-        net = self.setUpOneHopNetwork(loss1=20, loss2=20)
+        net = self.setUpOneHopNetwork(loss1=20, loss2=20, setup_time=1)
         for (node1, node2) in [
             (net.h1, net.h2),
             (net.h1, net.r1),
@@ -221,7 +229,7 @@ class TestLossConfig(NetworkTestCase):
             self.assertLossIsCorrect(node2, node1, True)
 
     def test_one_hop_asymmetric_loss_config(self):
-        net = self.setUpOneHopNetwork(loss1=20, loss2=0)
+        net = self.setUpOneHopNetwork(loss1=20, loss2=0, setup_time=1)
         for (node1, node2, loss) in [
             (net.h1, net.h2, True),
             (net.h1, net.r1, True),
