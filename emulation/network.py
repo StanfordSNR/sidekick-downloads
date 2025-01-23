@@ -310,7 +310,7 @@ e2 also handles L3 routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
-                 qdisc, pacing):
+                 qdisc, pacing, bridge_proxy=True):
         super().__init__()
 
         # Add hosts, switches, and network emulation nodes
@@ -353,22 +353,20 @@ class OneHopNetwork(EmulatedNetwork):
         self.popen(self.h1, "ip route add 172.16.2.0/24 via 172.16.1.1")
         self.popen(self.h2, "ip route add 172.16.1.0/24 via 172.16.2.1")
 
-        # Set up transparent bridging on p1 and e1
-        # \note if p1 is running a proxy that *also* bridges, then the kernel
-        # bridge will be removed. `pepsal` does not bridge packets on its own.
-        self.popen(self.p1, "brctl addbr br0")
-        self.popen(self.p1, "brctl addif br0 p1-eth0")
-        self.popen(self.p1, "brctl addif br0 p1-eth1")
-        self.popen(self.p1, "ip link set dev br0 up")
-        # IP needs to be assigned to bridge; put on same subnet as h1
-        self.p1.cmd(f'sudo ip addr add {self.p1.IP().pop()} dev br0')
-        # Don't forward packets destined for the proxy
-        self.p1.cmd(f'sudo ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
-
+        # Set up transparent bridging
         self.popen(self.e1, "brctl addbr br0")
         self.popen(self.e1, "brctl addif br0 e1-eth0")
         self.popen(self.e1, "brctl addif br0 e1-eth1")
         self.popen(self.e1, "ip link set dev br0 up")
+        if bridge_proxy:
+            self.popen(self.p1, "brctl addbr br0")
+            self.popen(self.p1, "brctl addif br0 p1-eth0")
+            self.popen(self.p1, "brctl addif br0 p1-eth1")
+            self.popen(self.p1, "ip link set dev br0 up")
+            # IP needs to be assigned to bridge; put on same subnet as h1
+            self.p1.cmd(f'sudo ip addr add {self.p1.IP().pop()} dev br0')
+            # Don't forward packets destined for the proxy
+            self.p1.cmd(f'sudo ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
 
         # Configure link latency, delay, bandwidth, and queue size
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
