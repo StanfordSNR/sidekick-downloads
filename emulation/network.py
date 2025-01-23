@@ -358,7 +358,7 @@ class OneHopNetwork(EmulatedNetwork):
                                    mac=self._mac(2))
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
-        self.p1 = self.net.addHost('p1')
+        self.p1 = self.net.addHost('p1', ip=self._ip(1).replace('10', '11'))
 
         # Add links
         self.net.addLink(self.h1, self.e1)
@@ -410,6 +410,8 @@ class OneHopNetwork(EmulatedNetwork):
             self.p1.cmd(f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
             self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
         else:
+            self.popen(self.p1, "ifconfig p1-eth0 0")
+            self.popen(self.p1, "ifconfig p1-eth1 0")
             self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '11')} dev p1-eth0")
             self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '12')} dev p1-eth1")
             self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
