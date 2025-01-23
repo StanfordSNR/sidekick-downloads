@@ -16,8 +16,9 @@ class EmulatedNetwork:
         self.net = Mininet(controller=None, link=TCLink)
         self.iface_to_host = {}
 
-        # Keep track of background processes for cleanup
+        # Keep track of background processes/threads for cleanup
         self.background_processes = []
+        self.background_threads = []
 
     @staticmethod
     def _mac(digit):
@@ -187,28 +188,57 @@ class EmulatedNetwork:
             return value[0]
 
     def popen(self, host, cmd, background=False, func=None, timeout=None,
-              stdout=False, stderr=True, console_logger=TRACE, logfile=None,
-              exit_on_err=True):
+              console_logger=TRACE, stdout=False, stderr=True, logfile=None,
+              raise_error=True):
         """
         Start a process that executes a command on the given mininet host.
+
+        The function has a variety of logging capabilities. All commands can
+        be logged to the console using the console_logger. Only synchronous
+        processes can log outputs to the console, and console output can be
+        quieted using the stdout and/or stderr options. Only mininet host
+        commands can log to a logfile, and if provided, all output is logged.
+        Errors are always logged to the console, though processes can be
+        configured to error without raising an exception.
+
         Parameters:
-        - host: the mininet host
-        - cmd: a command string
-        - background: whether to run as a background process
-        - func: a function to execute on every line of output.
-          the function takes as input (line,).
-        - timeout: timeout, in seconds, to use on a mininet host
-        - stdout: whether to log stdout to the console
-        - stderr: whether to log stderr to the console
-        - console_logger: log level function for logging to the console
-        - logfile: the logfile to append output (both stdout and stderr) to
+        - host: The mininet host, or None if executing on the local host.
+        - cmd: A command string.
+        - background: Whether to run as a background process. Background
+          processes can only be executed on mininet hosts.
+        - func: A callback function to execute on every line of output. The
+          function takes as input (line,). Only on mininet hosts.
+        - timeout: The cmd timeout, in seconds. Only on mininet hosts and
+          synchronous processes.
+
+        Logging parameters:
+        - console_logger: Log level function, e.g., DEBUG, for logging to the
+          console. Takes a string as input and logs the executed command,
+          appending ' &' if it is a background process and prepending the host
+          name if it is executed on a mininet host. Also logs stdout and/or
+          stderr, whichever is enabled, for synchronous processes.
+        - stdout: Whether to log stdout to the console logger.
+        - stderr: Whether to log stderr to the console logger.
+        - logfile: The name of the logfile to append full output (both stdout
+          and stderr). Independent of the stdout and stderr options. Only on
+          mininet hosts.
+        - raise_error: Whether to raise an error on a non-zero exitcode or to
+          fail silently with only a log message. Only on synchronous processes
+          as we don't wait for background processes to terminate to check the
+          exitcode.
 
         Returns:
-        - If a background process, returns the background process.
+        - If a background process, returns the process and the thread that is
+          handling the background process.
         - If not, returns True if there was a timeout and False if the process
-          executed successfully.
-        - For any other exitcodes, exits the program.
+          executed to completion.
+        - For non-zero exitcodes, exits the program unless configured not to.
+
+        Raises:
+        AssertionError on a valid configuration i.e., timeouts are enabled for
+        a process that is not executed on a mininet host.
         """
+
         # Log the command to be executed
         host_str = '' if host is None else f'{host.name} '
         background_str = ' &' if background else ''
@@ -217,30 +247,36 @@ class EmulatedNetwork:
         # Execute the command on the local host
         if host is None:
             assert not background
-            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            assert timeout is None
+            assert logfile is None
+            assert func is None
+            p = subprocess.run(cmd, shell=True, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if p.stdout and stdout:
-                print(p.stdout.strip(), file=sys.stderr)
+                console_logger(p.stdout.strip())
             if p.stderr and stderr:
-                print(p.stderr.strip(), file=sys.stderr)
+                console_logger(p.stderr.strip())
             if p.returncode != 0:
-                print(f'{cmd} = {p.returncode}', file=sys.stderr)
-                if exit_on_err:
-                    exit(1)
+                ERROR(f'{cmd} = {p.returncode}')
+                if raise_error:
+                    raise ValueError(f'{cmd} = {p.returncode}')
             return
 
         # Execute the command on a mininet host in the background
         if background:
+            assert timeout is None
             p = host.popen(cmd.split(), stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE, text=True)
-            self.background_processes.append(p)
             thread = threading.Thread(
                 target=handle_background_process,
                 args=(p, logfile, func),
             )
             thread.start()
-            return p
+            self.background_processes.append(p)
+            self.background_threads.append(thread)
+            return (p, thread)
 
-        # Execute the command synchronously with a timeout
+        # Execute the command synchronously, possibly with a timeout
         cmd_input = cmd.split()
         if timeout is not None:
             cmd_input = ['timeout', f'{timeout}s'] + cmd_input
@@ -248,9 +284,9 @@ class EmulatedNetwork:
                        stderr=subprocess.PIPE, text=True)
         for line, stream in read_subprocess_pipe(p):
             if stream == p.stdout and stdout:
-                print(line, end='', file=sys.stderr)
+                console_logger(line.strip())
             if stream == p.stderr and stderr:
-                print(line, end='', file=sys.stderr)
+                console_logger(line.strip())
             if logfile is not None:
                 with open(logfile, 'a') as f:
                     f.write(line)
@@ -264,14 +300,16 @@ class EmulatedNetwork:
         elif exitcode == LINUX_TIMEOUT_EXITCODE:
             return True
         else:
-            print(f'{host}({cmd}) = {exitcode}', file=sys.stderr)
-            if exit_on_err:
-                exit(1)
+            ERROR(f'{host}({cmd}) = {exitcode}')
+            if raise_error:
+                raise ValueError(f'{host}({cmd}) = {p.returncode}')
 
     def stop(self):
         for p in self.background_processes:
             p.terminate()
             p.wait()
+        for thread in self.background_threads:
+            thread.join()
         if self.net is not None:
             self.net.stop()
 
@@ -318,7 +356,9 @@ class OneHopNetwork(EmulatedNetwork):
                                    mac=self._mac(1))
         self.h2 = self.net.addHost('h2', ip=self._ip(2),
                                    mac=self._mac(2))
-        self.p1 = self.net.addHost('p1')
+        # Comment(GY): 172.16.2.1 is both the router's public IP and the
+        # IP of the r1-eth0 interface?
+        self.p1 = self.net.addHost('p1', ip='172.16.1.1')
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
 
