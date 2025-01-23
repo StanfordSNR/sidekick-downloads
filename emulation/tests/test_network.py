@@ -1,5 +1,6 @@
 import unittest
 import time
+import tempfile
 from network import *
 
 
@@ -283,3 +284,208 @@ class TestSetTCPCongestionControl(NetworkTestCase):
 
     def test_can_set_bbr(self):
         self._test_can_set_cca('bbr')
+
+
+class TestPopen(NetworkTestCase):
+    def setUp(self):
+        super().setUp()
+        self.net = self.setUpDirectNetwork()
+
+    def test_invalid_configurations(self):
+        logfile = tempfile.NamedTemporaryFile()
+        cmd = 'true'
+        with self.assertRaises(AssertionError):
+            self.net.popen(None, cmd, func=lambda line: line)
+        with self.assertRaises(AssertionError):
+            self.net.popen(None, cmd, timeout=60)
+        with self.assertRaises(AssertionError):
+            self.net.popen(None, cmd, logfile=logfile.name)
+        with self.assertRaises(AssertionError):
+            self.net.popen(self.net.h1, cmd, background=True, timeout=60)
+
+    def test_timeout_succeeds(self):
+        """Test timeout, only on mininet hosts and synchronous processes.
+        """
+        host = self.net.h1
+        self.assertFalse(self.net.popen(host, 'sleep 1', timeout=None))
+        self.assertFalse(self.net.popen(host, 'sleep 1', timeout=2))
+        self.assertTrue(self.net.popen(host, 'sleep 2', timeout=1))
+
+    def _test_raises_exception_on_bad_exitcode(self, host):
+        good_cmd = 'true'
+        bad_cmd = '>'  # todo
+        self.net.popen(host, good_cmd, raise_error=True)
+        self.net.popen(host, good_cmd, raise_error=False) # no error to suppress
+        with self.assertRaises(ValueError, msg='error raises an exception'):
+            self.net.popen(host, bad_cmd, raise_error=True)
+        self.net.popen(host, bad_cmd, raise_error=False)  # error is suppressed
+
+    def test_raises_exception_on_bad_exitcode(self):
+        self._test_raises_exception_on_bad_exitcode(None)
+        self._test_raises_exception_on_bad_exitcode(self.net.h1)
+
+    def _test_console_logger_logs_command(self, host, background):
+        log = []
+        def logger(line):
+            log.append(line)
+
+        # Run a simple command to completion
+        cmd = 'true'
+        self.assertEqual(len(log), 0)
+        p = self.net.popen(host, cmd, background=background,
+                console_logger=logger)
+        if background:
+            p.wait()
+        self.assertEqual(len(log), 1)
+
+        # Check the prefix and suffix of the logged command
+        if host is not None:
+            self.assertIn(host.name, log[0])
+        if background:
+            self.assertIn('&', log[0])
+        else:
+            self.assertNotIn('&', log[0])
+
+    def test_console_logger_logs_command(self):
+        self._test_console_logger_logs_command(None, False)
+        self._test_console_logger_logs_command(self.net.h1, False)
+        self._test_console_logger_logs_command(self.net.h1, True)
+
+    def _test_console_logger_logs_stdout_and_stderr(self, host):
+        log = []
+        def logger(line):
+            log.append(line)
+
+        def popen(stdout, stderr):
+            stdout_cmd = f'echo stdout'
+            stderr_cmd = f'ls nonexistent_stderr_file_name_1234'
+            self.net.popen(host, stdout_cmd, console_logger=logger,
+                stdout=stdout, stderr=stderr, raise_error=False)
+            self.net.popen(host, stderr_cmd, console_logger=logger,
+                stdout=stdout, stderr=stderr, raise_error=False)
+
+        def count_string(log, string):
+            log = filter(lambda line: 'echo' not in line, log)
+            log = filter(lambda line: 'ls ' not in line, log)
+            log = filter(lambda line: string in line, log)
+            return len(list(log))
+
+        # Log neither stdout nor stderr
+        popen(stdout=False, stderr=False)
+        self.assertEqual(len(log), 2, log)
+        self.assertEqual(count_string(log, 'stdout'), 0, log)
+        self.assertEqual(count_string(log, 'stderr'), 0, log)
+
+        # Log stdout only
+        popen(stdout=True, stderr=False)
+        self.assertEqual(len(log), 5, log)
+        self.assertEqual(count_string(log, 'stdout'), 1, log)
+        self.assertEqual(count_string(log, 'stderr'), 0, log)
+
+        # Log stderr only
+        popen(stdout=False, stderr=True)
+        self.assertEqual(len(log), 8, log)
+        self.assertEqual(count_string(log, 'stdout'), 1, log)
+        self.assertEqual(count_string(log, 'stderr'), 1, log)
+
+        # Log both stdout and stderr
+        popen(stdout=True, stderr=True)
+        self.assertEqual(len(log), 12, log)
+        self.assertEqual(count_string(log, 'stdout'), 2, log)
+        self.assertEqual(count_string(log, 'stderr'), 2, log)
+
+    def test_console_logger_logs_stdout_and_stderr(self):
+        self._test_console_logger_logs_stdout_and_stderr(None)
+        self._test_console_logger_logs_stdout_and_stderr(self.net.h1)
+
+    def test_stop_background_processes(self):
+        host = self.net.h1
+        cmd = 'sleep 60'
+
+        def count_active_background_processes():
+            processes = self.net.background_processes
+            processes = filter(lambda p: p.returncode is None, processes)
+            return len(list(processes))
+
+        # Start two background processes
+        self.assertEqual(len(self.net.background_processes), 0)
+        p1 = self.net.popen(host, cmd, background=True)
+        self.assertEqual(len(self.net.background_processes), 1)
+        p2 = self.net.popen(host, cmd, background=True)
+        self.assertEqual(len(self.net.background_processes), 2)
+        self.assertIsNone(p1.returncode, 'p1 is still running')
+        self.assertIsNone(p2.returncode, 'p2 is still running')
+        self.assertEqual(count_active_background_processes(), 2)
+
+        # Terminate one background process
+        p1.terminate()
+        p1.wait()
+        self.assertEqual(count_active_background_processes(), 1)
+
+        # Stop the entire emulation
+        self.net.stop()
+        self.assertEqual(count_active_background_processes(), 0)
+
+    def _test_callback_function(self, host, background, seq=10):
+        # Define the callback function. The function can interact with objects
+        # passed by reference from outside the function.
+        total_even = [0]
+        def count_even(line):
+            total_even[0] += (int(line) + 1) % 2
+
+        # Execute the process and run to completion
+        self.assertEqual(total_even[0], 0)
+        cmd = f'seq {seq}'
+        p = self.net.popen(host, cmd, background=background, func=count_even)
+        if background:
+            p.wait()
+        self.assertEqual(total_even[0], seq // 2)
+
+    def test_callback_function(self):
+        # NOTE: 1st test inconsistently invokes the callback function,
+        # the 2nd test never invokes the callback function
+        self._test_callback_function(self.net.h1, False)
+        self._test_callback_function(self.net.h1, True)
+
+    def _test_appends_output_to_logfile(self, background: bool):
+        host = self.net.h1
+        logfile = tempfile.NamedTemporaryFile()
+
+        def popen():
+            stdout_cmd = f'echo stdout'
+            stderr_cmd = f'ls nonexistent_stderr_file_name_1234'
+            p1 = self.net.popen(host, stdout_cmd, background=background,
+                    logfile=logfile.name, raise_error=False)
+            p2 = self.net.popen(host, stderr_cmd, background=background,
+                    logfile=logfile.name, raise_error=False)
+            if background:
+                p1.wait()
+                p2.wait()
+
+        def count_string(log, string):
+            log = filter(lambda line: string in line, log)
+            return len(list(log))
+
+        # Contents from both stdout and stderr should be written to the logfile
+        popen()
+        with open(logfile.name, 'r') as f:
+            contents_after_one_run = f.readlines()
+        self.assertEqual(count_string(contents_after_one_run, 'stdout'), 1,
+            contents_after_one_run)
+        self.assertEqual(count_string(contents_after_one_run, 'stderr'), 1,
+            contents_after_one_run)
+
+        # Contents should be appended to the logfile on the second run
+        popen()
+        with open(logfile.name, 'r') as f:
+            contents_after_two_runs = f.readlines()
+        self.assertEqual(count_string(contents_after_two_runs, 'stdout'), 2,
+            contents_after_two_runs)
+        self.assertEqual(count_string(contents_after_two_runs, 'stderr'), 2,
+            contents_after_two_runs)
+
+    def test_appends_output_to_logfile(self):
+        # NOTE: The 1st test seems to pass consistently while the 2nd test
+        # seems to sometimes only log partial output to the logfile.
+        self._test_appends_output_to_logfile(background=False)
+        self._test_appends_output_to_logfile(background=True)

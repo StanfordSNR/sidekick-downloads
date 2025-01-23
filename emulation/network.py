@@ -187,28 +187,56 @@ class EmulatedNetwork:
             return value[0]
 
     def popen(self, host, cmd, background=False, func=None, timeout=None,
-              stdout=False, stderr=True, console_logger=TRACE, logfile=None,
-              exit_on_err=True):
+              console_logger=TRACE, stdout=False, stderr=True, logfile=None,
+              raise_error=True):
         """
         Start a process that executes a command on the given mininet host.
+
+        The function has a variety of logging capabilities. All commands can
+        be logged to the console using the console_logger. Only synchronous
+        processes can log outputs to the console, and console output can be
+        quieted using the stdout and/or stderr options. Only mininet host
+        commands can log to a logfile, and if provided, all output is logged.
+        Errors are always logged to the console, though processes can be
+        configured to error without raising an exception.
+
         Parameters:
-        - host: the mininet host
-        - cmd: a command string
-        - background: whether to run as a background process
-        - func: a function to execute on every line of output.
-          the function takes as input (line,).
-        - timeout: timeout, in seconds, to use on a mininet host
-        - stdout: whether to log stdout to the console
-        - stderr: whether to log stderr to the console
-        - console_logger: log level function for logging to the console
-        - logfile: the logfile to append output (both stdout and stderr) to
+        - host: The mininet host, or None if executing on the local host.
+        - cmd: A command string.
+        - background: Whether to run as a background process. Background
+          processes can only be executed on mininet hosts.
+        - func: A callback function to execute on every line of output. The
+          function takes as input (line,). Only on mininet hosts.
+        - timeout: The cmd timeout, in seconds. Only on mininet hosts and
+          synchronous processes.
+
+        Logging parameters:
+        - console_logger: Log level function, e.g., DEBUG, for logging to the
+          console. Takes a string as input and logs the executed command,
+          appending ' &' if it is a background process and prepending the host
+          name if it is executed on a mininet host. Also logs stdout and/or
+          stderr, whichever is enabled, for synchronous processes.
+        - stdout: Whether to log stdout to the console logger.
+        - stderr: Whether to log stderr to the console logger.
+        - logfile: The name of the logfile to append full output (both stdout
+          and stderr). Independent of the stdout and stderr options. Only on
+          mininet hosts.
+        - raise_error: Whether to raise an error on a non-zero exitcode or to
+          fail silently with only a log message. Only on synchronous processes
+          as we don't wait for background processes to terminate to check the
+          exitcode.
 
         Returns:
         - If a background process, returns the background process.
         - If not, returns True if there was a timeout and False if the process
-          executed successfully.
-        - For any other exitcodes, exits the program.
+          executed to completion.
+        - For non-zero exitcodes, exits the program unless configured not to.
+
+        Raises:
+        AssertionError on a valid configuration i.e., timeouts are enabled for
+        a process that is not executed on a mininet host.
         """
+
         # Log the command to be executed
         host_str = '' if host is None else f'{host.name} '
         background_str = ' &' if background else ''
@@ -224,7 +252,7 @@ class EmulatedNetwork:
                 print(p.stderr.strip(), file=sys.stderr)
             if p.returncode != 0:
                 print(f'{cmd} = {p.returncode}', file=sys.stderr)
-                if exit_on_err:
+                if raise_error:
                     exit(1)
             return
 
@@ -265,7 +293,7 @@ class EmulatedNetwork:
             return True
         else:
             print(f'{host}({cmd}) = {exitcode}', file=sys.stderr)
-            if exit_on_err:
+            if raise_error:
                 exit(1)
 
     def stop(self):
