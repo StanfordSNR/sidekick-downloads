@@ -149,3 +149,46 @@ class TestNetworkReachability(NetworkTestCase):
         net = self.setUpDirectNetwork()
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
+
+
+class TestDelayConfig(NetworkTestCase):
+    def assertDelayIsCorrect(self, node1, node2, expected_delay, n=10):
+        """RTTs are accurate to the nearest ms."""
+        ping = self.ping(node1, node2, n)
+        debug_output = f'{node1.name} -> {node2.name}'
+        self.assertEqual(ping.packets_rx(), ping.packets_tx(),
+            'same number of pings are sent as received with zero loss')
+        expected_rtt = expected_delay * 2
+        self.assertAlmostEqual(ping.rtt_min(), expected_rtt, 0, debug_output)
+        self.assertAlmostEqual(ping.rtt_max(), expected_rtt, 0, debug_output)
+        self.assertAlmostEqual(ping.rtt_avg(), expected_rtt, 0, debug_output)
+        self.assertAlmostEqual(ping.rtt_mdev(), 0, 0, debug_output)
+
+    def test_direct_delay_config(self):
+        delay = 100  # one-way delay, in ms
+        net = self.setUpDirectNetwork(delay=delay)
+
+        # get the ARPs over with
+        self.ping(net.h1, net.h2, 1)
+        self.ping(net.h2, net.h1, 1)
+
+        # ping each pair of nodes
+        self.assertDelayIsCorrect(net.h1, net.h2, delay)
+        self.assertDelayIsCorrect(net.h2, net.h1, delay)
+
+    def test_one_hop_delay_config(self):
+        delay1 = 100  # one-way delay, in ms
+        delay2 = 2
+        net = self.setUpOneHopNetwork(delay1=delay1, delay2=delay2)
+
+        for (node1, node2, delay) in [
+            (net.h1, net.h2, delay1 + delay2),
+            (net.h1, net.r1, delay1),
+            (net.r1, net.h2, delay2),
+        ]:
+            # get the ARPs over with
+            self.ping(node1, node2, 1)
+            self.ping(node2, node1, 1)
+            # ping each pair of nodes
+            self.assertDelayIsCorrect(node1, node2, delay)
+            self.assertDelayIsCorrect(node2, node1, delay)
