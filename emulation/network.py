@@ -245,6 +245,9 @@ class EmulatedNetwork:
         # Execute the command on the local host
         if host is None:
             assert not background
+            assert timeout is None
+            assert logfile is None
+            assert func is None
             p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             if p.stdout and stdout:
                 print(p.stdout.strip(), file=sys.stderr)
@@ -258,6 +261,7 @@ class EmulatedNetwork:
 
         # Execute the command on a mininet host in the background
         if background:
+            assert timeout is None
             p = host.popen(cmd.split(), stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE, text=True)
             self.background_processes.append(p)
@@ -268,7 +272,7 @@ class EmulatedNetwork:
             thread.start()
             return p
 
-        # Execute the command synchronously with a timeout
+        # Execute the command synchronously, possibly with a timeout
         cmd_input = cmd.split()
         if timeout is not None:
             cmd_input = ['timeout', f'{timeout}s'] + cmd_input
