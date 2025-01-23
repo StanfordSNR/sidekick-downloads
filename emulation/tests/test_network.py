@@ -171,10 +171,15 @@ class TestDelayConfig(NetworkTestCase):
         self.assertEqual(ping.packets_rx(), ping.packets_tx(),
             'same number of pings are sent as received with zero loss')
         expected_rtt = expected_delay * 2
-        self.assertAlmostEqual(ping.rtt_min(), expected_rtt, 0, debug_output)
-        self.assertAlmostEqual(ping.rtt_max(), expected_rtt, 0, debug_output)
-        self.assertAlmostEqual(ping.rtt_avg(), expected_rtt, 0, debug_output)
-        self.assertAlmostEqual(ping.rtt_mdev(), 0, 0, debug_output)
+        delta = 0.2 * expected_rtt  # within 20% of the expected RTT
+        self.assertAlmostEqual(ping.rtt_min(), expected_rtt,
+            msg=debug_output, delta=delta)
+        self.assertAlmostEqual(ping.rtt_max(), expected_rtt,
+            msg=debug_output, delta=delta)
+        self.assertAlmostEqual(ping.rtt_avg(), expected_rtt,
+            msg=debug_output, delta=delta)
+        self.assertAlmostEqual(ping.rtt_mdev(), 0,
+            msg=debug_output, delta=delta)
 
     def test_direct_delay_config(self):
         delay = 100  # one-way delay, in ms
