@@ -246,3 +246,40 @@ class TestBandwidthConfig(NetworkTestCase):
 class TestQdiscConfig(NetworkTestCase):
     pass
 
+
+class TestSetTCPCongestionControl(NetworkTestCase):
+    def setUp(self):
+        super().setUp()
+        self.net1 = self.setUpDirectNetwork()
+        self.net2 = self.setUpOneHopNetwork()
+
+    def assertCCAEquals(self, node, expected_cca):
+        output = node.cmd('sysctl net.ipv4.tcp_congestion_control')
+        pattern = r' = (\w+)'
+        match = re.search(pattern, output)
+        self.assertFalse(match is None)
+        self.assertEqual(match.group(1), expected_cca)
+
+    def assertCCAsAllEqual(self, expected_cca):
+        self.assertCCAEquals(self.net1.h1, expected_cca)
+        self.assertCCAEquals(self.net1.h2, expected_cca)
+        self.assertCCAEquals(self.net2.h1, expected_cca)
+        self.assertCCAEquals(self.net2.h2, expected_cca)
+        self.assertCCAEquals(self.net2.r1, expected_cca)
+
+    def _test_can_set_cca(self, cca):
+        self.net1.set_tcp_congestion_control(cca)
+        self.net2.set_tcp_congestion_control(cca)
+        self.assertCCAsAllEqual(cca)
+
+    def test_default_is_cubic(self):
+        self.assertCCAsAllEqual('cubic')
+
+    def test_can_set_cubic(self):
+        self._test_can_set_cca('cubic')
+
+    def test_can_set_reno(self):
+        self._test_can_set_cca('reno')
+
+    def test_can_set_bbr(self):
+        self._test_can_set_cca('bbr')
