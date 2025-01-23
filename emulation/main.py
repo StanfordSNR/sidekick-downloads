@@ -283,7 +283,7 @@ if __name__ == '__main__':
     # This includes Cloudflare quiche and Linux kernel versions <5.0.
     # We automatically set pacing for Linux TCP BBR, but we need to set it
     # here for user-space implementations.
-    if args.benchmark == benchmark_quiche and 'bbr' in args.congestion_control:
+    if args.ty != 'cli' and args.benchmark == benchmark_quiche and 'bbr' in args.congestion_control:
         pacing = True
     else:
         pacing = False
