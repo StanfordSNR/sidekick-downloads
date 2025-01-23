@@ -150,10 +150,10 @@ class TestNetworkReachability(NetworkTestCase):
 
     def test_one_hop_proxy_is_reachable(self):
         net = self.setUpOneHopNetwork()
-        self.assertReachable(net.r1, net.h1)
-        self.assertReachable(net.r1, net.h2)
-        self.assertReachable(net.h1, net.r1)
-        self.assertReachable(net.h2, net.r1)
+        self.assertReachable(net.p1, net.h1)
+        self.assertReachable(net.p1, net.h2)
+        self.assertReachable(net.h1, net.p1)
+        self.assertReachable(net.h2, net.p1)
         net.stop()
 
     def test_direct_hosts_are_reachable(self):
@@ -196,8 +196,8 @@ class TestDelayConfig(NetworkTestCase):
 
         for (node1, node2, delay) in [
             (net.h1, net.h2, delay1 + delay2),
-            (net.h1, net.r1, delay1),
-            (net.r1, net.h2, delay2),
+            (net.h1, net.p1, delay1),
+            (net.p1, net.h2, delay2),
         ]:
             # get the ARPs over with
             self.ping(node1, node2, 1)
@@ -231,8 +231,8 @@ class TestLossConfig(NetworkTestCase):
         net = self.setUpOneHopNetwork(loss1=20, loss2=20, setup_time=2)
         for (node1, node2) in [
             (net.h1, net.h2),
-            (net.h1, net.r1),
-            (net.r1, net.h2),
+            (net.h1, net.p1),
+            (net.p1, net.h2),
         ]:
             self.assertLossIsCorrect(node1, node2, True)
             self.assertLossIsCorrect(node2, node1, True)
@@ -243,8 +243,8 @@ class TestLossConfig(NetworkTestCase):
         net = self.setUpOneHopNetwork(loss1=20, loss2=0, setup_time=2)
         for (node1, node2, loss) in [
             (net.h1, net.h2, True),
-            (net.h1, net.r1, True),
-            (net.r1, net.h2, False),
+            (net.h1, net.p1, True),
+            (net.p1, net.h2, False),
         ]:
             self.assertLossIsCorrect(node1, node2, loss)
             self.assertLossIsCorrect(node2, node1, loss)
@@ -281,7 +281,7 @@ class TestSetTCPCongestionControl(NetworkTestCase):
         self.assertCCAEquals(self.net1.h2, expected_cca)
         self.assertCCAEquals(self.net2.h1, expected_cca)
         self.assertCCAEquals(self.net2.h2, expected_cca)
-        self.assertCCAEquals(self.net2.r1, expected_cca)
+        self.assertCCAEquals(self.net2.p1, expected_cca)
 
     def _test_can_set_cca(self, cca):
         self.net1.set_tcp_congestion_control(cca)

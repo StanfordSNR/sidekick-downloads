@@ -49,7 +49,7 @@ class EmulatedNetwork:
         """
         host = self.iface_to_host[iface]
 
-        # Configure the end-host or router
+        # Configure the end-host or proxy
         if not netem:
             # BBR requires fq (with pacing) for kernel versions <v4.20
             # https://groups.google.com/g/bbr-dev/c/zZ5c0qkWqbo/m/QulUwXLZAQAJ
@@ -314,11 +314,11 @@ class EmulatedNetwork:
             self.net.stop()
 
     def start_tcp_pep(self, logfile):
-        self.popen(self.r1, 'ip rule add fwmark 1 lookup 100')
-        self.popen(self.r1, 'ip route add local 0.0.0.0/0 dev lo table 100')
-        self.popen(self.r1, 'iptables -t mangle -F')
-        self.popen(self.r1, 'iptables -t mangle -A PREROUTING -i r1-eth1 -p tcp -j TPROXY --on-port 5000 --tproxy-mark 1')
-        self.popen(self.r1, 'iptables -t mangle -A PREROUTING -i r1-eth0 -p tcp -j TPROXY --on-port 5000 --tproxy-mark 1')
+        self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
+        self.popen(self.p1, 'ip route add local 0.0.0.0/0 dev lo table 100')
+        self.popen(self.p1, 'iptables -t mangle -F')
+        self.popen(self.p1, 'iptables -t mangle -A PREROUTING -i p1-eth1 -p tcp -j TPROXY --on-port 5000 --tproxy-mark 1')
+        self.popen(self.p1, 'iptables -t mangle -A PREROUTING -i p1-eth0 -p tcp -j TPROXY --on-port 5000 --tproxy-mark 1')
 
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -328,8 +328,8 @@ class EmulatedNetwork:
 
         # The start_tcp_pep() function blocks until the TCP PEP is ready to
         # split connections. That is, when we observe the 'Pepsal started'
-        # string in the router output.
-        self.popen(self.r1, 'pepsal -v', background=True,
+        # string in the proxy output.
+        self.popen(self.p1, 'pepsal -v', background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
@@ -340,8 +340,11 @@ class EmulatedNetwork:
 """
 Defines an emulated network in mininet with one intermediate hop between the
 client and the server. The 1st link is between the client / data receiver (h1)
-and the router (r1), and the 2nd link is between the router (r1) and the
+and the proxy (p1), and the 2nd link is between the proxy (p1) and the
 server / data sender (h2).
+Each link has a node (e1, e2) that emulates link properties (e.g., delay, loss,
+bandwidth, jitter). Pacing is configured on each host interface.
+e1 also performs routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
@@ -355,22 +358,22 @@ class OneHopNetwork(EmulatedNetwork):
                                    mac=self._mac(2))
         # Comment(GY): 172.16.2.1 is both the router's public IP and the
         # IP of the r1-eth0 interface?
-        self.r1 = self.net.addHost('r1', ip='172.16.1.1')
+        self.p1 = self.net.addHost('p1', ip='172.16.1.1')
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
 
         # Add links
         self.net.addLink(self.h1, self.e1)
-        self.net.addLink(self.e1, self.r1)
-        self.net.addLink(self.r1, self.e2)
+        self.net.addLink(self.e1, self.p1)
+        self.net.addLink(self.p1, self.e2)
         self.net.addLink(self.e2, self.h2)
         self.net.build()
 
         # Initialize statistics
         self.iface_to_host = {
             'h1-eth0': self.h1,
-            'r1-eth0': self.r1,
-            'r1-eth1': self.r1,
+            'p1-eth0': self.p1,
+            'p1-eth1': self.p1,
             'h2-eth0': self.h2,
             'e1-eth0': self.e1,
             'e1-eth1': self.e1,
@@ -378,22 +381,24 @@ class OneHopNetwork(EmulatedNetwork):
             'e2-eth1': self.e2,
         }
 
-        # Setup routing and forwarding
-        self.popen(self.r1, "ifconfig r1-eth0 0")
-        self.popen(self.r1, "ifconfig r1-eth1 0")
-        self.popen(self.r1, "ifconfig r1-eth0 hw ether 00:00:00:00:01:01")
-        self.popen(self.r1, "ifconfig r1-eth1 hw ether 00:00:00:00:01:02")
-        self.popen(self.r1, "ip addr add 172.16.1.1/24 brd + dev r1-eth0")
-        self.popen(self.r1, "ip addr add 172.16.2.1/24 brd + dev r1-eth1")
-        self.r1.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
+        # Setup routing and forwarding (e1 acts as router)
+        self.popen(self.e1, "ifconfig e1-eth0 0")
+        self.popen(self.e1, "ifconfig e1-eth1 0")
+        self.popen(self.e1, "ifconfig e1-eth0 hw ether 00:00:00:00:01:01")
+        self.popen(self.e1, "ifconfig e1-eth1 hw ether 00:00:00:00:01:02")
+        self.popen(self.e1, "ip addr add 172.16.1.1/24 brd + dev e1-eth0")
+        self.popen(self.e1, "ip addr add 172.16.2.1/24 brd + dev e1-eth1")
+        self.e1.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
         self.popen(self.h1, "ip route add 172.16.2.0/24 via 172.16.1.1")
         self.popen(self.h2, "ip route add 172.16.1.0/24 via 172.16.2.1")
 
-        # Set up bridging on the network emulation nodes
-        self.popen(self.e1, "brctl addbr br0")
-        self.popen(self.e1, "brctl addif br0 e1-eth0")
-        self.popen(self.e1, "brctl addif br0 e1-eth1")
-        self.popen(self.e1, "ip link set dev br0 up")
+        # Set up transparent bridging on p1 and e2
+        # \note if p1 is running a proxy that *also* bridges, then the kernel
+        # bridge will be removed. `pepsal` does not bridge packets on its own.
+        self.popen(self.p1, "brctl addbr br0")
+        self.popen(self.p1, "brctl addif br0 p1-eth0")
+        self.popen(self.p1, "brctl addif br0 p1-eth1")
+        self.popen(self.p1, "ip link set dev br0 up")
         self.popen(self.e2, "brctl addbr br0")
         self.popen(self.e2, "brctl addif br0 e2-eth0")
         self.popen(self.e2, "brctl addif br0 e2-eth1")
@@ -405,8 +410,8 @@ class OneHopNetwork(EmulatedNetwork):
         rtt = 2 * (delay1 + delay2)
         bdp = self._calculate_bdp(delay1, delay2, bw1, bw2)
         self._config_iface('h1-eth0', False, pacing)
-        self._config_iface('r1-eth0', False, pacing)
-        self._config_iface('r1-eth1', False, pacing)
+        self._config_iface('p1-eth0', False, pacing)
+        self._config_iface('p1-eth1', False, pacing)
         self._config_iface('h2-eth0', False, pacing)
         self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
         self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
@@ -417,6 +422,8 @@ class OneHopNetwork(EmulatedNetwork):
 """
 Defines an emulated network in mininet that directly connects the client /
 data receiver (h1) to the server / data sender (h2) with a single link.
+The link has a node (e1) that emulates link properties (e.g., delay, loss,
+bandwidth, jitter). Pacing is configured on each host interface.
 """
 class DirectNetwork(EmulatedNetwork):
     def __init__(self, delay, loss, bw, jitter, qdisc, pacing):
