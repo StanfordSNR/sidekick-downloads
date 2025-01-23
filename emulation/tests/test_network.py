@@ -146,6 +146,7 @@ class TestNetworkReachability(NetworkTestCase):
         net = self.setUpOneHopNetwork()
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
+        net.stop()
 
     def test_one_hop_proxy_is_reachable(self):
         net = self.setUpOneHopNetwork()
@@ -153,11 +154,13 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.r1, net.h2)
         self.assertReachable(net.h1, net.r1)
         self.assertReachable(net.h2, net.r1)
+        net.stop()
 
     def test_direct_hosts_are_reachable(self):
         net = self.setUpDirectNetwork()
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
+        net.stop()
 
 
 class TestDelayConfig(NetworkTestCase):
@@ -184,6 +187,7 @@ class TestDelayConfig(NetworkTestCase):
         # ping each pair of nodes
         self.assertDelayIsCorrect(net.h1, net.h2, delay)
         self.assertDelayIsCorrect(net.h2, net.h1, delay)
+        net.stop()
 
     def test_one_hop_delay_config(self):
         delay1 = 100  # one-way delay, in ms
@@ -201,6 +205,7 @@ class TestDelayConfig(NetworkTestCase):
             # ping each pair of nodes
             self.assertDelayIsCorrect(node1, node2, delay)
             self.assertDelayIsCorrect(node2, node1, delay)
+        net.stop()
 
 
 class TestLossConfig(NetworkTestCase):
@@ -218,6 +223,7 @@ class TestLossConfig(NetworkTestCase):
         net = self.setUpDirectNetwork(loss=20, setup_time=1)
         self.assertLossIsCorrect(net.h1, net.h2, True)
         self.assertLossIsCorrect(net.h2, net.h1, True)
+        net.stop()
 
     def test_one_hop_loss_config(self):
         net = self.setUpOneHopNetwork(loss1=20, loss2=20, setup_time=1)
@@ -228,6 +234,7 @@ class TestLossConfig(NetworkTestCase):
         ]:
             self.assertLossIsCorrect(node1, node2, True)
             self.assertLossIsCorrect(node2, node1, True)
+        net.stop()
 
     def test_one_hop_asymmetric_loss_config(self):
         net = self.setUpOneHopNetwork(loss1=20, loss2=0, setup_time=1)
@@ -238,6 +245,7 @@ class TestLossConfig(NetworkTestCase):
         ]:
             self.assertLossIsCorrect(node1, node2, loss)
             self.assertLossIsCorrect(node2, node1, loss)
+        net.stop()
 
 
 class TestBandwidthConfig(NetworkTestCase):
@@ -253,6 +261,10 @@ class TestSetTCPCongestionControl(NetworkTestCase):
         super().setUp()
         self.net1 = self.setUpDirectNetwork()
         self.net2 = self.setUpOneHopNetwork()
+
+    def tearDown(self):
+        self.net1.stop()
+        self.net2.stop()
 
     def assertCCAEquals(self, node, expected_cca):
         output = node.cmd('sysctl net.ipv4.tcp_congestion_control')
@@ -290,6 +302,12 @@ class TestPopen(NetworkTestCase):
     def setUp(self):
         super().setUp()
         self.net = self.setUpDirectNetwork()
+        self.stopped = False
+
+    def tearDown(self):
+        if not self.stopped:
+            self.net.stop()
+            self.stopped = True
 
     def test_invalid_configurations(self):
         logfile = tempfile.NamedTemporaryFile()
@@ -424,6 +442,7 @@ class TestPopen(NetworkTestCase):
 
         # Stop the entire emulation
         self.net.stop()
+        self.stopped = True
         self.assertEqual(count_active_background_processes(), 0)
 
     def _test_callback_function(self, host, background, seq=10):
