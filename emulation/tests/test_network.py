@@ -192,3 +192,40 @@ class TestDelayConfig(NetworkTestCase):
             # ping each pair of nodes
             self.assertDelayIsCorrect(node1, node2, delay)
             self.assertDelayIsCorrect(node2, node1, delay)
+
+
+class TestLossConfig(NetworkTestCase):
+    def assertLossIsCorrect(self, node1, node2, loss: bool, n=30):
+        ping = self.ping(node1, node2, n)
+        debug_output = f'{node1.name} -> {node2.name}'
+        if loss:
+            self.assertLess(ping.packets_rx(), ping.packets_tx(), debug_output)
+            self.assertGreater(ping.packet_loss(), 0, debug_output)
+        else:
+            self.assertEqual(ping.packets_rx(), ping.packets_tx(), debug_output)
+            self.assertEqual(ping.packet_loss(), 0, debug_output)
+
+    def test_direct_loss_config(self):
+        net = self.setUpDirectNetwork(loss=20)
+        self.assertLossIsCorrect(net.h1, net.h2, True)
+        self.assertLossIsCorrect(net.h2, net.h1, True)
+
+    def test_one_hop_loss_config(self):
+        net = self.setUpOneHopNetwork(loss1=20, loss2=20)
+        for (node1, node2) in [
+            (net.h1, net.h2),
+            (net.h1, net.r1),
+            (net.r1, net.h2),
+        ]:
+            self.assertLossIsCorrect(node1, node2, True)
+            self.assertLossIsCorrect(node2, node1, True)
+
+    def test_one_hop_asymmetric_loss_config(self):
+        net = self.setUpOneHopNetwork(loss1=20, loss2=0)
+        for (node1, node2, loss) in [
+            (net.h1, net.h2, True),
+            (net.h1, net.r1, True),
+            (net.r1, net.h2, False),
+        ]:
+            self.assertLossIsCorrect(node1, node2, loss)
+            self.assertLossIsCorrect(node2, node1, loss)
