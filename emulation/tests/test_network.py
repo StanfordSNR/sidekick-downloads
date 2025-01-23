@@ -2,6 +2,90 @@ import unittest
 from network import *
 
 
+class PingResult:
+    def __init__(self, output):
+        pattern = (
+            r'\s+(?P<packets_tx>\d+) packets transmitted, '
+            r'(?P<packets_rx>\d+) received, '
+            r'(?P<packet_loss>[\d.]+)% packet loss, '
+            r'time (?P<total_time>\d+)ms\s+'
+            r'rtt min/avg/max/mdev = '
+            r'(?P<rtt_min>[\d.]+)/(?P<rtt_avg>[\d.]+)/'
+            r'(?P<rtt_max>[\d.]+)/(?P<rtt_mdev>[\d.]+) ms.*'
+        )
+        match = re.search(pattern, output)
+        if match:
+            self.success = True
+            self.match = match.groupdict()
+        else:
+            self.success = False
+
+    def packets_tx(self):
+        return int(self.match['packets_tx'])
+
+    def packets_rx(self):
+        return int(self.match['packets_rx'])
+
+    def packet_loss(self):
+        """Packet loss, in %"""
+        return float(self.match['packet_loss'])
+
+    def total_time(self):
+        """Total time, in ms"""
+        return float(self.match['total_time'])
+
+    def rtt_min(self):
+        """Minimum RTT, in ms"""
+        return float(self.match['rtt_min'])
+
+    def rtt_avg(self):
+        """Average RTT, in ms"""
+        return float(self.match['rtt_avg'])
+
+    def rtt_max(self):
+        """Maximum RTT, in ms"""
+        return float(self.match['rtt_max'])
+
+    def rtt_mdev(self):
+        """Mean deviation, in ms"""
+        return float(self.match['rtt_mdev'])
+
+
+class NetworkTestCase(unittest.TestCase):
+    def setUp(self):
+        # Suppress stderr logging from network setup
+        self._stderr = sys.stderr
+        sys.stderr = open(os.devnull, 'w')
+
+    def setUpOneHopNetwork(self, delay1=1, delay2=10, loss1=0, loss2=0,
+                           bw1=50, bw2=10, jitter1=None, jitter2=None,
+                           qdisc='red', pacing=False) -> OneHopNetwork:
+        net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
+                            jitter1, jitter2, qdisc, pacing)
+        return net
+
+    def setUpDirectNetwork(self, delay=10, loss=0, bw=10, jitter=None,
+                           qdisc='red', pacing=False) -> DirectNetwork:
+        net = DirectNetwork(delay, loss, bw, jitter, qdisc, pacing)
+        return net
+
+    def ping(self, node1, node2, n=1) -> PingResult:
+        """Send n pings from node1 from node2 at a 0.1s interval.
+
+        Asserts that the node is reachable and at least one ping reply was
+        received. Assertions may be flaky with loss, but n should be large
+        enough that receiving no replies is statistically unlikely.
+
+        Returns the parsed ping statistics.
+        """
+        output = node1.cmd(f'ping -i 0.1 -c {n} {node2.IP()}')
+        result = PingResult(output)
+        debug_output = f'{node1.name} -> {node2.name}\n{output}'
+        self.assertTrue(result.success, debug_output)
+        self.assertEqual(result.packets_tx(), n)
+        return result
+
+
 class TestNetStatistics(unittest.TestCase):
     def setUp(self):
         pass
@@ -41,3 +125,27 @@ class TestEmulatedNetwork(unittest.TestCase):
         actual_bytes = EmulatedNetwork._calculate_bdp(delay1, delay2, bw1, bw2)
         self.assertEqual(actual_bytes, expected_bytes,
                          'calculated bdp in bytes')
+
+
+class TestNetworkReachability(NetworkTestCase):
+    def assertReachable(self, node1, node2, n=1):
+        result = self.ping(node1, node2, n)
+        debug_output = f'{node1.name} -> {node2.name}'
+        self.assertGreater(result.packets_rx(), 0, debug_output)
+
+    def test_one_hop_hosts_are_reachable(self):
+        net = self.setUpOneHopNetwork()
+        self.assertReachable(net.h1, net.h2)
+        self.assertReachable(net.h2, net.h1)
+
+    def test_one_hop_proxy_is_reachable(self):
+        net = self.setUpOneHopNetwork()
+        self.assertReachable(net.r1, net.h1)
+        self.assertReachable(net.r1, net.h2)
+        self.assertReachable(net.h1, net.r1)
+        self.assertReachable(net.h2, net.r1)
+
+    def test_direct_hosts_are_reachable(self):
+        net = self.setUpDirectNetwork()
+        self.assertReachable(net.h1, net.h2)
+        self.assertReachable(net.h2, net.h1)

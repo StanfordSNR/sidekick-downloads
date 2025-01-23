@@ -315,7 +315,9 @@ class OneHopNetwork(EmulatedNetwork):
                                    mac=self._mac(1))
         self.h2 = self.net.addHost('h2', ip=self._ip(2),
                                    mac=self._mac(2))
-        self.r1 = self.net.addHost('r1')
+        # Comment(GY): 172.16.2.1 is both the router's public IP and the
+        # IP of the r1-eth0 interface?
+        self.r1 = self.net.addHost('r1', ip='172.16.1.1')
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
 
