@@ -7,6 +7,7 @@ from mininet.net import Mininet
 from mininet.link import TCLink
 from mininet.cli import CLI
 
+import time
 import argparse
 import subprocess
 import os
@@ -63,11 +64,17 @@ if __name__ == '__main__':
     h1.cmd("sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1")
     h2.cmd("sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1")
 
+    # Disable checksum offload
+    p1.cmd("ethtool -K p1-eth0 tx off rx off")
+    p1.cmd("ethtool -K p1-eth1 tx off rx off")
+    h1.cmd("ethtool -K h1-eth0 tx off rx off")
+    h2.cmd("ethtool -K h2-eth0 tx off rx off")
+
     # Start proxy or bridge
     if args.bridge:
         start_bridge(p1)
     else:
-        output = p1.cmd('RUST_LOG=trace ./proxy/target/debug/bridge -i p1-eth0 -o p1-eth1 &')
+        output = p1.cmd('RUST_LOG=error ./proxy/target/debug/bridge -i p1-eth0 -o p1-eth1 &')
 
     # Start pcaps
     if args.pcap:
@@ -81,9 +88,11 @@ if __name__ == '__main__':
     if args.cli:
         CLI(net)
     elif not args.ping:
-        print('h2: iperf3 -s &')
-        output = h2.cmd('iperf3 -s -p 5201 &')
-        h1_cmd = f'timeout 5 iperf3 -c {h2.IP()} -p 5201'
+        h2_cmd = 'iperf3 -s -p 5201 &'
+        print(h2_cmd)
+        h2.cmd(h2_cmd)
+        time.sleep(1) # give server time to start
+        h1_cmd = f'iperf3 -c {h2.IP()} -p 5201 -t 2'
         print(h1_cmd)
         output = h1.cmd(h1_cmd)
         print('iperf3 output: ' + output)

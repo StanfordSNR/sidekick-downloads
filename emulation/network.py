@@ -133,6 +133,9 @@ class EmulatedNetwork:
         self.popen(host, f'ethtool -K {iface} gso {gso} tso {tso}',
                    console_logger=DEBUG)
 
+        # Turn off checksum offloading (required for proxy)
+        self.popen(host, f'ethtool -K {iface} tx off rx off', console_logger=DEBUG)
+
     def set_tcp_congestion_control(self, cca):
         version = get_linux_version()
         cmd = f'sysctl -w net.ipv4.tcp_congestion_control={cca}'
