@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::{debug, trace};
+use log::{trace, info};
 
 use proxy::stream::PacketStream;
 
@@ -18,13 +18,13 @@ struct Cli {
 async fn main() {
     env_logger::init();
     let args = Cli::parse();
-    debug!(
-        "Echoing between {} and {}",
-        args.client_interface, args.server_interface
-    );
     let mut packet_stream = PacketStream::new(
-        args.client_interface,
-        args.server_interface,
+        args.client_interface.clone(),
+        args.server_interface.clone(),
+    );
+    info!(
+        "Ready to bridge between {} and {}",
+        args.client_interface, args.server_interface
     );
     while let Some(packet) = packet_stream.receiver.recv().await {
         trace!("Received packet on mpsc: {}", packet.iface);
