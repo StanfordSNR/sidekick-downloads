@@ -46,11 +46,17 @@ def init_logdir(path):
             pass
 
 def read_subprocess_pipe(p):
+    streams = [p.stdout, p.stderr]
     while p.poll() is None:
-        ready, _, _ = select.select([p.stdout, p.stderr], [], [])
+        ready, _, _ = select.select(streams, [], [])
         for stream in ready:
-            for line in stream.readlines():
-                yield (line, stream)
+            line = stream.readline()
+            if not line:
+                continue
+            yield (line, stream)
+    for stream in streams:
+        for line in stream.readlines():
+            yield (line, stream)
     stdout, stderr = p.communicate()
     for line in stdout.splitlines(keepends=True):
         yield (line, p.stdout)
