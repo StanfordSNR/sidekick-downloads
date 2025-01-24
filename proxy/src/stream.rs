@@ -5,25 +5,37 @@ use log::{error, debug, trace};
 
 const CHANNEL_CAPACITY: usize = 100;
 
+/// Complete packet data, tagged with the interface
+/// it was received on.
+/// The interface identifier should be the `id` field in
+/// the socket struct and the index in the PacketStream
+/// sockets array.
 #[derive(Debug, Clone)]
 pub struct Packet {
-    pub iface: u16, // port identifier TODO
+    pub iface: u16,
     pub data: [u8; BUFFER_SIZE],
     pub nbytes: isize,
 }
 
 impl Packet {
+    /// Initialize packet received on `iface` with empty data.
     pub fn new(iface: u16) -> Self {
         Self { iface, data: [0u8; BUFFER_SIZE], nbytes: 0 }
     }
 }
 
+/// Provides the abstraction of a stream between two Sockets.
+/// Sends packets through the `mpsc` channel, tagged with the
+/// ID of the socket that the packet was received on.
+/// The socket ID is the index in the `sockets` array and
+/// corresponds to the `id` field in the Socket struct.
 pub struct PacketStream {
     pub receiver: mpsc::Receiver<Packet>,
     pub sockets: [Socket; 2],
 }
 
 impl PacketStream {
+    /// Open sockets and mpsc channel, start polling packets
     pub fn new(interface1: String, interface2: String) -> Self {
         let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
         let socket1 = Socket::new(interface1, 0).unwrap();
@@ -37,6 +49,7 @@ impl PacketStream {
         }
     }
 
+    /// Receive a message (tagged packet) from the channel
     pub async fn recv(&mut self) -> Option<Packet> {
         self.receiver.recv().await
     }
@@ -55,7 +68,7 @@ impl PacketStream {
     }
 }
 
-/// Poll packets from `socket` and transfer them to the `tx` channel.
+/// Poll packets from `socket` and transfer them to the mpsc channel.
 async fn poll_packets(socket: Socket, tx: mpsc::Sender<Packet>) {
     let mut addr = SockAddr::new_sockaddr_ll();
     debug!("Start polling packets for {} (id: {}, fd: {})",
