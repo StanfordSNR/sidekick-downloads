@@ -74,7 +74,7 @@ if __name__ == '__main__':
     if args.bridge:
         start_bridge(p1)
     else:
-        output = p1.cmd('RUST_LOG=error ./proxy/target/debug/bridge -i p1-eth0 -o p1-eth1 &')
+        output = p1.cmd('RUST_LOG=trace ./proxy/target/debug/bridge -i p1-eth0 -o p1-eth1 -f /tmp/sidekick-logs/proxy.log &')
 
     # Start pcaps
     if args.pcap:
