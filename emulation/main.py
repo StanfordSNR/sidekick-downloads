@@ -22,6 +22,7 @@ def benchmark_http1(net, args):
         pep=args.pep,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        sidekick=args.sidekick,
     )
     bm.run(
         args.label,
@@ -117,6 +118,7 @@ def parse_data_size(n):
 
 if __name__ == '__main__':
     setLogLevel('info')
+    os.environ['RUST_LOG'] = 'info' # set env before hosts are created
 
     parser = argparse.ArgumentParser(
         prog='Sidekick',
@@ -139,6 +141,8 @@ if __name__ == '__main__':
         help='Directory where host logs are written, in server.log and client.log')
     exp_config.add_argument('--network-statistics', action='store_true',
         help='Include measured network statistics in experiment output')
+    exp_config.add_argument('--sidekick', action='store_true',
+                            help='Run sidekick executable on proxy (OneHopNetwork only)')
     exp_config.add_argument('--topology',
         choices=['one_hop', 'direct'], default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
@@ -290,7 +294,8 @@ if __name__ == '__main__':
 
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
-            args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing)
+            args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
+            bridge_proxy=not args.sidekick)
     elif args.topology == 'direct':
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
             args.qdisc, pacing)
@@ -299,6 +304,8 @@ if __name__ == '__main__':
 
     try:
         if args.ty == 'cli':
+            if args.sidekick:
+                net.start_sidekick(logfile=f'{args.logdir}/{ROUTER_LOGFILE}')
             CLI(net.net)
         else:
             init_logdir(args.logdir)

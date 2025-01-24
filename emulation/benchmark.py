@@ -505,6 +505,7 @@ class TCPBenchmark(BaseBenchmark):
         pep: bool,
         certfile=None,
         keyfile=None,
+        sidekick=False
     ):
         super().__init__(net)
         net.set_tcp_congestion_control(cca)
@@ -515,6 +516,7 @@ class TCPBenchmark(BaseBenchmark):
         self.certfile = certfile
         self.keyfile = keyfile
         self.server_ip = self.net.h2.IP()
+        self.sidekick = sidekick
 
     def start_server(self, logfile):
         cmd = f'python3 webserver/http_server.py --server-ip {self.server_ip} '\
@@ -577,6 +579,8 @@ class TCPBenchmark(BaseBenchmark):
         # Start the TCP PEP
         if self.pep:
             self.net.start_tcp_pep(logfile=f'{logdir}/{ROUTER_LOGFILE}')
+        if self.sidekick:
+            self.net.start_sidekick(logfile=f'{logdir}/{ROUTER_LOGFILE}')
 
         # Initialize remaining trials
         num_trials_left = num_trials

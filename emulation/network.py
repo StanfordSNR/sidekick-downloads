@@ -313,6 +313,22 @@ class EmulatedNetwork:
         if self.net is not None:
             self.net.stop()
 
+    def start_sidekick(self, logfile, executable='proxy/target/debug/bridge'):
+        condition = threading.Condition()
+        def notify_when_ready(line):
+            if 'Ready' in line:
+                with condition:
+                    condition.notify()
+
+        self.popen(self.p1, f'./{executable} --client-interface p1-eth0 --server-interface p1-eth1',
+                   background=True, console_logger=DEBUG,
+                   logfile=logfile, func=notify_when_ready)
+
+        with condition:
+            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            if not notified:
+                raise TimeoutError(f'start_sidekick_pep timeout {SETUP_TIMEOUT}s')
+
     def start_tcp_pep(self, logfile):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
         self.popen(self.p1, 'ip route add local 0.0.0.0/0 dev lo table 100')
@@ -397,7 +413,7 @@ class OneHopNetwork(EmulatedNetwork):
         self.popen(self.e1, "ip link set dev br0 up")
         self.popen(self.p1, "ifconfig p1-eth0 0")
         self.popen(self.p1, "ifconfig p1-eth1 0")
-        if bridge_proxy:
+        if bridge_proxy: # set up bridge
             self.popen(self.p1, "ifconfig p1-eth0 0")
             self.popen(self.p1, "ifconfig p1-eth1 0")
             self.popen(self.p1, "brctl addbr br0")
