@@ -148,8 +148,24 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.h2, net.h1)
         net.stop()
 
+    def test_one_hop_hosts_are_reachable_pepsal(self):
+        net = self.setUpOneHopNetwork()
+        net.start_tcp_pep(logfile=None)
+        self.assertReachable(net.h1, net.h2)
+        self.assertReachable(net.h2, net.h1)
+        net.stop()
+
     def test_one_hop_proxy_is_reachable(self):
         net = self.setUpOneHopNetwork()
+        self.assertReachable(net.p1, net.h1)
+        self.assertReachable(net.p1, net.h2)
+        self.assertReachable(net.h1, net.p1)
+        self.assertReachable(net.h2, net.p1)
+        net.stop()
+
+    def test_one_hop_proxy_is_reachable_pepsal(self):
+        net = self.setUpOneHopNetwork()
+        net.start_tcp_pep(logfile=None)
         self.assertReachable(net.p1, net.h1)
         self.assertReachable(net.p1, net.h2)
         self.assertReachable(net.h1, net.p1)
