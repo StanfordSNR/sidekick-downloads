@@ -172,7 +172,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
 
                 total_time_s += time_s
                 num_trials_left -= 1
-            result.print()
+            print(result.json())
 
 
 class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
@@ -312,7 +312,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
 
                 total_time_s += time_s
                 num_trials_left -= 1
-            result.print()
+            print(result.json())
 
 
 class GoogleQUICBenchmark(HTTPDownloadBenchmark):
@@ -446,7 +446,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
 
                 total_time_s += time_s
                 num_trials_left -= 1
-            result.print()
+            print(result.json())
 
 
 class TCPBenchmark(HTTPDownloadBenchmark):
@@ -571,4 +571,4 @@ class TCPBenchmark(HTTPDownloadBenchmark):
 
                 total_time_s += time_s
                 num_trials_left -= 1
-            result.print()
+            print(result.json())

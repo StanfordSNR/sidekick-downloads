@@ -72,6 +72,6 @@ class Iperf3Benchmark:
                 total_time_s += total_time_s
                 num_trials_left -= 1
 
-            result.print()
+            print(result.json())
 
         self.stop_server()
