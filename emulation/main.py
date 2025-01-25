@@ -13,7 +13,7 @@ DEFAULT_SSL_KEYFILE_QUIC = f'deps/certs/out/leaf_cert.pkcs8'
 DEFAULT_SSL_KEYFILE_TCP = f'deps/certs/out/leaf_cert.key'
 
 
-def benchmark_http1(net, args):
+def benchmark_tcp(net, args):
     assert not (args.topology == 'direct' and args.pep)
     bm = TCPBenchmark(
         net,
@@ -32,8 +32,8 @@ def benchmark_http1(net, args):
     )
 
 
-def benchmark_http3(net, args):
-    bm = QUICBenchmark(
+def benchmark_google_quic(net, args):
+    bm = GoogleQUICBenchmark(
         net,
         args.n,
         cca=args.congestion_control,
@@ -48,7 +48,7 @@ def benchmark_http3(net, args):
         args.network_statistics,
     )
 
-def benchmark_quiche(net, args):
+def benchmark_cloudflare_quic(net, args):
     bm = CloudflareQUICBenchmark(
         net,
         args.n,
@@ -175,7 +175,7 @@ if __name__ == '__main__':
         'tcp',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    tcp.set_defaults(ty='benchmark', benchmark=benchmark_http1)
+    tcp.set_defaults(ty='benchmark', benchmark=benchmark_tcp)
     tcp.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/1.1 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
@@ -196,7 +196,7 @@ if __name__ == '__main__':
         'quic',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    quic.set_defaults(ty='benchmark', benchmark=benchmark_http3)
+    quic.set_defaults(ty='benchmark', benchmark=benchmark_google_quic)
     quic.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/3 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
@@ -215,7 +215,7 @@ if __name__ == '__main__':
         'quiche',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    quiche.set_defaults(ty='benchmark', benchmark=benchmark_quiche)
+    quiche.set_defaults(ty='benchmark', benchmark=benchmark_cloudflare_quic)
     quiche.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/3 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
@@ -271,7 +271,7 @@ if __name__ == '__main__':
     # This includes Cloudflare quiche and Linux kernel versions <5.0.
     # We automatically set pacing for Linux TCP BBR, but we need to set it
     # here for user-space implementations.
-    if args.ty != 'cli' and args.benchmark == benchmark_quiche and 'bbr' in args.congestion_control:
+    if args.ty != 'cli' and args.benchmark == benchmark_cloudflare_quic and 'bbr' in args.congestion_control:
         pacing = True
     else:
         pacing = False

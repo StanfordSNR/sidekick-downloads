@@ -9,10 +9,10 @@ from .result import HTTPBenchmarkResult
 
 
 class Protocol(Enum):
-    QUIC = 0
-    TCP = 1
-    CloudflareQUIC = 2
-    PicoQUIC = 3
+    TCP = 0
+    GOOGLE_QUIC = 1
+    CLOUDFLARE_QUIC = 2
+    PICOQUIC = 3
 
 
 class BaseBenchmark:
@@ -135,7 +135,7 @@ class PicoQUICBenchmark(BaseBenchmark):
         while num_trials_left > 0:
             result = HTTPBenchmarkResult(
                 label=label,
-                protocol=Protocol.PicoQUIC.name,
+                protocol=Protocol.PICOQUIC.name,
                 data_size=self.n,
                 cca=self.cca,
                 pep=False,
@@ -274,7 +274,7 @@ class CloudflareQUICBenchmark(BaseBenchmark):
         while num_trials_left > 0:
             result = HTTPBenchmarkResult(
                 label=label,
-                protocol=Protocol.CloudflareQUIC.name,
+                protocol=Protocol.CLOUDFLARE_QUIC.name,
                 data_size=self.n,
                 cca=self.cca,
                 pep=False,
@@ -312,7 +312,7 @@ class CloudflareQUICBenchmark(BaseBenchmark):
                 num_trials_left -= 1
             result.print()
 
-class QUICBenchmark(BaseBenchmark):
+class GoogleQUICBenchmark(BaseBenchmark):
     def __init__(self, net, n: str, cca: str, certfile=None, keyfile=None):
         super().__init__(net)
         self.n = n
@@ -410,7 +410,7 @@ class QUICBenchmark(BaseBenchmark):
         while num_trials_left > 0:
             result = HTTPBenchmarkResult(
                 label=label,
-                protocol=Protocol.QUIC.name,
+                protocol=Protocol.GOOGLE_QUIC.name,
                 data_size=self.n,
                 cca=self.cca,
                 pep=False,
