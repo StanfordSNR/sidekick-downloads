@@ -10,8 +10,3 @@ class TestQUICBenchmark(unittest.TestCase):
 class TestTCPBenchmark(unittest.TestCase):
     def setUp(self):
         pass
-
-
-class TestWebRTCBenchmark(unittest.TestCase):
-    def setUp(self):
-        pass

@@ -621,17 +621,6 @@ class TCPBenchmark(BaseBenchmark):
             result.print()
 
 
-class WebRTCBenchmark(BaseBenchmark):
-    def __init__(self, net):
-        super().__init__(net)
-
-    def start_webrtc_sender(self):
-        pass
-
-    def start_webrtc_receiver(self):
-        pass
-
-
 # \NOTE using `popen` on the network as in the other benchmarks
 # did not reliably work for some older kernel versions, so we use
 # hX.cmd(XX) for this benchmark instead.

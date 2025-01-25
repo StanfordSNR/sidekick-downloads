@@ -81,9 +81,6 @@ def benchmark_picoquic(net, args):
     )
 
 
-def benchmark_webrtc():
-    pass
-
 def benchmark_iperf3(net, args):
     bm = Iperf3Benchmark(
         net,
@@ -248,15 +245,6 @@ if __name__ == '__main__':
         help='Path to SSL certificate')
     picoquic.add_argument('--keyfile', type=str, default=DEFAULT_SSL_KEYFILE_TCP,
         help='Path to SSL key')
-
-    ###########################################################################
-    # WebRTC benchmark
-    ###########################################################################
-    webrtc = subparsers.add_parser(
-        'webrtc',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    webrtc.set_defaults(ty='benchmark', benchmark=benchmark_webrtc)
 
     ###########################################################################
     # Iperf3 + TCP Benchmark
