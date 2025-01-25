@@ -1,68 +1,18 @@
-import json
 import time
 import threading
-from datetime import datetime
 from enum import Enum
 from typing import Optional, Tuple
 import re
 
 from common import *
+from .result import HTTPBenchmarkResult
 
 
 class Protocol(Enum):
     QUIC = 0
     TCP = 1
-    TCP_IPERF3 = 2
-    CloudflareQUIC = 3
-    PicoQUIC = 4
-
-
-class BenchmarkResult:
-    def __init__(self, label: str, protocol: Protocol,
-                 data_size: int, cca: str, pep: bool):
-        self.inputs = {
-            'label': label,
-            'protocol': protocol.name,
-            'num_trials': 0,
-            'start_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'data_size': data_size,
-            'cca': cca,
-            'pep': pep,
-        }
-        self.outputs = []
-
-    def append_new_output(self):
-        self.inputs['num_trials'] += 1
-        self.outputs.append({
-            'success': False,
-        })
-
-    def set_success(self, success: bool):
-        self.outputs[-1]['success'] = success
-
-    def set_timeout(self, timeout: bool):
-        self.outputs[-1]['timeout'] = timeout
-
-    def set_time_s(self, time_s: float):
-        self.outputs[-1]['time_s'] = time_s
-        self.outputs[-1]['throughput_mbps'] = \
-            8 * self.inputs['data_size'] / 1000000 / time_s
-
-    def set_network_statistics(self, statistics):
-        self.outputs[-1]['statistics'] = statistics
-
-    def set_additional_data(self, data):
-        self.outputs[-1]['additional_data'] = data
-
-    def print(self, pretty_print=False):
-        result = {
-            'inputs': self.inputs,
-            'outputs': self.outputs,
-        }
-        if pretty_print:
-            print(json.dumps(result, indent=2))
-        else:
-            print(json.dumps(result))
+    CloudflareQUIC = 2
+    PicoQUIC = 3
 
 
 class BaseBenchmark:
@@ -183,9 +133,9 @@ class PicoQUICBenchmark(BaseBenchmark):
 
         # Run the client
         while num_trials_left > 0:
-            result = BenchmarkResult(
+            result = HTTPBenchmarkResult(
                 label=label,
-                protocol=Protocol.PicoQUIC,
+                protocol=Protocol.PicoQUIC.name,
                 data_size=self.n,
                 cca=self.cca,
                 pep=False,
@@ -322,9 +272,9 @@ class CloudflareQUICBenchmark(BaseBenchmark):
 
         # Run the client
         while num_trials_left > 0:
-            result = BenchmarkResult(
+            result = HTTPBenchmarkResult(
                 label=label,
-                protocol=Protocol.CloudflareQUIC,
+                protocol=Protocol.CloudflareQUIC.name,
                 data_size=self.n,
                 cca=self.cca,
                 pep=False,
@@ -458,9 +408,9 @@ class QUICBenchmark(BaseBenchmark):
 
         # Run the client
         while num_trials_left > 0:
-            result = BenchmarkResult(
+            result = HTTPBenchmarkResult(
                 label=label,
-                protocol=Protocol.QUIC,
+                protocol=Protocol.QUIC.name,
                 data_size=self.n,
                 cca=self.cca,
                 pep=False,
@@ -583,9 +533,9 @@ class TCPBenchmark(BaseBenchmark):
 
         # Run the client
         while num_trials_left > 0:
-            result = BenchmarkResult(
+            result = HTTPBenchmarkResult(
                 label=label,
-                protocol=Protocol.TCP,
+                protocol=Protocol.TCP.name,
                 data_size=self.n,
                 cca=self.cca,
                 pep=self.pep,
@@ -619,78 +569,3 @@ class TCPBenchmark(BaseBenchmark):
                 total_time_s += time_s
                 num_trials_left -= 1
             result.print()
-
-
-# \NOTE using `popen` on the network as in the other benchmarks
-# did not reliably work for some older kernel versions, so we use
-# hX.cmd(XX) for this benchmark instead.
-class Iperf3Benchmark(BaseBenchmark):
-    def __init__(
-        self,
-        net,
-        n: int,
-        cca: str,
-        pep: bool,
-    ):
-        super().__init__(net)
-        self.n = n
-        self.pep = pep
-        self.cca = cca
-        net.set_tcp_congestion_control(cca)
-
-    def start_server(self):
-        cmd = 'iperf3 -s &'
-        self.net.h2.cmd(cmd)
-
-    def stop_server(self):
-        self.net.h2.cmd('killall iperf3')
-
-    def run_client(self, outfile, timeout):
-        cmd = f'iperf3 -c {self.net.h2.IP()} '
-        cmd += f'-n {self.n} '
-        cmd += f'--json > {outfile}'
-        self.net.h1.cmd(cmd)
-
-    def run(self, label, logdir, num_trials, timeout, network_statistics,
-            additional_data):
-        self.start_server()
-        if self.pep:
-            self.net.start_tcp_pep()
-        num_trials_left = num_trials
-
-        while num_trials_left > 0:
-
-            result = BenchmarkResult(
-                label=label,
-                protocol=Protocol.TCP_IPERF3,
-                data_size=self.n,
-                cca=self.cca,
-                pep=self.pep,
-            )
-
-            total_time_s = 0
-            while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
-                result.append_new_output()
-                self.net.reset_statistics()
-                success = self.run_client(
-                            outfile = 'tmp.json',
-                            timeout=timeout,
-                        )
-
-                if network_statistics:
-                    statistics = self.net.snapshot_statistics()
-                    result.set_network_statistics(statistics)
-
-                result.set_success(True)
-                json_data = json.load(open('tmp.json', 'r'))
-                os.system('sudo rm tmp.json')
-                if additional_data:
-                    result.set_additional_data(json_data)
-                result.set_time_s(json_data['end']['sum_received']['seconds'])
-                total_time_s += total_time_s
-                num_trials_left -= 1
-
-            result.print()
-
-        self.stop_server()
-
