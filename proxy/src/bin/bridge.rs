@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::{trace, info};
+use log::trace;
 use flexi_logger::{Logger, WriteMode, FileSpec};
 
 use proxy::stream::PacketStream;
@@ -38,7 +38,7 @@ async fn main() {
         args.client_interface.clone(),
         args.server_interface.clone(),
     );
-    info!(
+    println!(
         "Ready to bridge between {} and {}",
         args.client_interface, args.server_interface
     );

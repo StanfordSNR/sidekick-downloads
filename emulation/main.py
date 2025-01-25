@@ -118,7 +118,6 @@ def parse_data_size(n):
 
 if __name__ == '__main__':
     setLogLevel('info')
-    os.environ['RUST_LOG'] = 'info' # set env before hosts are created
 
     parser = argparse.ArgumentParser(
         prog='Sidekick',

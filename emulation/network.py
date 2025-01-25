@@ -316,14 +316,14 @@ class EmulatedNetwork:
         if self.net is not None:
             self.net.stop()
 
-    def start_sidekick(self, logfile, executable='proxy/target/debug/bridge'):
+    def start_sidekick(self, logfile, executable='./proxy/target/debug/bridge'):
         condition = threading.Condition()
         def notify_when_ready(line):
             if 'Ready' in line:
                 with condition:
                     condition.notify()
 
-        self.popen(self.p1, f'./{executable} --client-interface p1-eth0 --server-interface p1-eth1',
+        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
 

@@ -1,6 +1,11 @@
 """
 Provides a very minimal Mininet wrapper for testing the code in `proxy` without the
 rest of the emulation framework. Single subnet. No TE.
+
+To open shells for debugging:
+- Run this with --cli
+- In main mininet CLI: `dump`
+- In new terminal: `sudo mnexec -a {mininet host process ID} bash
 """
 
 from mininet.net import Mininet

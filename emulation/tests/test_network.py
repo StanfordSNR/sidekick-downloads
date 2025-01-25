@@ -62,9 +62,10 @@ class NetworkTestCase(unittest.TestCase):
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
         jitter1=None, jitter2=None, qdisc='red', pacing=False, setup_time=0,
+        bridge_proxy=True
     ) -> OneHopNetwork:
         net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                            jitter1, jitter2, qdisc, pacing)
+                            jitter1, jitter2, qdisc, pacing, bridge_proxy)
         if setup_time > 0:
             time.sleep(setup_time)
         return net
@@ -155,6 +156,13 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.h2, net.h1)
         net.stop()
 
+    def test_one_hop_hosts_are_reachable_sidekick(self):
+        net = self.setUpOneHopNetwork(bridge_proxy=False)
+        net.start_sidekick(logfile=None, executable='../proxy/target/debug/bridge')
+        self.assertReachable(net.h1, net.h2)
+        self.assertReachable(net.h2, net.h1)
+        net.stop()
+
     def test_one_hop_proxy_is_reachable(self):
         net = self.setUpOneHopNetwork()
         self.assertReachable(net.p1, net.h1)
@@ -166,6 +174,15 @@ class TestNetworkReachability(NetworkTestCase):
     def test_one_hop_proxy_is_reachable_pepsal(self):
         net = self.setUpOneHopNetwork()
         net.start_tcp_pep(logfile=None)
+        self.assertReachable(net.p1, net.h1)
+        self.assertReachable(net.p1, net.h2)
+        self.assertReachable(net.h1, net.p1)
+        self.assertReachable(net.h2, net.p1)
+        net.stop()
+
+    def test_one_hop_proxy_is_reachable_pepsal(self):
+        net = self.setUpOneHopNetwork(bridge_proxy=False)
+        net.start_sidekick(logfile=None, executable='../proxy/target/debug/bridge')
         self.assertReachable(net.p1, net.h1)
         self.assertReachable(net.p1, net.h2)
         self.assertReachable(net.h1, net.p1)
