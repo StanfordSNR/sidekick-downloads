@@ -23,13 +23,14 @@ def benchmark_tcp(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
     )
-    bm.run(
+    result = bm.run(
         args.label,
         args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
 
 
 def benchmark_google_quic(net, args):
@@ -40,13 +41,15 @@ def benchmark_google_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
     )
-    bm.run(
+    result = bm.run(
         args.label,
         args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
+
 
 def benchmark_cloudflare_quic(net, args):
     bm = CloudflareQUICBenchmark(
@@ -56,13 +59,15 @@ def benchmark_cloudflare_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
     )
-    bm.run(
+    result = bm.run(
         args.label,
         args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
+
 
 def benchmark_picoquic(net, args):
     bm = PicoQUICBenchmark(
@@ -72,13 +77,14 @@ def benchmark_picoquic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
     )
-    bm.run(
+    result = bm.run(
         args.label,
         args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
 
 
 def benchmark_iperf3(net, args):

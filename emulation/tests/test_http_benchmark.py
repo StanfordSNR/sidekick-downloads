@@ -22,6 +22,7 @@ class HTTPDownloadTestCase(unittest.TestCase):
         self.net = self.setUpOneHopNetwork()
 
         # Set default parameters
+        self.label = 'my_benchmark'
         self.data_size = 1000
         self.cca = 'cubic'
         self.certfile = 'deps/certs/out/leaf_cert.pem'
@@ -155,3 +156,75 @@ class TestRunClient(HTTPDownloadTestCase):
     def test_picoquic_client_returns_result(self):
         bm = self.setUpPicoQUICBenchmark()
         self._test_client_returns_result(bm)
+
+
+class TestRunBenchmark(HTTPDownloadTestCase):
+    def _test_run_benchmark(self, bm, num_trials, protocol):
+        """The benchmark runs and returns successful results for the given
+        number of trials.
+        """
+        result = bm.run(self.label, self.logdir, num_trials, timeout=None,
+            network_statistics=False)
+        result = json.loads(result.json())
+
+        # Validate inputs
+        inputs = result['inputs']
+        self.assertEqual(inputs.get('label'), self.label)
+        self.assertEqual(inputs.get('protocol'), protocol)
+        self.assertEqual(inputs.get('num_trials'), num_trials)
+        self.assertEqual(inputs.get('data_size'), self.data_size)
+        self.assertEqual(inputs.get('cca'), self.cca)
+
+        # Validate outputs
+        outputs = result['outputs']
+        self.assertEqual(len(outputs), num_trials)
+        for output in outputs:
+            self.assertTrue(output.get('success'))
+            self.assertFalse(output.get('timeout'))
+            self.assertGreater(output.get('time_s'), 0)
+            self.assertLess(output.get('time_s'), 10, 'sanity check runtime')
+            self.assertGreater(output.get('throughput_mbps'), 0)
+            self.assertIsNone(output.get('statistics'))
+            self.assertIsNone(output.get('additional_data'))
+
+    def test_tcp_run_benchmark_one_trial(self):
+        bm = self.setUpTCPBenchmark()
+        self._test_run_benchmark(bm, 1, Protocol.TCP.name)
+
+    def test_tcp_pep_run_benchmark_one_trial(self):
+        bm = self.setUpTCPBenchmark(pep=True)
+        self._test_run_benchmark(bm, 1, Protocol.TCP.name)
+
+    def test_tcp_run_benchmark_multiple_trials(self):
+        bm = self.setUpTCPBenchmark()
+        self._test_run_benchmark(bm, 5, Protocol.TCP.name)
+
+    def test_tcp_pep_run_benchmark_multiple_trial(self):
+        bm = self.setUpTCPBenchmark(pep=True)
+        self._test_run_benchmark(bm, 5, Protocol.TCP.name)
+
+    def test_google_quic_run_benchmark_one_trial(self):
+        bm = self.setUpGoogleQUICBenchmark()
+        self._test_run_benchmark(bm, 1, Protocol.GOOGLE_QUIC.name)
+
+    def test_google_quic_run_benchmark_multiple_trials(self):
+        bm = self.setUpGoogleQUICBenchmark()
+        self._test_run_benchmark(bm, 5, Protocol.GOOGLE_QUIC.name)
+
+    @unittest.expectedFailure
+    def test_cloudflare_quic_run_benchmark_one_trial(self):
+        bm = self.setUpCloudflareQUICBenchmark()
+        self._test_run_benchmark(bm, 1, Protocol.CLOUDFLARE_QUIC.name)
+
+    @unittest.expectedFailure
+    def test_cloudflare_quic_run_benchmark_multiple_trials(self):
+        bm = self.setUpCloudflareQUICBenchmark()
+        self._test_run_benchmark(bm, 5, Protocol.CLOUDFLARE_QUIC.name)
+
+    def test_picoquic_run_benchmark_one_trial(self):
+        bm = self.setUpPicoQUICBenchmark()
+        self._test_run_benchmark(bm, 1, Protocol.PICOQUIC.name)
+
+    def test_picoquic_run_benchmark_multiple_trials(self):
+        bm = self.setUpPicoQUICBenchmark()
+        self._test_run_benchmark(bm, 5, Protocol.PICOQUIC.name)

@@ -149,7 +149,9 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         else:
             return (HTTP_OK_STATUSCODE, result[0])
 
-    def run(self, label, logdir, num_trials, timeout, network_statistics):
+    def run(
+        self, label, logdir, num_trials, timeout, network_statistics,
+    ) -> HTTPBenchmarkResult:
 
         # Start the server
         self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
@@ -199,7 +201,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
 
                 total_time_s += time_s
                 num_trials_left -= 1
-            print(result.json())
+        return result
 
 
 class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
@@ -293,59 +295,47 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         else:
             return (HTTP_OK_STATUSCODE, result[0])
 
-    def run(self, label, logdir, num_trials, timeout, network_statistics):
+    def run(
+        self, label, logdir, num_trials, timeout, network_statistics,
+    ) -> HTTPBenchmarkResult:
         # Required outputs are in INFO logs
         os.environ['RUST_LOG'] = 'info'
 
         # Start the server
         self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
 
-        # Initialize remaining trials
-        num_trials_left = num_trials
-        # allow N "no output" errors without decrementing trials
-        num_errors_left = num_trials
-
         # Run the client
-        while num_trials_left > 0:
-            result = HTTPBenchmarkResult(
-                label=label,
-                protocol=Protocol.CLOUDFLARE_QUIC.name,
-                data_size=self.n,
-                cca=self.cca,
-                pep=False,
+        result = HTTPBenchmarkResult(
+            label=label,
+            protocol=Protocol.CLOUDFLARE_QUIC.name,
+            data_size=self.n,
+            cca=self.cca,
+            pep=False,
+        )
+
+        for _ in range(num_trials):
+            result.append_new_output()
+            self.net.reset_statistics()
+            output = self.run_client(
+                logfile=f'{logdir}/{CLIENT_LOGFILE}',
+                timeout=timeout,
             )
 
-            # Log output every LOG_CHUNK_TIME while continuing to run trials
-            total_time_s = 0
-            while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
-                result.append_new_output()
-                self.net.reset_statistics()
-                output = self.run_client(
-                    logfile=f'{logdir}/{CLIENT_LOGFILE}',
-                    timeout=timeout,
-                )
+            # Error
+            if output is None:
+                ERROR('no output')
+                self.restart_server(f'{logdir}/{SERVER_LOGFILE}')
+                continue
 
-                # Error
-                if output is None:
-                    ERROR('no output')
-                    self.restart_server(f'{logdir}/{SERVER_LOGFILE}')
-                    num_errors_left -= 1
-                    if num_errors_left == 0:
-                        num_trials_left = 0
-                    continue
-
-                # Success
-                if network_statistics:
-                    statistics = self.net.snapshot_statistics()
-                    result.set_network_statistics(statistics)
-                status_code, time_s = output
-                result.set_success(status_code == HTTP_OK_STATUSCODE)
-                result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
-                result.set_time_s(time_s)
-
-                total_time_s += time_s
-                num_trials_left -= 1
-            print(result.json())
+            # Success
+            if network_statistics:
+                statistics = self.net.snapshot_statistics()
+                result.set_network_statistics(statistics)
+            status_code, time_s = output
+            result.set_success(status_code == HTTP_OK_STATUSCODE)
+            result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
+            result.set_time_s(time_s)
+        return result
 
 
 class GoogleQUICBenchmark(HTTPDownloadBenchmark):
@@ -435,7 +425,9 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         else:
             return result[0]
 
-    def run(self, label, logdir, num_trials, timeout, network_statistics):
+    def run(
+        self, label, logdir, num_trials, timeout, network_statistics,
+    ) -> HTTPBenchmarkResult:
         # Start the server
         self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
 
@@ -479,7 +471,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
 
                 total_time_s += time_s
                 num_trials_left -= 1
-            print(result.json())
+        return result
 
 
 class TCPBenchmark(HTTPDownloadBenchmark):
@@ -556,7 +548,9 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         else:
             return result[0]
 
-    def run(self, label, logdir, num_trials, timeout, network_statistics):
+    def run(
+        self, label, logdir, num_trials, timeout, network_statistics,
+    ) -> HTTPBenchmarkResult:
         # Start the server
         self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
 
@@ -604,4 +598,4 @@ class TCPBenchmark(HTTPDownloadBenchmark):
 
                 total_time_s += time_s
                 num_trials_left -= 1
-            print(result.json())
+        return result
