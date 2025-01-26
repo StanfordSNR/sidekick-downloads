@@ -128,7 +128,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             except:
                 pass
 
-        print(output)
+        print(output, file=sys.stderr)
         for line in output.split('\n'):
             parse_result(line)
 

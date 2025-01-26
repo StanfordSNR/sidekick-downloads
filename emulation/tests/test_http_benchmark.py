@@ -124,3 +124,34 @@ class TestStartServer(HTTPDownloadTestCase):
     def test_picoquic_server_is_listening(self):
         bm = self.setUpPicoQUICBenchmark()
         self._test_server_is_listening_on(bm, 4433)
+
+
+class TestRunClient(HTTPDownloadTestCase):
+    def _test_client_returns_result(self, bm):
+        """The client makes a request to the server and returns a result with
+        a successful HTTP status code and positive runtime.
+        """
+        server_logfile = f'{self.logdir}/{SERVER_LOGFILE}'
+        client_logfile = f'{self.logdir}/{CLIENT_LOGFILE}'
+        bm.start_server(server_logfile)
+        result = bm.run_client(client_logfile, timeout=None)
+        self.assertIsNotNone(result)
+        http_status_code, total_time = result
+        self.assertEqual(http_status_code, HTTP_OK_STATUSCODE)
+        self.assertGreater(total_time, 0)
+
+    def test_tcp_client_returns_result(self):
+        bm = self.setUpTCPBenchmark()
+        self._test_client_returns_result(bm)
+
+    def test_google_quic_client_returns_result(self):
+        bm = self.setUpGoogleQUICBenchmark()
+        self._test_client_returns_result(bm)
+
+    def test_cloudflare_quic_client_returns_result(self):
+        bm = self.setUpCloudflareQUICBenchmark()
+        self._test_client_returns_result(bm)
+
+    def test_picoquic_client_returns_result(self):
+        bm = self.setUpPicoQUICBenchmark()
+        self._test_client_returns_result(bm)
