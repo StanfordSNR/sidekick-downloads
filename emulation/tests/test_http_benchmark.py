@@ -3,6 +3,7 @@ import os
 import tempfile
 
 import unittest
+from unittest.mock import patch
 
 from network import OneHopNetwork
 from benchmark import *
@@ -53,8 +54,8 @@ class HTTPDownloadTestCase(unittest.TestCase):
 
     def setUpTCPBenchmark(self, pep=False) -> TCPBenchmark:
         bm = TCPBenchmark(
-            self.net, self.label, self.data_size, self.cca, pep, self.certfile,
-            self.keyfile, self.logdir,
+            self.net, self.label, self.data_size, self.cca, self.certfile,
+            self.keyfile, self.logdir, pep=pep,
         )
         return bm
 
@@ -105,21 +106,31 @@ class TestConstructors(HTTPDownloadTestCase):
         bm = self.setUpTCPBenchmark()
         self._test_common_properties(bm)
         self.assertEqual(bm.protocol, Protocol.TCP)
+        self.assertIsNone(bm.proxy_type)
 
     def test_google_quic_constructor(self):
         bm = self.setUpGoogleQUICBenchmark()
         self._test_common_properties(bm)
         self.assertEqual(bm.protocol, Protocol.GOOGLE_QUIC)
+        self.assertIsNone(bm.proxy_type)
 
     def test_cloudflare_quic_constructor(self):
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_common_properties(bm)
         self.assertEqual(bm.protocol, Protocol.CLOUDFLARE_QUIC)
+        self.assertIsNone(bm.proxy_type)
 
     def test_picoquic_constructor(self):
         bm = self.setUpPicoQUICBenchmark()
         self._test_common_properties(bm)
         self.assertEqual(bm.protocol, Protocol.PICOQUIC)
+        self.assertIsNone(bm.proxy_type)
+
+    def test_constructors_with_proxies(self):
+        bm = self.setUpTCPBenchmark(pep=True)
+        self._test_common_properties(bm)
+        self.assertEqual(bm.protocol, Protocol.TCP)
+        self.assertEqual(bm.proxy_type, ProxyType.PEPSAL)
 
 
 class TestStartServer(HTTPDownloadTestCase):
@@ -288,3 +299,24 @@ class TestRunBenchmark(HTTPDownloadTestCase):
     def test_picoquic_hosts_write_to_logs(self):
         bm = self.setUpPicoQUICBenchmark()
         self._test_hosts_write_to_logs(bm, False)
+
+
+class TestStartProxy(HTTPDownloadTestCase):
+    @patch.object(EmulatedNetwork, 'start_tcp_pep')
+    def test_tcp_start_proxy(self, mock_start_tcp_pep):
+        # NOTE(gina): Tried to not mock the function at first and use ps
+        # to ascertain whether a pepsal process was started. However, I
+        # couldn't identify such a process even though the pepsal background
+        # process in start_tcp_pep started successfully without a timeout.
+
+        # The start_proxy function is a no-op without a proxy type
+        bm = self.setUpTCPBenchmark(pep=False)
+        mock_start_tcp_pep.assert_not_called()
+        bm.start_proxy()
+        mock_start_tcp_pep.assert_not_called()
+
+        # The start_proxy function calls start_tcp_pep with a pepsal proxy
+        bm = self.setUpTCPBenchmark(pep=True)
+        mock_start_tcp_pep.assert_not_called()
+        bm.start_proxy()
+        mock_start_tcp_pep.assert_called_once()

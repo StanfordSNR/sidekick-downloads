@@ -19,6 +19,11 @@ class Protocol(Enum):
     PICOQUIC = 3
 
 
+class ProxyType(Enum):
+    PEPSAL = 0
+    SIDEKICK = 1
+
+
 class HTTPDownloadBenchmark(ABC):
     def __init__(
         self,
@@ -30,6 +35,7 @@ class HTTPDownloadBenchmark(ABC):
         certfile: str,
         keyfile: str,
         logdir: str,
+        proxy_type: Optional[ProxyType]=None,
     ):
         """
         File download benchmark where the HTTPS client on the h1 host requests
@@ -51,6 +57,7 @@ class HTTPDownloadBenchmark(ABC):
         - logdir: Path to a log directory (that already exists). The logs are
           written to the SERVER_LOGFILE, CLIENT_LOGFILE, and ROUTER_LOGFILE
           files in this directory, as defined in common.py.
+        - proxy_type: The type of proxy to start on the p1 host, if any.
         """
         self.net = net
         self._label = label
@@ -60,6 +67,7 @@ class HTTPDownloadBenchmark(ABC):
         self._certfile = certfile
         self._keyfile = keyfile
         self._logdir = logdir
+        self._proxy_type = proxy_type
 
     @property
     def client(self) -> mininet.node.Host:
@@ -131,6 +139,12 @@ class HTTPDownloadBenchmark(ABC):
         elif host == self.proxy and self.proxy is not None:
             return f'{self._logdir}/{ROUTER_LOGFILE}'
 
+    @property
+    def proxy_type(self) -> Optional[ProxyType]:
+        """The type of proxy to start on the p1 host, if any.
+        """
+        return self._proxy_type
+
     @abstractmethod
     def start_server(self, timeout: int=SETUP_TIMEOUT):
         """Start the HTTPS server on the h2 host.
@@ -142,6 +156,17 @@ class HTTPDownloadBenchmark(ABC):
         - timeout: The number of seconds to block during setup before an error.
         """
         pass
+
+    def start_proxy(self, timeout: int=SETUP_TIMEOUT):
+        """Starts the proxy on the p1 host, if configured.
+
+        This function runs the proxy in the background but blocks until the
+        proxy is ready to serve connections. Raises an error if unsuccessful.
+
+        Parameters:
+        - timeout: The number of seconds to block during setup before an error.
+        """
+        assert self.proxy_type is None
 
     @abstractmethod
     def run_client(
@@ -649,10 +674,10 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         label: str,
         data_size: int,
         cca: str,
-        pep: bool,
         certfile: str,
         keyfile: str,
         logdir: str,
+        pep: bool=False,
     ):
         """
         TCP file download benchmark using a simple Python server and client.
@@ -667,11 +692,13 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
+        - pep: Whether to start a TCP PEP on the p1 host.
         """
+        proxy_type = ProxyType.PEPSAL if pep else None
         super().__init__(
             protocol=Protocol.TCP,
-            net=net, label=label, data_size=data_size, cca=cca,
-            certfile=certfile, keyfile=keyfile, logdir=logdir,
+            net=net, label=label, data_size=data_size, cca=cca, logdir=logdir,
+            certfile=certfile, keyfile=keyfile, proxy_type=proxy_type,
         )
         net.set_tcp_congestion_control(cca)
 
@@ -699,6 +726,11 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             notified = condition.wait(timeout=timeout)
             if not notified:
                 raise TimeoutError(f'start_server timeout {timeout}s')
+
+    def start_proxy(self, timeout=SETUP_TIMEOUT):
+        if self.proxy_type == ProxyType.PEPSAL:
+            logfile = self.logfile(self.proxy)
+            self.net.start_tcp_pep(logfile=logfile, timeout=timeout)
 
     def run_client(
         self, timeout: Optional[int]=None,
@@ -737,13 +769,8 @@ class TCPBenchmark(HTTPDownloadBenchmark):
     def run(
         self, num_trials, timeout, network_statistics,
     ) -> HTTPBenchmarkResult:
-        # Start the server
         self.start_server()
-
-        # Start the TCP PEP
-        if self.pep:
-            logfile = self.logfile(self.proxy)
-            self.net.start_tcp_pep(logfile=logfile)
+        self.start_proxy()
 
         # Initialize remaining trials
         num_trials_left = num_trials

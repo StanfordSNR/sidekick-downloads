@@ -20,10 +20,10 @@ def benchmark_tcp(net, args):
         label=args.label,
         data_size=args.n,
         cca=args.congestion_control,
-        pep=args.pep,
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
+        pep=args.pep,
     )
     result = bm.run(
         args.trials,
