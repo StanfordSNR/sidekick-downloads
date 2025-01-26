@@ -1,10 +1,12 @@
 import time
 import threading
+from abc import ABC
 from enum import Enum
 from typing import Optional, Tuple
 import re
 
 from common import *
+from network import EmulatedNetwork
 from .result import HTTPBenchmarkResult
 
 
@@ -15,12 +17,23 @@ class Protocol(Enum):
     PICOQUIC = 3
 
 
-class HTTPDownloadBenchmark:
-    def __init__(self, net):
-        self.net = net
+class HTTPDownloadBenchmark(ABC):
+    def __init__(
+        self,
+        net: EmulatedNetwork,
+    ):
+        """
+        File download benchmark where the HTTPS client on the h1 host requests
+        a certain number of application-layer bytes from the HTTPS server on
+        the h2 host. Reports metrics such as the request latency and throughput.
 
-    def start_sidekick(self):
-        pass
+        Subclasses of HTTPDownloadBenchmark must call this constructor.
+
+        Parameters:
+        - net: The mininet network to run the benchmark on. Requires an h1 and
+          h2 host, and a p1 host if a proxy is configured.
+        """
+        self.net = net
 
 
 class PicoQUICBenchmark(HTTPDownloadBenchmark):
