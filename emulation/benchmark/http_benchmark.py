@@ -15,14 +15,15 @@ class Protocol(Enum):
     PICOQUIC = 3
 
 
-class BaseBenchmark:
+class HTTPDownloadBenchmark:
     def __init__(self, net):
         self.net = net
 
     def start_sidekick(self):
         pass
 
-class PicoQUICBenchmark(BaseBenchmark):
+
+class PicoQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(self, net, n: str, cca: str, certfile=None, keyfile=None):
         super().__init__(net)
         self.n = n
@@ -173,7 +174,8 @@ class PicoQUICBenchmark(BaseBenchmark):
                 num_trials_left -= 1
             result.print()
 
-class CloudflareQUICBenchmark(BaseBenchmark):
+
+class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(self, net, n: str, cca: str, certfile=None, keyfile=None):
         super().__init__(net)
         self.n = n
@@ -312,7 +314,8 @@ class CloudflareQUICBenchmark(BaseBenchmark):
                 num_trials_left -= 1
             result.print()
 
-class GoogleQUICBenchmark(BaseBenchmark):
+
+class GoogleQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(self, net, n: str, cca: str, certfile=None, keyfile=None):
         super().__init__(net)
         self.n = n
@@ -446,7 +449,7 @@ class GoogleQUICBenchmark(BaseBenchmark):
             result.print()
 
 
-class TCPBenchmark(BaseBenchmark):
+class TCPBenchmark(HTTPDownloadBenchmark):
     def __init__(
         self,
         net,
