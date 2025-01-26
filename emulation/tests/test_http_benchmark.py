@@ -83,6 +83,12 @@ class TestConstructors(HTTPDownloadTestCase):
     def _test_common_properties(self, bm):
         self.assertEqual(bm.net, self.net)
 
+        # Test basic property methods
+        self.assertEqual(bm.data_size, self.data_size)
+        self.assertEqual(bm.cca, self.cca)
+        self.assertEqual(bm.certfile, self.certfile)
+        self.assertEqual(bm.keyfile, self.keyfile)
+
         # Test mininet host property methods
         self.assertEqual(bm.client, self.net.h1)
         self.assertEqual(bm.server, self.net.h2)

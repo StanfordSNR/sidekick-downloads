@@ -23,6 +23,10 @@ class HTTPDownloadBenchmark(ABC):
     def __init__(
         self,
         net: EmulatedNetwork,
+        data_size: int,
+        cca: str,
+        certfile: str,
+        keyfile: str,
     ):
         """
         File download benchmark where the HTTPS client on the h1 host requests
@@ -34,8 +38,17 @@ class HTTPDownloadBenchmark(ABC):
         Parameters:
         - net: The mininet network to run the benchmark on. Requires an h1 and
           h2 host, and a p1 host if a proxy is configured.
+        - data_size: The number of application-layer bytes transferred in the
+          GET request.
+        - cca: The congestion control algorithm used in the transport protocol.
+        - certfile: Path to the TLS/SSL certificate file.
+        - keyfile: Path to the TLS/SSL key file.
         """
         self.net = net
+        self._data_size = data_size
+        self._cca = cca
+        self._certfile = certfile
+        self._keyfile = keyfile
 
     @property
     def client(self) -> mininet.node.Host:
@@ -49,15 +62,56 @@ class HTTPDownloadBenchmark(ABC):
         """
         return self.net.h2
 
+    @property
+    def data_size(self) -> int:
+        """The data size, in bytes, transferred in the application-layer data
+        of the GET request. Excludes HTTP headers.
+        """
+        return self._data_size
+
+    @property
+    def cca(self) -> str:
+        """The congestion control algorithm used in the transport protocol.
+        """
+        return self._cca
+
+    @property
+    def certfile(self) -> int:
+        """Path to the TLS/SSL certificate file
+        """
+        return self._certfile
+
+    @property
+    def keyfile(self) -> int:
+        """Path to the TLS/SSL key file
+        """
+        return self._keyfile
+
 
 class PicoQUICBenchmark(HTTPDownloadBenchmark):
-    def __init__(self, net, n: str, cca: str, certfile=None, keyfile=None):
-        super().__init__(net)
-        self.n = n
-        self.cca = cca
+    def __init__(
+        self,
+        net: EmulatedNetwork,
+        data_size: int,
+        cca: str,
+        certfile: str,
+        keyfile: str,
+    ):
+        """
+        Picoquic file download benchmark.
+
+        Parameters:
+        - net: The mininet network.
+        - data_size: Number of bytes to GET.
+        - cca: The congestion control algorithm.
+        - certfile: Path to the TLS/SSL certificate file.
+        - keyfile: Path to the TLS/SSL key file.
+        """
+        super().__init__(
+            net=net, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile,
+        )
         self.server_ip = self.net.h2.IP()
-        self.certfile = certfile
-        self.keyfile = keyfile
 
     def restart_server(self, logfile):
         WARN('Restarting picoquic-server')
@@ -72,7 +126,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{self.certfile} '\
               f'{self.keyfile} '\
               f'. '\
-              f'{self.n} '\
+              f'{self.data_size} '\
               f'{self.cca}'
 
         DEBUG(f'{self.net.h2.name} {cmd}')
@@ -109,7 +163,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'4433 '\
               f'/tmp '\
               f'{self.cca} '\
-              f'{self.n}.html '
+              f'{self.data_size}.html '
         if timeout is None:
             DEBUG(f'{self.net.h1.name} {cmd}')
             output = self.net.h1.cmd(cmd)
@@ -166,7 +220,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             result = HTTPBenchmarkResult(
                 label=label,
                 protocol=Protocol.PICOQUIC.name,
-                data_size=self.n,
+                data_size=self.data_size,
                 cca=self.cca,
                 pep=False,
             )
@@ -205,13 +259,29 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
 
 
 class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
-    def __init__(self, net, n: str, cca: str, certfile=None, keyfile=None):
-        super().__init__(net)
-        self.n = n
-        self.cca = cca
+    def __init__(
+        self,
+        net: EmulatedNetwork,
+        data_size: int,
+        cca: str,
+        certfile: str,
+        keyfile: str,
+    ):
+        """
+        Cloudflare QUIC file download benchmark.
+
+        Parameters:
+        - net: The mininet network.
+        - data_size: Number of bytes to GET.
+        - cca: The congestion control algorithm.
+        - certfile: Path to the TLS/SSL certificate file.
+        - keyfile: Path to the TLS/SSL key file.
+        """
+        super().__init__(
+            net=net, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile,
+        )
         self.server_ip = self.net.h2.IP()
-        self.certfile = certfile
-        self.keyfile = keyfile
 
     def restart_server(self, logfile):
         WARN('Restarting quiche-server')
@@ -256,7 +326,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
               f'--no-verify '\
               f'--method GET '\
               f'--cc-algorithm {self.cca} ' \
-              f'-- https://{self.server_ip}:4433/{self.n}'
+              f'-- https://{self.server_ip}:4433/{self.data_size}'
 
         result = []
         timed_out = False
@@ -308,7 +378,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         result = HTTPBenchmarkResult(
             label=label,
             protocol=Protocol.CLOUDFLARE_QUIC.name,
-            data_size=self.n,
+            data_size=self.data_size,
             cca=self.cca,
             pep=False,
         )
@@ -339,26 +409,36 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
 
 
 class GoogleQUICBenchmark(HTTPDownloadBenchmark):
-    def __init__(self, net, n: str, cca: str, certfile=None, keyfile=None):
-        super().__init__(net)
-        self.n = n
-        self.cca = cca
-        self.certfile = certfile
-        self.keyfile = keyfile
-        self.server_ip = self.net.h2.IP()
+    def __init__(
+        self,
+        net: EmulatedNetwork,
+        data_size: int,
+        cca: str,
+        certfile: str,
+        keyfile: str,
+    ):
+        """
+        Google QUIC file download benchmark.
 
-        # Create cache dir
-        # self.cache_dir = '/tmp/quic-data/www.example.org'
-        # filename = f'{self.cache_dir}/index.html'
-        # net.popen(None, f'mkdir -p {self.cache_dir}', console_logger=DEBUG)
-        # net.popen(None, f'head -c {n} /dev/urandom > {filename}', console_logger=DEBUG)
+        Parameters:
+        - net: The mininet network.
+        - data_size: Number of bytes to GET.
+        - cca: The congestion control algorithm.
+        - certfile: Path to the TLS/SSL certificate file.
+        - keyfile: Path to the TLS/SSL key file.
+        """
+        super().__init__(
+            net=net, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile,
+        )
+        self.server_ip = self.net.h2.IP()
 
     def start_server(self, logfile):
         base = 'deps/chromium/src'
         cmd = f'./{base}/out/Default/quic_server '\
               f'--certificate_file={self.certfile} '\
               f'--key_file={self.keyfile} '\
-              f'--num_cached_bytes={self.n}'
+              f'--num_cached_bytes={self.data_size}'
 
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -383,7 +463,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         cmd = f'./{base}/out/Default/quic_client '\
               f'--allow_unknown_root_cert '\
               f'--host={self.net.h2.IP()} --port=6121 '\
-              f'https://www.example.org/{self.n} '
+              f'https://www.example.org/{self.data_size} '
 
         # Add the congestion control algorithm options
         cca_to_option = {
@@ -439,7 +519,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             result = HTTPBenchmarkResult(
                 label=label,
                 protocol=Protocol.GOOGLE_QUIC.name,
-                data_size=self.n,
+                data_size=self.data_size,
                 cca=self.cca,
                 pep=False,
             )
@@ -477,27 +557,38 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
 class TCPBenchmark(HTTPDownloadBenchmark):
     def __init__(
         self,
-        net,
-        n: int,
+        net: EmulatedNetwork,
+        data_size: int,
         cca: str,
         pep: bool,
-        certfile=None,
-        keyfile=None,
+        certfile: str,
+        keyfile: str,
     ):
-        super().__init__(net)
+        """
+        TCP file download benchmark using a simple Python server and client.
+
+        Parameters:
+        - net: The mininet network.
+        - data_size: Number of bytes to GET.
+        - cca: The congestion control algorithm. Options include: cubic, reno,
+          bbr1, bbr2, bbr3. (Kernel must be the correct version for bbr2 and
+          bbr3, which we don't currently check.)
+        - certfile: Path to the TLS/SSL certificate file.
+        - keyfile: Path to the TLS/SSL key file.
+        """
+        super().__init__(
+            net=net, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile,
+        )
         net.set_tcp_congestion_control(cca)
 
-        self.n = n
-        self.cca = cca
         self.pep = pep
-        self.certfile = certfile
-        self.keyfile = keyfile
         self.server_ip = self.net.h2.IP()
 
     def start_server(self, logfile):
         cmd = f'python3 webserver/http_server.py --server-ip {self.server_ip} '\
               f'--certfile {self.certfile} --keyfile {self.keyfile} '\
-              f'-n {self.n}'
+              f'-n {self.data_size}'
 
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -519,7 +610,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         """Returns the status code and runtime (seconds) of the GET request.
         """
         cmd = f'python3 webserver/http_client.py --server-ip {self.server_ip} '\
-              f'-n {self.n}'
+              f'-n {self.data_size}'
 
         result = []
         def parse_result(line):
@@ -566,7 +657,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             result = HTTPBenchmarkResult(
                 label=label,
                 protocol=Protocol.TCP.name,
-                data_size=self.n,
+                data_size=self.data_size,
                 cca=self.cca,
                 pep=self.pep,
             )
