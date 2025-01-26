@@ -53,28 +53,31 @@ class HTTPDownloadTestCase(unittest.TestCase):
 
     def setUpTCPBenchmark(self, pep=False) -> TCPBenchmark:
         bm = TCPBenchmark(
-            self.net, self.data_size, self.cca, pep, self.certfile,
-            self.keyfile,
+            self.net, self.label, self.data_size, self.cca, pep, self.certfile,
+            self.keyfile, self.logdir,
         )
         return bm
 
     def setUpGoogleQUICBenchmark(self) -> GoogleQUICBenchmark:
         self.keyfile = 'deps/certs/out/leaf_cert.pkcs8'
         bm = GoogleQUICBenchmark(
-            self.net, self.data_size, self.cca, self.certfile, self.keyfile,
+            self.net, self.label, self.data_size, self.cca, self.certfile,
+            self.keyfile, self.logdir,
         )
         return bm
 
     def setUpCloudflareQUICBenchmark(self) -> CloudflareQUICBenchmark:
         bm = CloudflareQUICBenchmark(
-            self.net, self.data_size, self.cca, self.certfile, self.keyfile,
+            self.net, self.label, self.data_size, self.cca, self.certfile,
+            self.keyfile, self.logdir,
         )
         return bm
 
     # def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
     def setUpPicoQUICBenchmark(self) -> PicoQUICBenchmark:
         bm = PicoQUICBenchmark(
-            self.net, self.data_size, self.cca, self.certfile, self.keyfile,
+            self.net, self.label, self.data_size, self.cca, self.certfile,
+            self.keyfile, self.logdir,
         )
         return bm
 
@@ -84,6 +87,7 @@ class TestConstructors(HTTPDownloadTestCase):
         self.assertEqual(bm.net, self.net)
 
         # Test basic property methods
+        self.assertEqual(bm.label, self.label)
         self.assertEqual(bm.data_size, self.data_size)
         self.assertEqual(bm.cca, self.cca)
         self.assertEqual(bm.certfile, self.certfile)
@@ -92,22 +96,30 @@ class TestConstructors(HTTPDownloadTestCase):
         # Test mininet host property methods
         self.assertEqual(bm.client, self.net.h1)
         self.assertEqual(bm.server, self.net.h2)
+        self.assertEqual(bm.proxy, self.net.p1)
+        self.assertEqual(bm.logfile(bm.client), f'{self.logdir}/{CLIENT_LOGFILE}')
+        self.assertEqual(bm.logfile(bm.server), f'{self.logdir}/{SERVER_LOGFILE}')
+        self.assertEqual(bm.logfile(bm.proxy), f'{self.logdir}/{ROUTER_LOGFILE}')
 
     def test_tcp_constructor(self):
         bm = self.setUpTCPBenchmark()
         self._test_common_properties(bm)
+        self.assertEqual(bm.protocol, Protocol.TCP)
 
     def test_google_quic_constructor(self):
         bm = self.setUpGoogleQUICBenchmark()
         self._test_common_properties(bm)
+        self.assertEqual(bm.protocol, Protocol.GOOGLE_QUIC)
 
     def test_cloudflare_quic_constructor(self):
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_common_properties(bm)
+        self.assertEqual(bm.protocol, Protocol.CLOUDFLARE_QUIC)
 
     def test_picoquic_constructor(self):
         bm = self.setUpPicoQUICBenchmark()
         self._test_common_properties(bm)
+        self.assertEqual(bm.protocol, Protocol.PICOQUIC)
 
 
 class TestStartServer(HTTPDownloadTestCase):
@@ -115,10 +127,9 @@ class TestStartServer(HTTPDownloadTestCase):
         """The server starts successfully without hanging, and can be found to
         be listening on a specific port.
         """
-        logfile = f'{self.logdir}/{SERVER_LOGFILE}'
         output = bm.server.cmd(f'lsof -i :{port}')
         self.assertEqual(output, '', 'server is not running initially')
-        bm.start_server(logfile)
+        bm.start_server()
         output = bm.server.cmd(f'lsof -i :{port}')
         self.assertNotEqual(output, '', 'server should have started')
 
@@ -144,10 +155,8 @@ class TestRunClient(HTTPDownloadTestCase):
         """The client makes a request to the server and returns a result with
         a successful HTTP status code and positive runtime.
         """
-        server_logfile = f'{self.logdir}/{SERVER_LOGFILE}'
-        client_logfile = f'{self.logdir}/{CLIENT_LOGFILE}'
-        bm.start_server(server_logfile)
-        result = bm.run_client(client_logfile, timeout=None)
+        bm.start_server()
+        result = bm.run_client(timeout=None)
         self.assertIsNotNone(result)
         http_status_code, total_time = result
         self.assertEqual(http_status_code, HTTP_OK_STATUSCODE)
@@ -172,12 +181,11 @@ class TestRunClient(HTTPDownloadTestCase):
 
 class TestRunBenchmark(HTTPDownloadTestCase):
     def run_benchmark(self, bm, num_trials) -> dict:
-        result = bm.run(self.label, self.logdir, num_trials, timeout=None,
-            network_statistics=False)
+        result = bm.run(num_trials, timeout=None, network_statistics=False)
         result = json.loads(result.json())
         return result
 
-    def _test_run_benchmark(self, bm, num_trials, protocol):
+    def _test_run_benchmark(self, bm, num_trials):
         """The benchmark runs and returns successful results for the given
         number of trials.
         """
@@ -186,7 +194,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         # Validate inputs
         inputs = result['inputs']
         self.assertEqual(inputs.get('label'), self.label)
-        self.assertEqual(inputs.get('protocol'), protocol)
+        self.assertEqual(inputs.get('protocol'), bm.protocol.name)
         self.assertEqual(inputs.get('num_trials'), num_trials)
         self.assertEqual(inputs.get('data_size'), self.data_size)
         self.assertEqual(inputs.get('cca'), self.cca)
@@ -205,54 +213,54 @@ class TestRunBenchmark(HTTPDownloadTestCase):
 
     def test_tcp_run_benchmark_one_trial(self):
         bm = self.setUpTCPBenchmark()
-        self._test_run_benchmark(bm, 1, Protocol.TCP.name)
+        self._test_run_benchmark(bm, 1)
 
     def test_tcp_pep_run_benchmark_one_trial(self):
         bm = self.setUpTCPBenchmark(pep=True)
-        self._test_run_benchmark(bm, 1, Protocol.TCP.name)
+        self._test_run_benchmark(bm, 1)
 
     def test_tcp_run_benchmark_multiple_trials(self):
         bm = self.setUpTCPBenchmark()
-        self._test_run_benchmark(bm, 5, Protocol.TCP.name)
+        self._test_run_benchmark(bm, 5)
 
     def test_tcp_pep_run_benchmark_multiple_trial(self):
         bm = self.setUpTCPBenchmark(pep=True)
-        self._test_run_benchmark(bm, 5, Protocol.TCP.name)
+        self._test_run_benchmark(bm, 5)
 
     def test_google_quic_run_benchmark_one_trial(self):
         bm = self.setUpGoogleQUICBenchmark()
-        self._test_run_benchmark(bm, 1, Protocol.GOOGLE_QUIC.name)
+        self._test_run_benchmark(bm, 1)
 
     def test_google_quic_run_benchmark_multiple_trials(self):
         bm = self.setUpGoogleQUICBenchmark()
-        self._test_run_benchmark(bm, 5, Protocol.GOOGLE_QUIC.name)
+        self._test_run_benchmark(bm, 5)
 
     @unittest.expectedFailure
     def test_cloudflare_quic_run_benchmark_one_trial(self):
         bm = self.setUpCloudflareQUICBenchmark()
-        self._test_run_benchmark(bm, 1, Protocol.CLOUDFLARE_QUIC.name)
+        self._test_run_benchmark(bm, 1)
 
     @unittest.expectedFailure
     def test_cloudflare_quic_run_benchmark_multiple_trials(self):
         bm = self.setUpCloudflareQUICBenchmark()
-        self._test_run_benchmark(bm, 5, Protocol.CLOUDFLARE_QUIC.name)
+        self._test_run_benchmark(bm, 5)
 
     def test_picoquic_run_benchmark_one_trial(self):
         bm = self.setUpPicoQUICBenchmark()
-        self._test_run_benchmark(bm, 1, Protocol.PICOQUIC.name)
+        self._test_run_benchmark(bm, 1)
 
     def test_picoquic_run_benchmark_multiple_trials(self):
         bm = self.setUpPicoQUICBenchmark()
-        self._test_run_benchmark(bm, 5, Protocol.PICOQUIC.name)
+        self._test_run_benchmark(bm, 5)
 
     def _test_hosts_write_to_logs(self, bm, proxy: bool):
         self.run_benchmark(bm, 1)
         self.stopNetwork()  # Give background processes a chance to flush
-        with open(f'{self.logdir}/{CLIENT_LOGFILE}', 'r') as f:
+        with open(bm.logfile(bm.client), 'r') as f:
             self.assertNotEqual(f.read(), '', 'client writes to logfile')
-        with open(f'{self.logdir}/{SERVER_LOGFILE}', 'r') as f:
+        with open(bm.logfile(bm.server), 'r') as f:
             self.assertNotEqual(f.read(), '', 'server writes to logfile')
-        router_logfile = f'{self.logdir}/{ROUTER_LOGFILE}'
+        router_logfile = bm.logfile(bm.proxy)
         if proxy:
             self.assertTrue(os.path.exists(router_logfile))
             with open(router_logfile, 'r') as f:

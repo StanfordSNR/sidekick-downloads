@@ -23,10 +23,13 @@ class HTTPDownloadBenchmark(ABC):
     def __init__(
         self,
         net: EmulatedNetwork,
+        label: str,
+        protocol: Protocol,
         data_size: int,
         cca: str,
         certfile: str,
         keyfile: str,
+        logdir: str,
     ):
         """
         File download benchmark where the HTTPS client on the h1 host requests
@@ -38,17 +41,25 @@ class HTTPDownloadBenchmark(ABC):
         Parameters:
         - net: The mininet network to run the benchmark on. Requires an h1 and
           h2 host, and a p1 host if a proxy is configured.
+        - label: The unique label to associate with this configuration.
+        - protocol: The transport protocol implementation.
         - data_size: The number of application-layer bytes transferred in the
           GET request.
         - cca: The congestion control algorithm used in the transport protocol.
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
+        - logdir: Path to a log directory (that already exists). The logs are
+          written to the SERVER_LOGFILE, CLIENT_LOGFILE, and ROUTER_LOGFILE
+          files in this directory, as defined in common.py.
         """
         self.net = net
+        self._label = label
+        self._protocol = protocol
         self._data_size = data_size
         self._cca = cca
         self._certfile = certfile
         self._keyfile = keyfile
+        self._logdir = logdir
 
     @property
     def client(self) -> mininet.node.Host:
@@ -61,6 +72,27 @@ class HTTPDownloadBenchmark(ABC):
         """The mininet host of the HTTPS server.
         """
         return self.net.h2
+
+    @property
+    def proxy(self) -> Optional[mininet.node.Host]:
+        """The mininet host of the proxy, if any.
+        """
+        if not hasattr(self.net, 'p1'):
+            return None
+        else:
+            return self.net.p1
+
+    @property
+    def label(self) -> str:
+        """The unique label associated with this benchmark configuration.
+        """
+        return self._label
+
+    @property
+    def protocol(self) -> Protocol:
+        """The transport protocol implementation used in this benchmark.
+        """
+        return self._protocol
 
     @property
     def data_size(self) -> int:
@@ -87,38 +119,55 @@ class HTTPDownloadBenchmark(ABC):
         """
         return self._keyfile
 
+    def logfile(self, host: mininet.node.Host) -> Optional[str]:
+        """Path to the logfile for this host. The logs are written to the
+        SERVER_LOGFILE, CLIENT_LOGFILE, and ROUTER_LOGFILE files, as defined in
+        common.py, in the provided log directory.
+        """
+        if host == self.server:
+            return f'{self._logdir}/{SERVER_LOGFILE}'
+        elif host == self.client:
+            return f'{self._logdir}/{CLIENT_LOGFILE}'
+        elif host == self.proxy and self.proxy is not None:
+            return f'{self._logdir}/{ROUTER_LOGFILE}'
+
 
 class PicoQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(
         self,
         net: EmulatedNetwork,
+        label: str,
         data_size: int,
         cca: str,
         certfile: str,
         keyfile: str,
+        logdir: str,
     ):
         """
         Picoquic file download benchmark.
 
         Parameters:
         - net: The mininet network.
+        - label: A label for the benchmark.
         - data_size: Number of bytes to GET.
         - cca: The congestion control algorithm.
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
+        - logdir: Path to a log directory (that already exists).
         """
         super().__init__(
-            net=net, data_size=data_size, cca=cca,
-            certfile=certfile, keyfile=keyfile,
+            protocol=Protocol.PICOQUIC,
+            net=net, label=label, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile, logdir=logdir,
         )
         self.server_ip = self.net.h2.IP()
 
-    def restart_server(self, logfile):
+    def restart_server(self):
         WARN('Restarting picoquic-server')
         self.net.h2.cmd('killall picoquic_sample')
-        self.start_server(logfile=logfile)
+        self.start_server()
 
-    def start_server(self, logfile):
+    def start_server(self):
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'server '\
@@ -153,7 +202,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
                 # raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
         '''
 
-    def run_client(self, logfile, timeout) -> Optional[Tuple[int, float]]:
+    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
         """Returns the status code and runtime (seconds) of the GET request.
         """
         base = 'deps/picoquic'
@@ -204,11 +253,11 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             return (HTTP_OK_STATUSCODE, result[0])
 
     def run(
-        self, label, logdir, num_trials, timeout, network_statistics,
+        self, num_trials, timeout, network_statistics,
     ) -> HTTPBenchmarkResult:
 
         # Start the server
-        self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
+        self.start_server()
 
         # Initialize remaining trials
         num_trials_left = num_trials
@@ -218,8 +267,8 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         # Run the client
         while num_trials_left > 0:
             result = HTTPBenchmarkResult(
-                label=label,
-                protocol=Protocol.PICOQUIC.name,
+                label=self.label,
+                protocol=self.protocol.name,
                 data_size=self.data_size,
                 cca=self.cca,
                 pep=False,
@@ -230,15 +279,12 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
                 result.append_new_output()
                 self.net.reset_statistics()
-                output = self.run_client(
-                    logfile=f'{logdir}/{CLIENT_LOGFILE}',
-                    timeout=timeout,
-                )
+                output = self.run_client(timeout=timeout)
 
                 # Error
                 if output is None:
                     ERROR('no output')
-                    self.restart_server(f'{logdir}/{SERVER_LOGFILE}')
+                    self.restart_server()
                     num_errors_left -= 1
                     if num_errors_left == 0:
                         num_trials_left = 0
@@ -262,33 +308,38 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(
         self,
         net: EmulatedNetwork,
+        label: str,
         data_size: int,
         cca: str,
         certfile: str,
         keyfile: str,
+        logdir: str,
     ):
         """
         Cloudflare QUIC file download benchmark.
 
         Parameters:
         - net: The mininet network.
+        - label: A label for the benchmark.
         - data_size: Number of bytes to GET.
         - cca: The congestion control algorithm.
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
+        - logdir: Path to a log directory (that already exists).
         """
         super().__init__(
-            net=net, data_size=data_size, cca=cca,
-            certfile=certfile, keyfile=keyfile,
+            protocol=Protocol.CLOUDFLARE_QUIC,
+            net=net, label=label, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile, logdir=logdir,
         )
         self.server_ip = self.net.h2.IP()
 
-    def restart_server(self, logfile):
+    def restart_server(self):
         WARN('Restarting quiche-server')
         self.net.h2.cmd('killall quiche-server')
-        self.start_server(logfile=logfile)
+        self.start_server()
 
-    def start_server(self, logfile):
+    def start_server(self):
         # Required outputs are in INFO logs
         os.environ['RUST_LOG'] = 'info'
 
@@ -308,6 +359,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         # The start_server() function blocks until the server is ready to
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
+        logfile = self.logfile(self.server)
         self.net.popen(self.net.h2, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
@@ -315,7 +367,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
             if not notified:
                 raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
 
-    def run_client(self, logfile, timeout) -> Optional[Tuple[int, float]]:
+    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
         """Returns the status code and runtime (seconds) of the GET request.
         """
         # Required outputs are in INFO logs
@@ -344,7 +396,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
             except:
                 pass
 
-
+        logfile = self.logfile(self.client)
         timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout, raise_error=False)
@@ -366,18 +418,18 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
             return (HTTP_OK_STATUSCODE, result[0])
 
     def run(
-        self, label, logdir, num_trials, timeout, network_statistics,
+        self, num_trials, timeout, network_statistics,
     ) -> HTTPBenchmarkResult:
         # Required outputs are in INFO logs
         os.environ['RUST_LOG'] = 'info'
 
         # Start the server
-        self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
+        self.start_server()
 
         # Run the client
         result = HTTPBenchmarkResult(
-            label=label,
-            protocol=Protocol.CLOUDFLARE_QUIC.name,
+            label=self.label,
+            protocol=self.protocol.name,
             data_size=self.data_size,
             cca=self.cca,
             pep=False,
@@ -386,15 +438,12 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         for _ in range(num_trials):
             result.append_new_output()
             self.net.reset_statistics()
-            output = self.run_client(
-                logfile=f'{logdir}/{CLIENT_LOGFILE}',
-                timeout=timeout,
-            )
+            output = self.run_client(timeout=timeout)
 
             # Error
             if output is None:
                 ERROR('no output')
-                self.restart_server(f'{logdir}/{SERVER_LOGFILE}')
+                self.restart_server()
                 continue
 
             # Success
@@ -412,28 +461,33 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(
         self,
         net: EmulatedNetwork,
+        label: str,
         data_size: int,
         cca: str,
         certfile: str,
         keyfile: str,
+        logdir: str,
     ):
         """
         Google QUIC file download benchmark.
 
         Parameters:
         - net: The mininet network.
+        - label: A label for the benchmark.
         - data_size: Number of bytes to GET.
         - cca: The congestion control algorithm.
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
+        - logdir: Path to a log directory (that already exists).
         """
         super().__init__(
-            net=net, data_size=data_size, cca=cca,
-            certfile=certfile, keyfile=keyfile,
+            protocol=Protocol.GOOGLE_QUIC,
+            net=net, label=label, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile, logdir=logdir,
         )
         self.server_ip = self.net.h2.IP()
 
-    def start_server(self, logfile):
+    def start_server(self):
         base = 'deps/chromium/src'
         cmd = f'./{base}/out/Default/quic_server '\
               f'--certificate_file={self.certfile} '\
@@ -449,6 +503,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         # The start_server() function blocks until the server is ready to
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
+        logfile = self.logfile(self.server)
         self.net.popen(self.net.h2, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
@@ -456,7 +511,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             if not notified:
                 raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
 
-    def run_client(self, logfile, timeout) -> Optional[Tuple[int, float]]:
+    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
         """Returns the status code and runtime (seconds) of the GET request.
         """
         base = 'deps/chromium/src'
@@ -492,6 +547,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             except:
                 pass
 
+        logfile = self.logfile(self.client)
         timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout)
@@ -506,10 +562,10 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             return result[0]
 
     def run(
-        self, label, logdir, num_trials, timeout, network_statistics,
+        self, num_trials, timeout, network_statistics,
     ) -> HTTPBenchmarkResult:
         # Start the server
-        self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
+        self.start_server()
 
         # Initialize remaining trials
         num_trials_left = num_trials
@@ -517,8 +573,8 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         # Run the client
         while num_trials_left > 0:
             result = HTTPBenchmarkResult(
-                label=label,
-                protocol=Protocol.GOOGLE_QUIC.name,
+                label=self.label,
+                protocol=self.protocol.name,
                 data_size=self.data_size,
                 cca=self.cca,
                 pep=False,
@@ -529,10 +585,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
                 result.append_new_output()
                 self.net.reset_statistics()
-                output = self.run_client(
-                    logfile=f'{logdir}/{CLIENT_LOGFILE}',
-                    timeout=timeout,
-                )
+                output = self.run_client(timeout=timeout)
 
                 # Error
                 if output is None:
@@ -558,34 +611,39 @@ class TCPBenchmark(HTTPDownloadBenchmark):
     def __init__(
         self,
         net: EmulatedNetwork,
+        label: str,
         data_size: int,
         cca: str,
         pep: bool,
         certfile: str,
         keyfile: str,
+        logdir: str,
     ):
         """
         TCP file download benchmark using a simple Python server and client.
 
         Parameters:
         - net: The mininet network.
+        - label: A label for the benchmark.
         - data_size: Number of bytes to GET.
         - cca: The congestion control algorithm. Options include: cubic, reno,
           bbr1, bbr2, bbr3. (Kernel must be the correct version for bbr2 and
           bbr3, which we don't currently check.)
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
+        - logdir: Path to a log directory (that already exists).
         """
         super().__init__(
-            net=net, data_size=data_size, cca=cca,
-            certfile=certfile, keyfile=keyfile,
+            protocol=Protocol.TCP,
+            net=net, label=label, data_size=data_size, cca=cca,
+            certfile=certfile, keyfile=keyfile, logdir=logdir,
         )
         net.set_tcp_congestion_control(cca)
 
         self.pep = pep
         self.server_ip = self.net.h2.IP()
 
-    def start_server(self, logfile):
+    def start_server(self):
         cmd = f'python3 webserver/http_server.py --server-ip {self.server_ip} '\
               f'--certfile {self.certfile} --keyfile {self.keyfile} '\
               f'-n {self.data_size}'
@@ -599,6 +657,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         # The start_server() function blocks until the server is ready to
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
+        logfile = self.logfile(self.server)
         self.net.popen(self.net.h2, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
@@ -606,7 +665,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             if not notified:
                 raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
 
-    def run_client(self, logfile, timeout) -> Optional[Tuple[int, float]]:
+    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
         """Returns the status code and runtime (seconds) of the GET request.
         """
         cmd = f'python3 webserver/http_client.py --server-ip {self.server_ip} '\
@@ -627,6 +686,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             except:
                 pass
 
+        logfile = self.logfile(self.client)
         timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout)
@@ -640,14 +700,15 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             return result[0]
 
     def run(
-        self, label, logdir, num_trials, timeout, network_statistics,
+        self, num_trials, timeout, network_statistics,
     ) -> HTTPBenchmarkResult:
         # Start the server
-        self.start_server(logfile=f'{logdir}/{SERVER_LOGFILE}')
+        self.start_server()
 
         # Start the TCP PEP
         if self.pep:
-            self.net.start_tcp_pep(logfile=f'{logdir}/{ROUTER_LOGFILE}')
+            logfile = self.logfile(self.proxy)
+            self.net.start_tcp_pep(logfile=logfile)
 
         # Initialize remaining trials
         num_trials_left = num_trials
@@ -655,8 +716,8 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         # Run the client
         while num_trials_left > 0:
             result = HTTPBenchmarkResult(
-                label=label,
-                protocol=Protocol.TCP.name,
+                label=self.label,
+                protocol=self.protocol.name,
                 data_size=self.data_size,
                 cca=self.cca,
                 pep=self.pep,
@@ -667,10 +728,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
                 result.append_new_output()
                 self.net.reset_statistics()
-                output = self.run_client(
-                    logfile=f'{logdir}/{CLIENT_LOGFILE}',
-                    timeout=timeout,
-                )
+                output = self.run_client(timeout=timeout)
 
                 # Error
                 if output is None:

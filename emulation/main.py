@@ -17,15 +17,15 @@ def benchmark_tcp(net, args):
     assert not (args.topology == 'direct' and args.pep)
     bm = TCPBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
         pep=args.pep,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        logdir=args.logdir,
     )
     result = bm.run(
-        args.label,
-        args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
@@ -36,14 +36,14 @@ def benchmark_tcp(net, args):
 def benchmark_google_quic(net, args):
     bm = GoogleQUICBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        logdir=args.logdir,
     )
     result = bm.run(
-        args.label,
-        args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
@@ -54,14 +54,14 @@ def benchmark_google_quic(net, args):
 def benchmark_cloudflare_quic(net, args):
     bm = CloudflareQUICBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        logdir=args.logdir,
     )
     result = bm.run(
-        args.label,
-        args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
@@ -72,14 +72,14 @@ def benchmark_cloudflare_quic(net, args):
 def benchmark_picoquic(net, args):
     bm = PicoQUICBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        logdir=args.logdir,
     )
     result = bm.run(
-        args.label,
-        args.logdir,
         args.trials,
         args.timeout,
         args.network_statistics,
