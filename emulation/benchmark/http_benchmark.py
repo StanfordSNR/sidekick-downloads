@@ -5,6 +5,8 @@ from enum import Enum
 from typing import Optional, Tuple
 import re
 
+import mininet
+
 from common import *
 from network import EmulatedNetwork
 from .result import HTTPBenchmarkResult
@@ -34,6 +36,18 @@ class HTTPDownloadBenchmark(ABC):
           h2 host, and a p1 host if a proxy is configured.
         """
         self.net = net
+
+    @property
+    def client(self) -> mininet.node.Host:
+        """The mininet host of the HTTPS client.
+        """
+        return self.net.h1
+
+    @property
+    def server(self) -> mininet.node.Host:
+        """The mininet host of the HTTPS server.
+        """
+        return self.net.h2
 
 
 class PicoQUICBenchmark(HTTPDownloadBenchmark):
@@ -203,6 +217,9 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         self.start_server(logfile=logfile)
 
     def start_server(self, logfile):
+        # Required outputs are in INFO logs
+        os.environ['RUST_LOG'] = 'info'
+
         base = 'deps/quiche/target/release'
         cmd = f'./{base}/quiche-server '\
               f'--cert={self.certfile} '\
@@ -229,6 +246,9 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
     def run_client(self, logfile, timeout) -> Optional[Tuple[int, float]]:
         """Returns the status code and runtime (seconds) of the GET request.
         """
+        # Required outputs are in INFO logs
+        os.environ['RUST_LOG'] = 'info'
+
         base = 'deps/quiche/target/release'
         cmd = f'./{base}/quiche-client '\
               f'--no-verify '\
