@@ -1,6 +1,6 @@
 import time
 import threading
-from abc import ABC
+from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional, Tuple
 import re
@@ -131,6 +131,41 @@ class HTTPDownloadBenchmark(ABC):
         elif host == self.proxy and self.proxy is not None:
             return f'{self._logdir}/{ROUTER_LOGFILE}'
 
+    @abstractmethod
+    def start_server(self, timeout: int=SETUP_TIMEOUT):
+        """Start the HTTPS server on the h2 host.
+
+        This function runs the server in the background but blocks until the
+        server is ready to accept requests. Raises an error if unsuccessful.
+
+        Parameters:
+        - timeout: The number of seconds to block during setup before an error.
+        """
+        pass
+
+    @abstractmethod
+    def run_client(
+        self, timeout: Optional[int]=None,
+    ) -> Optional[Tuple[int, float]]:
+        """
+        Parameters:
+        - timeout: If provided, the number of seconds to wait for the client
+          to complete its request.
+
+        Returns:
+        - If there is an error that is not a timeout, returns None.
+        - (http_status_code, total_time): The HTTP status code and the total
+          runtime, in seconds, of the GET request. If the client has timed out,
+          returns HTTP_TIMEOUT_STATUSCODE even though the timeout may not have
+          occurred in the actual endpoints.
+        """
+        pass
+
+    def restart_server(self, timeout: int=SETUP_TIMEOUT):
+        """If implemented, kills the existing server and restarts it.
+        """
+        pass
+
 
 class PicoQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(
@@ -162,12 +197,12 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         )
         self.server_ip = self.net.h2.IP()
 
-    def restart_server(self):
+    def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting picoquic-server')
         self.net.h2.cmd('killall picoquic_sample')
-        self.start_server()
+        self.start_server(timeout=timeout)
 
-    def start_server(self):
+    def start_server(self, timeout: int=SETUP_TIMEOUT):
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'server '\
@@ -196,15 +231,15 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         self.net.popen(self.net.h2, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
-            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            notified = condition.wait(timeout=timeout)
             if not notified:
                 WARN("Server did not print expected output; continuing anyway")
-                # raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
+                # raise TimeoutError(f'start_server timeout {timeout}s')
         '''
 
-    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
-        """Returns the status code and runtime (seconds) of the GET request.
-        """
+    def run_client(
+        self, timeout: Optional[int]=None,
+    ) -> Optional[Tuple[int, float]]:
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'client '\
@@ -334,12 +369,12 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         )
         self.server_ip = self.net.h2.IP()
 
-    def restart_server(self):
+    def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting quiche-server')
         self.net.h2.cmd('killall quiche-server')
-        self.start_server()
+        self.start_server(timeout=timeout)
 
-    def start_server(self):
+    def start_server(self, timeout: int=SETUP_TIMEOUT):
         # Required outputs are in INFO logs
         os.environ['RUST_LOG'] = 'info'
 
@@ -363,13 +398,13 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         self.net.popen(self.net.h2, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
-            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            notified = condition.wait(timeout=timeout)
             if not notified:
-                raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_server timeout {timeout}s')
 
-    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
-        """Returns the status code and runtime (seconds) of the GET request.
-        """
+    def run_client(
+        self, timeout: Optional[int]=None,
+    ) -> Optional[Tuple[int, float]]:
         # Required outputs are in INFO logs
         os.environ['RUST_LOG'] = 'info'
 
@@ -487,7 +522,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         )
         self.server_ip = self.net.h2.IP()
 
-    def start_server(self):
+    def start_server(self, timeout: int=SETUP_TIMEOUT):
         base = 'deps/chromium/src'
         cmd = f'./{base}/out/Default/quic_server '\
               f'--certificate_file={self.certfile} '\
@@ -507,13 +542,13 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         self.net.popen(self.net.h2, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
-            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            notified = condition.wait(timeout=timeout)
             if not notified:
-                raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_server timeout {timeout}s')
 
-    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
-        """Returns the status code and runtime (seconds) of the GET request.
-        """
+    def run_client(
+        self, timeout: Optional[int]=None,
+    ) -> Optional[Tuple[int, float]]:
         base = 'deps/chromium/src'
         cmd = f'./{base}/out/Default/quic_client '\
               f'--allow_unknown_root_cert '\
@@ -643,7 +678,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         self.pep = pep
         self.server_ip = self.net.h2.IP()
 
-    def start_server(self):
+    def start_server(self, timeout: int=SETUP_TIMEOUT):
         cmd = f'python3 webserver/http_server.py --server-ip {self.server_ip} '\
               f'--certfile {self.certfile} --keyfile {self.keyfile} '\
               f'-n {self.data_size}'
@@ -661,13 +696,13 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         self.net.popen(self.net.h2, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
-            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            notified = condition.wait(timeout=timeout)
             if not notified:
-                raise TimeoutError(f'start_server timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_server timeout {timeout}s')
 
-    def run_client(self, timeout) -> Optional[Tuple[int, float]]:
-        """Returns the status code and runtime (seconds) of the GET request.
-        """
+    def run_client(
+        self, timeout: Optional[int]=None,
+    ) -> Optional[Tuple[int, float]]:
         cmd = f'python3 webserver/http_client.py --server-ip {self.server_ip} '\
               f'-n {self.data_size}'
 
