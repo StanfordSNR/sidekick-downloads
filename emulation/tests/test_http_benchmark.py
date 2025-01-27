@@ -20,6 +20,7 @@ class HTTPDownloadTestCase(unittest.TestCase):
 
         # Setup a mininet network
         self.net = self.setUpOneHopNetwork()
+        self.stopped = False
 
         # Set default parameters
         self.label = 'my_benchmark'
@@ -34,8 +35,13 @@ class HTTPDownloadTestCase(unittest.TestCase):
 
     def tearDown(self):
         self._logdir.cleanup()
-        self.net.stop()
+        self.stopNetwork()
         os.chdir(self._cwd)
+
+    def stopNetwork(self):
+        if not self.stopped:
+            self.net.stop()
+            self.stopped = True
 
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
@@ -159,13 +165,17 @@ class TestRunClient(HTTPDownloadTestCase):
 
 
 class TestRunBenchmark(HTTPDownloadTestCase):
+    def run_benchmark(self, bm, num_trials) -> dict:
+        result = bm.run(self.label, self.logdir, num_trials, timeout=None,
+            network_statistics=False)
+        result = json.loads(result.json())
+        return result
+
     def _test_run_benchmark(self, bm, num_trials, protocol):
         """The benchmark runs and returns successful results for the given
         number of trials.
         """
-        result = bm.run(self.label, self.logdir, num_trials, timeout=None,
-            network_statistics=False)
-        result = json.loads(result.json())
+        result = self.run_benchmark(bm, num_trials)
 
         # Validate inputs
         inputs = result['inputs']
@@ -228,3 +238,39 @@ class TestRunBenchmark(HTTPDownloadTestCase):
     def test_picoquic_run_benchmark_multiple_trials(self):
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 5, Protocol.PICOQUIC.name)
+
+    def _test_hosts_write_to_logs(self, bm, proxy: bool):
+        self.run_benchmark(bm, 1)
+        self.stopNetwork()  # Give background processes a chance to flush
+        with open(f'{self.logdir}/{CLIENT_LOGFILE}', 'r') as f:
+            self.assertNotEqual(f.read(), '', 'client writes to logfile')
+        with open(f'{self.logdir}/{SERVER_LOGFILE}', 'r') as f:
+            self.assertNotEqual(f.read(), '', 'server writes to logfile')
+        router_logfile = f'{self.logdir}/{ROUTER_LOGFILE}'
+        if proxy:
+            self.assertTrue(os.path.exists(router_logfile))
+            with open(router_logfile, 'r') as f:
+                self.assertNotEqual(f.read(), '', 'proxy writes to logfile')
+        else:
+            self.assertFalse(os.path.exists(router_logfile))
+
+    def test_tcp_hosts_write_to_logs(self):
+        bm = self.setUpTCPBenchmark()
+        self._test_hosts_write_to_logs(bm, False)
+
+    def test_tcp_pep_hosts_write_to_logs(self):
+        bm = self.setUpTCPBenchmark(pep=True)
+        self._test_hosts_write_to_logs(bm, True)
+
+    def test_google_quic_hosts_write_to_logs(self):
+        bm = self.setUpGoogleQUICBenchmark()
+        self._test_hosts_write_to_logs(bm, False)
+
+    def test_cloudflare_quic_hosts_write_to_logs(self):
+        bm = self.setUpCloudflareQUICBenchmark()
+        self._test_hosts_write_to_logs(bm, False)
+
+    @unittest.expectedFailure
+    def test_picoquic_hosts_write_to_logs(self):
+        bm = self.setUpPicoQUICBenchmark()
+        self._test_hosts_write_to_logs(bm, False)
