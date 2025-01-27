@@ -82,9 +82,9 @@ impl UdpParser {
         i32::from(ip_protocol) == libc::IPPROTO_UDP
     }
 
-    /// Returns the dst_ip assuming the buffer represents a UDP packet.
-    pub fn parse_dst_ip(x: &[u8; BUFFER_SIZE]) -> &[u8] {
-        &x[30..34]
+    /// Returns the dst_port assuming the buffer represents a UDP packet.
+    pub fn parse_dst_port(x: &[u8; BUFFER_SIZE]) -> u16 {
+        u16::from_be_bytes([x[36], x[37]])
     }
 
     /// Returns the sidekick identifier assuming the buffer represents

@@ -6,7 +6,7 @@ use clap::Parser;
 use log::{debug, info, trace};
 use quack::PowerSumQuack;
 use sidekick::Sidekick;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
@@ -34,20 +34,15 @@ struct Cli {
     /// goes to stdout.
     #[arg(long = "target-addr")]
     target_addr: Option<SocketAddr>,
-    /// My IPv4 address to receive quACK resets.
-    #[arg(long = "my-addr")]
-    my_addr: Ipv4Addr,
 }
 
 async fn send_quacks(
     sc: Arc<Mutex<Sidekick>>,
     rx: oneshot::Receiver<()>,
+    socket: UdpSocket,
     addr: SocketAddr,
     frequency_ms: u64,
 ) {
-    let socket = UdpSocket::bind("0.0.0.0:0")
-        .await
-        .expect("error binding to UDP socket");
     if frequency_ms > 0 {
         rx.await
             .expect("couldn't receive notice that 1st packet was sniffed");
@@ -100,19 +95,18 @@ async fn main() -> Result<(), String> {
 
     // Handle a snapshotted quACK at the specified frequency.
     if let Some(frequency_ms) = args.frequency_ms {
-        info!("my ipv4 address is {:?}", args.my_addr);
         let sc = Arc::new(Mutex::new(sc));
-        let rx = Sidekick::start(sc.clone(), args.my_addr.octets())?;
+        let (sendsock, rx) = Sidekick::start(sc.clone()).await?;
         if let Some(addr) = args.target_addr {
             info!("quACKing to {:?}", addr);
-            send_quacks(sc, rx, addr, frequency_ms).await;
+            send_quacks(sc, rx, sendsock, addr, frequency_ms).await;
         } else {
             info!("printing quACKs");
             print_quacks(sc, rx, frequency_ms).await;
         }
     } else if let Some(frequency_pkts) = args.frequency_pkts {
         let addr = args.target_addr.expect("Address must be set");
-        sc.start_frequency_pkts(args.my_addr.octets(), frequency_pkts, addr)
+        sc.start_frequency_pkts(frequency_pkts, addr)
             .await
             .unwrap();
     }

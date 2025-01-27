@@ -50,12 +50,13 @@ impl Sidekick {
     /// only listens for outgoing packets, and additionally logs the packet
     /// identifiers.
     /// Returns a channel that indicates when the first packet is sniffed.
-    pub fn start(
+    pub async fn start(
         sc: Arc<Mutex<Sidekick>>,
-        my_ipv4_addr: [u8; 4],
-    ) -> Result<oneshot::Receiver<()>, String> {
+    ) -> Result<(UdpSocket, oneshot::Receiver<()>), String> {
         let interface = sc.lock().unwrap().interface.clone();
         let sock = Socket::new(interface.clone())?;
+        let sendsock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        let my_port = sendsock.local_addr().unwrap().port();
         sock.set_promiscuous()?;
 
         // Creates the channel that indicates when the first packet is sniffed.
@@ -82,10 +83,8 @@ impl Sidekick {
                     continue;
                 }
 
-                // Reset the quack if the dst IP is our own (and not for
-                // another e2e quic connection).
-                if UdpParser::parse_dst_ip(&buf) == my_ipv4_addr {
-                    // TODO: check if dst port corresponds to this connection
+                // Reset the quack if the dst port is the one we are sending on.
+                if UdpParser::parse_dst_port(&buf) == my_port {
                     sc.lock().unwrap().reset();
                     continue;
                 }
@@ -107,7 +106,7 @@ impl Sidekick {
                 }
             }
         });
-        Ok(rx)
+        Ok((sendsock, rx))
     }
 
     /// Start the raw socket that listens to the specified interface and
@@ -118,12 +117,12 @@ impl Sidekick {
     /// Returns a channel that indicates when the first packet is sniffed.
     pub async fn start_frequency_pkts(
         &mut self,
-        my_ipv4_addr: [u8; 4],
         frequency_pkts: usize,
         sendaddr: std::net::SocketAddr,
     ) -> Result<(), String> {
         let recvsock = Socket::new(self.interface.clone())?;
         let sendsock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        let my_port = sendsock.local_addr().unwrap().port();
         recvsock.set_promiscuous()?;
 
         // Loop over received packets
@@ -149,10 +148,8 @@ impl Sidekick {
                 continue;
             }
 
-            // Reset the quack if the dst IP is our own (and not for
-            // another e2e quic connection).
-            if UdpParser::parse_dst_ip(&buf) == my_ipv4_addr {
-                // TODO: check if dst port corresponds to this connection
+            // Reset the quack if the dst port is the one we are sending on.
+            if UdpParser::parse_dst_port(&buf) == my_port {
                 self.reset();
                 continue;
             }
