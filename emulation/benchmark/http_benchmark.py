@@ -38,8 +38,8 @@ class HTTPDownloadBenchmark(ABC):
         proxy_type: Optional[ProxyType]=None,
     ):
         """
-        File download benchmark where the HTTPS client on the h1 host requests
-        a certain number of application-layer bytes from the HTTPS server on
+        File download benchmark where the HTTP client on the h1 host requests
+        a certain number of application-layer bytes from the HTTP server on
         the h2 host. Reports metrics such as the request latency and throughput.
 
         Subclasses of HTTPDownloadBenchmark must call this constructor.
@@ -71,13 +71,13 @@ class HTTPDownloadBenchmark(ABC):
 
     @property
     def client(self) -> mininet.node.Host:
-        """The mininet host of the HTTPS client.
+        """The mininet host of the HTTP client.
         """
         return self.net.h1
 
     @property
     def server(self) -> mininet.node.Host:
-        """The mininet host of the HTTPS server.
+        """The mininet host of the HTTP server.
         """
         return self.net.h2
 
@@ -147,7 +147,7 @@ class HTTPDownloadBenchmark(ABC):
 
     @abstractmethod
     def start_server(self, timeout: int=SETUP_TIMEOUT):
-        """Start the HTTPS server on the h2 host.
+        """Start the HTTP server on the h2 host.
 
         This function runs the server in the background but blocks until the
         server is ready to accept requests. Raises an error if unsuccessful.
@@ -196,8 +196,8 @@ class HTTPDownloadBenchmark(ABC):
         network_statistics: bool=False,
     ) -> HTTPBenchmarkResult:
         """
-        Running the benchmark will start the HTTPS server on the h2 host and
-        the HTTPS client on the h1 host, the latter as many times as the number
+        Running the benchmark will start the HTTP server on the h2 host and
+        the HTTP client on the h1 host, the latter as many times as the number
         of trials. If there is an error that is not a timeout, try restarting
         the server. If a proxy is configured, running the benchmark will also
         start the proxy on the p1 host.
@@ -274,7 +274,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
-        - port: The port to start the HTTPS server on.
+        - port: The port to start the HTTP server on.
         """
         self.port = port
         super().__init__(
@@ -397,7 +397,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
-        - port: The port to start the HTTPS server on.
+        - port: The port to start the HTTP server on.
         """
         self.port = port
         super().__init__(
