@@ -19,6 +19,30 @@ sudo apt-get install -y libssl-dev  # picoquic
 sudo apt-get install -y bridge-utils # emulation topology config
 ```
 
+## Build the sidekick protocol binaries.
+
+### Install Rust (if needed)
+
+Install the Rust toolchain (instructions [here](https://www.rust-lang.org/tools/install)):
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+. "$HOME/.cargo/env"
+```
+
+### Build the client-side sniffer
+
+The quack library needs nightly rust for unessential reasons.
+
+```
+export SIDEKICK_HOME=$HOME/sidekick-downloads
+cd $SIDEKICK_HOME/deps
+git clone git@github.com:ygina/quack.git
+cd $SIDEKICK_HOME/quacker
+rustup default nightly-2024-01-26
+cargo build --release
+```
+
 ## TCP Benchmarks
 
 ### Build and install PEPsal

@@ -23,6 +23,7 @@ deps/certs/out/
 deps/pepsal*
 deps/quiche*
 deps/content*
+deps/quack/
 deps/depot_tools/
 deps/chromium/
 deps/picoquic/
