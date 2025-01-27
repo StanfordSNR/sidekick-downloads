@@ -253,12 +253,10 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         bm = self.setUpGoogleQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
-    @unittest.expectedFailure
     def test_cloudflare_quic_run_benchmark_one_trial(self):
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
-    @unittest.expectedFailure
     def test_cloudflare_quic_run_benchmark_multiple_trials(self):
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_run_benchmark(bm, 5)
