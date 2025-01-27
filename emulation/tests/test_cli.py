@@ -28,7 +28,7 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
 
     def _test_file_download_benchmark(self, protocol):
         result = subprocess.run(
-            ['python', 'emulation/main.py', protocol],
+            ['python3', 'emulation/main.py', protocol],
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
