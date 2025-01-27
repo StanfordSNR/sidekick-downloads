@@ -157,7 +157,7 @@ class PicoQUICBenchmark(BaseBenchmark):
         # TODO figure out why popen isn't working
         # timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
         #     console_logger=DEBUG, logfile=logfile, func=parse_result,
-        #     timeout=timeout, exit_on_err=False)
+        #     timeout=timeout, raise_error=False)
 
         if len(result) == 0:
             WARN('PicoQUIC client failed to return result')
@@ -290,7 +290,7 @@ class CloudflareQUICBenchmark(BaseBenchmark):
 
         timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
             console_logger=DEBUG, logfile=logfile, func=parse_result,
-            timeout=timeout, exit_on_err=False)
+            timeout=timeout, raise_error=False)
 
         if timed_out:
             # Max idle timeout reached when there have been no packets received for
