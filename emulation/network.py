@@ -313,6 +313,23 @@ class EmulatedNetwork:
         if self.net is not None:
             self.net.stop()
 
+    def start_client_quacker(
+        self, threshold: int, frequency_ms: int, quackee_port: int,
+        logfile=None,
+    ):
+        cmd = f'./quacker/target/release/quacker '\
+              f'--interface h1-eth0 '\
+              f'--threshold {threshold} --frequency-ms {frequency_ms} '\
+              f'--target-addr {self.h2.IP()}:{quackee_port}'
+
+        os.environ['RUST_LOG'] = 'info'
+        def quacker_log(line):
+            # Temporary: log debug output from the background process
+            print('[quack]', line.strip(), file=sys.stderr)
+
+        self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
+            logfile=logfile, func=quacker_log)
+
     def start_tcp_pep(self, logfile, timeout=SETUP_TIMEOUT):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
         self.popen(self.p1, 'ip route add local 0.0.0.0/0 dev lo table 100')

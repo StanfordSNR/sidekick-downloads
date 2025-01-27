@@ -1,6 +1,5 @@
 # Quacker
 
-Sidekick proxies assist end hosts by reporting what they've observed about
-packets in the underlying base connection, without coupling their assistance
-to the details of the base protocol.
-
+Quackers sniff packets on the client endpoint to determine what packets the
+client has received, and reports this information to a proxy in the form of a
+quACK.

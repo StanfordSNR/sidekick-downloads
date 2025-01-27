@@ -3,7 +3,7 @@ mod buffer;
 mod socket;
 
 use clap::Parser;
-use log::{debug, info, trace};
+use log::{debug, info};
 use quack::PowerSumQuack;
 use sidekick::Sidekick;
 use std::net::SocketAddr;
@@ -53,7 +53,7 @@ async fn send_quacks(
             interval.tick().await;
             let quack = sc.lock().unwrap().quack();
             let bytes = bincode::serialize(&quack).unwrap();
-            trace!("quack {}", quack.count());
+            info!("quack {}", quack.count());
             if socket.send_to(&bytes, addr).await.is_err() {
                 break;
             }

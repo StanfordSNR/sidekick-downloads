@@ -176,6 +176,21 @@ if __name__ == '__main__':
         help='netem queuing discipline')
 
     ###########################################################################
+    # Proxy configurations
+    ###########################################################################
+    proxy_config = parser.add_argument_group('proxy_config')
+    proxy_config.add_argument('--quacker', action='store_true',
+        help='Enable a sniffer on the client to send quacks to the proxy')
+    proxy_config.add_argument('--threshold', type=int, default=20,
+        help='If --quacker is enabled, the threshold number of missing '\
+             'packets that the quack can detect')
+    proxy_config.add_argument('--frequency', metavar='MS', type=int, default=50,
+        help='If --quacker is enabled, the frequency at which to send quacks')
+    proxy_config.add_argument('--quackee-port', type=int, default=5252,
+        help='If --quacker is enabled, the UDP port that the quackee on the '\
+             'proxy is listening on for quacks')
+
+    ###########################################################################
     # HTTP/1.1+TCP benchmark
     ###########################################################################
     tcp = subparsers.add_parser(
@@ -291,6 +306,10 @@ if __name__ == '__main__':
             args.qdisc, pacing)
     else:
         raise NotImplementedError(args.topology)
+
+    if args.quacker:
+        net.start_client_quacker(args.threshold, args.frequency,
+            args.quackee_port)
 
     try:
         if args.ty == 'cli':
