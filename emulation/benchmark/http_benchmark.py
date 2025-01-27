@@ -261,6 +261,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         certfile: str,
         keyfile: str,
         logdir: str,
+        port: int=4433,
     ):
         """
         Picoquic file download benchmark.
@@ -273,7 +274,9 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
+        - port: The port to start the HTTPS server on.
         """
+        self.port = port
         super().__init__(
             protocol=Protocol.PICOQUIC,
             net=net, label=label, data_size=data_size, cca=cca,
@@ -289,7 +292,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'server '\
-              f'4433 '\
+              f'{self.port} '\
               f'{self.certfile} '\
               f'{self.keyfile} '\
               f'. '\
@@ -327,7 +330,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         cmd = f'./{base}/picoquic_sample '\
               f'client '\
               f'{self.server.IP()} '\
-              f'4433 '\
+              f'{self.port} '\
               f'/tmp '\
               f'{self.cca} '\
               f'{self.data_size}.html '
@@ -381,6 +384,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         certfile: str,
         keyfile: str,
         logdir: str,
+        port: int=4433,
     ):
         """
         Cloudflare QUIC file download benchmark.
@@ -393,7 +397,9 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
+        - port: The port to start the HTTPS server on.
         """
+        self.port = port
         super().__init__(
             protocol=Protocol.CLOUDFLARE_QUIC,
             net=net, label=label, data_size=data_size, cca=cca,
@@ -414,7 +420,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
               f'--cert={self.certfile} '\
               f'--key={self.keyfile} '\
               f'--cc-algorithm {self.cca} ' \
-              f'--listen {self.server.IP()}:4433'
+              f'--listen {self.server.IP()}:{self.port}'
 
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -444,7 +450,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
               f'--no-verify '\
               f'--method GET '\
               f'--cc-algorithm {self.cca} ' \
-              f'-- https://{self.server.IP()}:4433/{self.data_size}'
+              f'-- https://{self.server.IP()}:{self.port}/{self.data_size}'
 
         result = []
         timed_out = False

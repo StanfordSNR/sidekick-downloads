@@ -67,18 +67,20 @@ class HTTPDownloadTestCase(unittest.TestCase):
         )
         return bm
 
-    def setUpCloudflareQUICBenchmark(self) -> CloudflareQUICBenchmark:
+    def setUpCloudflareQUICBenchmark(
+        self, port: int=4433,
+    ) -> CloudflareQUICBenchmark:
         bm = CloudflareQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir,
+            self.keyfile, self.logdir, port=port,
         )
         return bm
 
     # def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
-    def setUpPicoQUICBenchmark(self) -> PicoQUICBenchmark:
+    def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
         bm = PicoQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir,
+            self.keyfile, self.logdir, port=port,
         )
         return bm
 
@@ -153,12 +155,14 @@ class TestStartServer(HTTPDownloadTestCase):
         self._test_server_is_listening_on(bm, 6121)
 
     def test_cloudflare_quic_server_is_listening(self):
-        bm = self.setUpCloudflareQUICBenchmark()
-        self._test_server_is_listening_on(bm, 4433)
+        port = 1234
+        bm = self.setUpCloudflareQUICBenchmark(port=port)
+        self._test_server_is_listening_on(bm, port)
 
     def test_picoquic_server_is_listening(self):
-        bm = self.setUpPicoQUICBenchmark()
-        self._test_server_is_listening_on(bm, 4433)
+        port = 4321
+        bm = self.setUpPicoQUICBenchmark(port=port)
+        self._test_server_is_listening_on(bm, port)
 
 
 class TestRunClient(HTTPDownloadTestCase):
