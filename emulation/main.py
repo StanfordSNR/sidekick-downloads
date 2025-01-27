@@ -14,7 +14,8 @@ DEFAULT_SSL_KEYFILE_TCP = f'deps/certs/out/leaf_cert.key'
 
 
 def benchmark_tcp(net, args):
-    assert not (args.topology == 'direct' and args.pep)
+    assert not (args.topology == 'direct' and (args.pep or args.sidekick))
+    assert not (args.sidekick and args.pep)
     bm = TCPBenchmark(
         net,
         label=args.label,
@@ -24,6 +25,7 @@ def benchmark_tcp(net, args):
         keyfile=args.keyfile,
         logdir=args.logdir,
         pep=args.pep,
+        sidekick=args.sidekick,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -42,6 +44,7 @@ def benchmark_google_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
+        sidekick=args.sidekick,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -60,6 +63,7 @@ def benchmark_cloudflare_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
+        sidekick=args.sidekick,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -78,6 +82,7 @@ def benchmark_picoquic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
+        sidekick=args.sidekick,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -92,7 +97,8 @@ def benchmark_iperf3(net, args):
         net,
         args.n,
         cca=args.congestion_control,
-        pep=args.pep
+        pep=args.pep,
+        sidekick=args.sidekick,
     )
     bm.run(
         args.label,
@@ -147,6 +153,8 @@ if __name__ == '__main__':
         choices=['one_hop', 'direct'], default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
              'properties for the "near path segment" i.e. Link 1.')
+    exp_config.add_argument('--sidekick', action='store_true',
+        help='Enable Sidekick, a QuACK-ing PEP')
 
     ###########################################################################
     # Network Configurations
@@ -285,8 +293,10 @@ if __name__ == '__main__':
 
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
-            args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing)
+            args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
+            bridge_proxy=not args.sidekick)
     elif args.topology == 'direct':
+        assert not args.sidekick
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
             args.qdisc, pacing)
     else:
