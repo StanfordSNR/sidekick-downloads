@@ -279,11 +279,10 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             net=net, label=label, data_size=data_size, cca=cca,
             certfile=certfile, keyfile=keyfile, logdir=logdir,
         )
-        self.server_ip = self.net.h2.IP()
 
     def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting picoquic-server')
-        self.net.h2.cmd('killall picoquic_sample')
+        self.server.cmd('killall picoquic_sample')
         self.start_server(timeout=timeout)
 
     def start_server(self, timeout: int=SETUP_TIMEOUT):
@@ -297,8 +296,8 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{self.data_size} '\
               f'{self.cca}'
 
-        DEBUG(f'{self.net.h2.name} {cmd}')
-        self.net.h2.cmd(cmd + ' &')
+        DEBUG(f'{self.server.name} {cmd}')
+        self.server.cmd(cmd + ' &')
         time.sleep(2)
 
         '''
@@ -312,7 +311,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         # The start_server() function blocks until the server is ready to
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
-        self.net.popen(self.net.h2, cmd, background=True,
+        self.net.popen(self.server, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
             notified = condition.wait(timeout=timeout)
@@ -327,17 +326,17 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'client '\
-              f'{self.server_ip} '\
+              f'{self.server.IP()} '\
               f'4433 '\
               f'/tmp '\
               f'{self.cca} '\
               f'{self.data_size}.html '
         if timeout is None:
-            DEBUG(f'{self.net.h1.name} {cmd}')
-            output = self.net.h1.cmd(cmd)
+            DEBUG(f'{self.client.name} {cmd}')
+            output = self.client.cmd(cmd)
         else:
-            DEBUG(f'{self.net.h1.name} timeout {timeout} {cmd}')
-            output = self.net.h1.cmd(f"timeout {timeout} {cmd}")
+            DEBUG(f'{self.client.name} timeout {timeout} {cmd}')
+            output = self.client.cmd(f"timeout {timeout} {cmd}")
 
         result = []
         def parse_result(line):
@@ -355,7 +354,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             parse_result(line)
 
         # TODO figure out why popen isn't working
-        # timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
+        # timeout_flag = self.net.popen(self.client, cmd, background=False,
         #     console_logger=DEBUG, logfile=logfile, func=parse_result,
         #     timeout=timeout, raise_error=False)
 
@@ -400,11 +399,10 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
             net=net, label=label, data_size=data_size, cca=cca,
             certfile=certfile, keyfile=keyfile, logdir=logdir,
         )
-        self.server_ip = self.net.h2.IP()
 
     def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting quiche-server')
-        self.net.h2.cmd('killall quiche-server')
+        self.server.cmd('killall quiche-server')
         self.start_server(timeout=timeout)
 
     def start_server(self, timeout: int=SETUP_TIMEOUT):
@@ -416,7 +414,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
               f'--cert={self.certfile} '\
               f'--key={self.keyfile} '\
               f'--cc-algorithm {self.cca} ' \
-              f'--listen {self.server_ip}:4433'
+              f'--listen {self.server.IP()}:4433'
 
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -428,7 +426,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
         logfile = self.logfile(self.server)
-        self.net.popen(self.net.h2, cmd, background=True,
+        self.net.popen(self.server, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
             notified = condition.wait(timeout=timeout)
@@ -446,7 +444,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
               f'--no-verify '\
               f'--method GET '\
               f'--cc-algorithm {self.cca} ' \
-              f'-- https://{self.server_ip}:4433/{self.data_size}'
+              f'-- https://{self.server.IP()}:4433/{self.data_size}'
 
         result = []
         timed_out = False
@@ -465,7 +463,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
                 pass
 
         logfile = self.logfile(self.client)
-        timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
+        timeout_flag = self.net.popen(self.client, cmd, background=False,
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout, raise_error=False)
 
@@ -514,7 +512,6 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             net=net, label=label, data_size=data_size, cca=cca,
             certfile=certfile, keyfile=keyfile, logdir=logdir,
         )
-        self.server_ip = self.net.h2.IP()
 
     def start_server(self, timeout: int=SETUP_TIMEOUT):
         base = 'deps/chromium/src'
@@ -533,7 +530,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
         logfile = self.logfile(self.server)
-        self.net.popen(self.net.h2, cmd, background=True,
+        self.net.popen(self.server, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
             notified = condition.wait(timeout=timeout)
@@ -546,7 +543,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         base = 'deps/chromium/src'
         cmd = f'./{base}/out/Default/quic_client '\
               f'--allow_unknown_root_cert '\
-              f'--host={self.net.h2.IP()} --port=6121 '\
+              f'--host={self.server.IP()} --port=6121 '\
               f'https://www.example.org/{self.data_size} '
 
         # Add the congestion control algorithm options
@@ -577,7 +574,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
                 pass
 
         logfile = self.logfile(self.client)
-        timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
+        timeout_flag = self.net.popen(self.client, cmd, background=False,
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout)
         if timeout_flag:
@@ -627,12 +624,11 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         net.set_tcp_congestion_control(cca)
 
         self.pep = pep
-        self.server_ip = self.net.h2.IP()
 
     def start_server(self, timeout: int=SETUP_TIMEOUT):
-        cmd = f'python3 webserver/http_server.py --server-ip {self.server_ip} '\
-              f'--certfile {self.certfile} --keyfile {self.keyfile} '\
-              f'-n {self.data_size}'
+        cmd = f'python3 webserver/http_server.py '\
+              f'--server-ip {self.server.IP()} -n {self.data_size} '\
+              f'--certfile {self.certfile} --keyfile {self.keyfile} '
 
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -644,7 +640,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
         logfile = self.logfile(self.server)
-        self.net.popen(self.net.h2, cmd, background=True,
+        self.net.popen(self.server, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
             notified = condition.wait(timeout=timeout)
@@ -659,8 +655,8 @@ class TCPBenchmark(HTTPDownloadBenchmark):
     def run_client(
         self, timeout: Optional[int]=None,
     ) -> Optional[Tuple[int, float]]:
-        cmd = f'python3 webserver/http_client.py --server-ip {self.server_ip} '\
-              f'-n {self.data_size}'
+        cmd = f'python3 webserver/http_client.py '\
+              f'--server-ip {self.server.IP()} -n {self.data_size}'
 
         result = []
         def parse_result(line):
@@ -678,7 +674,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
                 pass
 
         logfile = self.logfile(self.client)
-        timeout_flag = self.net.popen(self.net.h1, cmd, background=False,
+        timeout_flag = self.net.popen(self.client, cmd, background=False,
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout)
         if timeout_flag:
