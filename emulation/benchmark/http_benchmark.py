@@ -461,12 +461,18 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
                 return
             if 'timed out' in line:
                 timed_out = True
-            try:
-                match = re.search(r'received in \d+\.\d+', line).group(0)
-                time_s = float(match.split(' ')[-1])
+            else:
+                match = re.search(r'received in \d+\.\d+s', line)
+                if not match:
+                    match = re.search(r'received in \d+\.\d+ms', line)
+                    if not match:
+                        raise Exception(f'Could not get time from string {line}')
+                    match = match.group(0)
+                    time_s = float(match.split(' ')[-1].replace('ms', '')) / 1000
+                else:
+                    match = match.group(0)
+                    time_s = float(match.split(' ')[-1].replace('s', ''))
                 result.append(time_s)
-            except:
-                pass
 
         logfile = self.logfile(self.client)
         timeout_flag = self.net.popen(self.client, cmd, background=False,
