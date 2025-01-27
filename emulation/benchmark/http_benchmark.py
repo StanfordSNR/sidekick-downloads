@@ -223,6 +223,7 @@ class HTTPDownloadBenchmark(ABC):
             data_size=self.data_size,
             cca=self.cca,
             pep=self.proxy_type == ProxyType.PEPSAL,
+            sidekick=self.proxy_type == ProxyType.SIDEKICK,
         )
 
         # Run the client

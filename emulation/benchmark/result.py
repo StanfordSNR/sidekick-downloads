@@ -4,7 +4,7 @@ from datetime import datetime
 
 class HTTPBenchmarkResult:
     def __init__(self, label: str, protocol: str, data_size: int, cca: str,
-                 pep: bool):
+                 pep: bool, sidekick: bool):
         """Initialize the data structure for tracking benchmark results over
         multiple trials.
         """
@@ -16,6 +16,7 @@ class HTTPBenchmarkResult:
             'data_size': data_size,
             'cca': cca,
             'pep': pep,
+            'sidekick': sidekick,
         }
         self.outputs = []
 

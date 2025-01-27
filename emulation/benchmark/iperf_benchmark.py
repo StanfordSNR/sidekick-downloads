@@ -52,6 +52,7 @@ class Iperf3Benchmark:
                 data_size=self.n,
                 cca=self.cca,
                 pep=self.pep,
+                sidekick=self.sidekick,
             )
 
             total_time_s = 0
