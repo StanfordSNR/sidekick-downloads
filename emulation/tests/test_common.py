@@ -1,3 +1,6 @@
+"""
+Test common.py.
+"""
 import unittest
 import subprocess
 from common import *

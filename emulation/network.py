@@ -313,7 +313,7 @@ class EmulatedNetwork:
         if self.net is not None:
             self.net.stop()
 
-    def start_tcp_pep(self, logfile):
+    def start_tcp_pep(self, logfile, timeout=SETUP_TIMEOUT):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
         self.popen(self.p1, 'ip route add local 0.0.0.0/0 dev lo table 100')
         self.popen(self.p1, 'iptables -t mangle -F')
@@ -332,9 +332,9 @@ class EmulatedNetwork:
         self.popen(self.p1, 'pepsal -v', background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
-            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            notified = condition.wait(timeout=timeout)
             if not notified:
-                raise TimeoutError(f'start_tcp_pep timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_tcp_pep timeout {timeout}s')
 
 
 """

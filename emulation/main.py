@@ -13,76 +13,79 @@ DEFAULT_SSL_KEYFILE_QUIC = f'deps/certs/out/leaf_cert.pkcs8'
 DEFAULT_SSL_KEYFILE_TCP = f'deps/certs/out/leaf_cert.key'
 
 
-def benchmark_http1(net, args):
+def benchmark_tcp(net, args):
     assert not (args.topology == 'direct' and args.pep)
     bm = TCPBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
+        certfile=args.certfile,
+        keyfile=args.keyfile,
+        logdir=args.logdir,
         pep=args.pep,
-        certfile=args.certfile,
-        keyfile=args.keyfile,
     )
-    bm.run(
-        args.label,
-        args.logdir,
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
 
 
-def benchmark_http3(net, args):
-    bm = QUICBenchmark(
+def benchmark_google_quic(net, args):
+    bm = GoogleQUICBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        logdir=args.logdir,
     )
-    bm.run(
-        args.label,
-        args.logdir,
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
 
-def benchmark_quiche(net, args):
+
+def benchmark_cloudflare_quic(net, args):
     bm = CloudflareQUICBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        logdir=args.logdir,
     )
-    bm.run(
-        args.label,
-        args.logdir,
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
+
 
 def benchmark_picoquic(net, args):
     bm = PicoQUICBenchmark(
         net,
-        args.n,
+        label=args.label,
+        data_size=args.n,
         cca=args.congestion_control,
         certfile=args.certfile,
         keyfile=args.keyfile,
+        logdir=args.logdir,
     )
-    bm.run(
-        args.label,
-        args.logdir,
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
     )
+    print(result.json())
 
-
-def benchmark_webrtc():
-    pass
 
 def benchmark_iperf3(net, args):
     bm = Iperf3Benchmark(
@@ -99,6 +102,7 @@ def benchmark_iperf3(net, args):
         args.network_statistics,
         args.additional_data
     )
+
 
 def parse_data_size(n):
     try:
@@ -178,7 +182,7 @@ if __name__ == '__main__':
         'tcp',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    tcp.set_defaults(ty='benchmark', benchmark=benchmark_http1)
+    tcp.set_defaults(ty='benchmark', benchmark=benchmark_tcp)
     tcp.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/1.1 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
@@ -199,7 +203,7 @@ if __name__ == '__main__':
         'quic',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    quic.set_defaults(ty='benchmark', benchmark=benchmark_http3)
+    quic.set_defaults(ty='benchmark', benchmark=benchmark_google_quic)
     quic.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/3 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
@@ -218,7 +222,7 @@ if __name__ == '__main__':
         'quiche',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    quiche.set_defaults(ty='benchmark', benchmark=benchmark_quiche)
+    quiche.set_defaults(ty='benchmark', benchmark=benchmark_cloudflare_quic)
     quiche.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/3 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
@@ -250,15 +254,6 @@ if __name__ == '__main__':
         help='Path to SSL key')
 
     ###########################################################################
-    # WebRTC benchmark
-    ###########################################################################
-    webrtc = subparsers.add_parser(
-        'webrtc',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    webrtc.set_defaults(ty='benchmark', benchmark=benchmark_webrtc)
-
-    ###########################################################################
     # Iperf3 + TCP Benchmark
     ###########################################################################
     iperf3 = subparsers.add_parser(
@@ -283,7 +278,7 @@ if __name__ == '__main__':
     # This includes Cloudflare quiche and Linux kernel versions <5.0.
     # We automatically set pacing for Linux TCP BBR, but we need to set it
     # here for user-space implementations.
-    if args.ty != 'cli' and args.benchmark == benchmark_quiche and 'bbr' in args.congestion_control:
+    if args.ty != 'cli' and args.benchmark == benchmark_cloudflare_quic and 'bbr' in args.congestion_control:
         pacing = True
     else:
         pacing = False
