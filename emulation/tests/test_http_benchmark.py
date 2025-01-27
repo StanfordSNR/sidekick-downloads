@@ -192,7 +192,7 @@ class TestRunClient(HTTPDownloadTestCase):
 
 class TestRunBenchmark(HTTPDownloadTestCase):
     def run_benchmark(self, bm, num_trials) -> dict:
-        result = bm.run(num_trials, timeout=None, network_statistics=False)
+        result = bm.run_benchmark(num_trials)
         result = json.loads(result.json())
         return result
 

@@ -191,6 +191,65 @@ class HTTPDownloadBenchmark(ABC):
         """
         pass
 
+    def run_benchmark(
+        self, num_trials: int, timeout: Optional[int]=None,
+        network_statistics: bool=False,
+    ) -> HTTPBenchmarkResult:
+        """
+        Running the benchmark will start the HTTPS server on the h2 host and
+        the HTTPS client on the h1 host, the latter as many times as the number
+        of trials. If there is an error that is not a timeout, try restarting
+        the server. If a proxy is configured, running the benchmark will also
+        start the proxy on the p1 host.
+
+        Parameters:
+        - num_trials: Number of trials.
+        - timeout: If provided, the number of seconds to wait for each client
+          to complete its request.
+        - network_statistics: Whether to collect network statistics, i.e., the
+          number of bytes and packets that were sent and received at each
+          interface, of the most recent trial.
+
+        Returns:
+        - A HTTPBenchmarkResult corresponding to the result of this benchmark.
+        """
+        self.start_server()
+        self.start_proxy()
+
+        # Initialize the benchmark result
+        result = HTTPBenchmarkResult(
+            label=self.label,
+            protocol=self.protocol.name,
+            data_size=self.data_size,
+            cca=self.cca,
+            pep=self.proxy_type == ProxyType.PEPSAL,
+        )
+
+        # Run the client
+        for _ in range(num_trials):
+            result.append_new_output()
+            self.net.reset_statistics()
+            output = self.run_client(timeout=timeout)
+            if network_statistics:
+                statistics = self.net.snapshot_statistics()
+                result.set_network_statistics(statistics)
+
+            # Handle an error in the client
+            if output is None:
+                result.set_success(False)
+                result.set_timeout(False)
+                self.restart_server()
+                continue
+
+            # Handle a successful trial
+            status_code, time_s = output
+            result.set_success(status_code == HTTP_OK_STATUSCODE)
+            result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
+            result.set_time_s(time_s)
+
+        # Return the result
+        return result
+
 
 class PicoQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(
@@ -312,57 +371,6 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         else:
             return (HTTP_OK_STATUSCODE, result[0])
 
-    def run(
-        self, num_trials, timeout, network_statistics,
-    ) -> HTTPBenchmarkResult:
-
-        # Start the server
-        self.start_server()
-
-        # Initialize remaining trials
-        num_trials_left = num_trials
-        # allow N "no output" errors without decrementing trials
-        num_errors_left = num_trials
-
-        # Run the client
-        while num_trials_left > 0:
-            result = HTTPBenchmarkResult(
-                label=self.label,
-                protocol=self.protocol.name,
-                data_size=self.data_size,
-                cca=self.cca,
-                pep=False,
-            )
-
-            # Log output every LOG_CHUNK_TIME while continuing to run trials
-            total_time_s = 0
-            while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
-                result.append_new_output()
-                self.net.reset_statistics()
-                output = self.run_client(timeout=timeout)
-
-                # Error
-                if output is None:
-                    ERROR('no output')
-                    self.restart_server()
-                    num_errors_left -= 1
-                    if num_errors_left == 0:
-                        num_trials_left = 0
-                    continue
-
-                # Success
-                if network_statistics:
-                    statistics = self.net.snapshot_statistics()
-                    result.set_network_statistics(statistics)
-                status_code, time_s = output
-                result.set_success(status_code == HTTP_OK_STATUSCODE)
-                result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
-                result.set_time_s(time_s)
-
-                total_time_s += time_s
-                num_trials_left -= 1
-        return result
-
 
 class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(
@@ -477,45 +485,6 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         else:
             return (HTTP_OK_STATUSCODE, result[0])
 
-    def run(
-        self, num_trials, timeout, network_statistics,
-    ) -> HTTPBenchmarkResult:
-        # Required outputs are in INFO logs
-        os.environ['RUST_LOG'] = 'info'
-
-        # Start the server
-        self.start_server()
-
-        # Run the client
-        result = HTTPBenchmarkResult(
-            label=self.label,
-            protocol=self.protocol.name,
-            data_size=self.data_size,
-            cca=self.cca,
-            pep=False,
-        )
-
-        for _ in range(num_trials):
-            result.append_new_output()
-            self.net.reset_statistics()
-            output = self.run_client(timeout=timeout)
-
-            # Error
-            if output is None:
-                ERROR('no output')
-                self.restart_server()
-                continue
-
-            # Success
-            if network_statistics:
-                statistics = self.net.snapshot_statistics()
-                result.set_network_statistics(statistics)
-            status_code, time_s = output
-            result.set_success(status_code == HTTP_OK_STATUSCODE)
-            result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
-            result.set_time_s(time_s)
-        return result
-
 
 class GoogleQUICBenchmark(HTTPDownloadBenchmark):
     def __init__(
@@ -621,51 +590,6 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         else:
             return result[0]
 
-    def run(
-        self, num_trials, timeout, network_statistics,
-    ) -> HTTPBenchmarkResult:
-        # Start the server
-        self.start_server()
-
-        # Initialize remaining trials
-        num_trials_left = num_trials
-
-        # Run the client
-        while num_trials_left > 0:
-            result = HTTPBenchmarkResult(
-                label=self.label,
-                protocol=self.protocol.name,
-                data_size=self.data_size,
-                cca=self.cca,
-                pep=False,
-            )
-
-            # Log output every LOG_CHUNK_TIME while continuing to run trials
-            total_time_s = 0
-            while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
-                result.append_new_output()
-                self.net.reset_statistics()
-                output = self.run_client(timeout=timeout)
-
-                # Error
-                if output is None:
-                    ERROR('no output')
-                    num_trials_left -= 1
-                    continue
-
-                # Success
-                if network_statistics:
-                    statistics = self.net.snapshot_statistics()
-                    result.set_network_statistics(statistics)
-                status_code, time_s = output
-                result.set_success(status_code == HTTP_OK_STATUSCODE)
-                result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
-                result.set_time_s(time_s)
-
-                total_time_s += time_s
-                num_trials_left -= 1
-        return result
-
 
 class TCPBenchmark(HTTPDownloadBenchmark):
     def __init__(
@@ -765,48 +689,3 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             WARN(f'TCP client returned multiple results {result}')
         else:
             return result[0]
-
-    def run(
-        self, num_trials, timeout, network_statistics,
-    ) -> HTTPBenchmarkResult:
-        self.start_server()
-        self.start_proxy()
-
-        # Initialize remaining trials
-        num_trials_left = num_trials
-
-        # Run the client
-        while num_trials_left > 0:
-            result = HTTPBenchmarkResult(
-                label=self.label,
-                protocol=self.protocol.name,
-                data_size=self.data_size,
-                cca=self.cca,
-                pep=self.pep,
-            )
-
-            # Log output every LOG_CHUNK_TIME while continuing to run trials
-            total_time_s = 0
-            while num_trials_left > 0 and total_time_s < LOG_CHUNK_TIME:
-                result.append_new_output()
-                self.net.reset_statistics()
-                output = self.run_client(timeout=timeout)
-
-                # Error
-                if output is None:
-                    ERROR('no output')
-                    num_trials_left -= 1
-                    continue
-
-                # Success
-                if network_statistics:
-                    statistics = self.net.snapshot_statistics()
-                    result.set_network_statistics(statistics)
-                status_code, time_s = output
-                result.set_success(status_code == HTTP_OK_STATUSCODE)
-                result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
-                result.set_time_s(time_s)
-
-                total_time_s += time_s
-                num_trials_left -= 1
-        return result

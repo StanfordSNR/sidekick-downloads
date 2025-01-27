@@ -25,7 +25,7 @@ def benchmark_tcp(net, args):
         logdir=args.logdir,
         pep=args.pep,
     )
-    result = bm.run(
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
@@ -43,7 +43,7 @@ def benchmark_google_quic(net, args):
         keyfile=args.keyfile,
         logdir=args.logdir,
     )
-    result = bm.run(
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
@@ -61,7 +61,7 @@ def benchmark_cloudflare_quic(net, args):
         keyfile=args.keyfile,
         logdir=args.logdir,
     )
-    result = bm.run(
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
@@ -79,7 +79,7 @@ def benchmark_picoquic(net, args):
         keyfile=args.keyfile,
         logdir=args.logdir,
     )
-    result = bm.run(
+    result = bm.run_benchmark(
         args.trials,
         args.timeout,
         args.network_statistics,
@@ -102,6 +102,7 @@ def benchmark_iperf3(net, args):
         args.network_statistics,
         args.additional_data
     )
+
 
 def parse_data_size(n):
     try:
