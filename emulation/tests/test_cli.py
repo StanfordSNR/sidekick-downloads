@@ -1,3 +1,6 @@
+"""
+Test the CLI entrypoint into the program in main.py.
+"""
 import unittest
 import subprocess
 import os

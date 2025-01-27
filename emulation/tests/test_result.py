@@ -1,3 +1,6 @@
+"""
+Test benchmark/result.py.
+"""
 import unittest
 import json
 

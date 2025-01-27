@@ -1,3 +1,6 @@
+"""
+Test benchmark/http_benchmark.py.
+"""
 import sys
 import os
 import tempfile

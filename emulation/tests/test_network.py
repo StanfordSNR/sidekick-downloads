@@ -1,3 +1,6 @@
+"""
+Test network.py.
+"""
 import unittest
 import time
 import tempfile
