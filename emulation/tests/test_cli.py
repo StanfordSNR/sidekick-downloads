@@ -26,11 +26,17 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
                 continue
         return lines
 
-    def _test_file_download_benchmark(self, protocol):
-        result = subprocess.run(
-            ['python3', 'emulation/main.py', protocol],
-            capture_output=True, text=True,
-        )
+    def _test_file_download_benchmark(self, protocol, sidekick=False):
+        if sidekick:
+                result = subprocess.run(
+                ['python3', 'emulation/main.py', '--sidekick', protocol],
+                capture_output=True, text=True,
+            )
+        else:
+            result = subprocess.run(
+                ['python3', 'emulation/main.py', protocol],
+                capture_output=True, text=True,
+            )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotEqual(result.stdout, '', 'results are logged to stdout')
         lines = self.parse_json_lines(result.stdout)
@@ -44,12 +50,16 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
 
     def test_tcp_benchmark(self):
         self._test_file_download_benchmark('tcp')
+        self._test_file_download_benchmark('tcp', sidekick=True)
 
     def test_google_quic_benchmark(self):
         self._test_file_download_benchmark('quic')
+        self._test_file_download_benchmark('quic', sidekick=True)
 
     def test_cloudflare_quic_benchmark(self):
         self._test_file_download_benchmark('quiche')
+        self._test_file_download_benchmark('quiche', sidekick=True)
 
     def test_picoquic_benchmark(self):
         self._test_file_download_benchmark('picoquic')
+        self._test_file_download_benchmark('picoquic', sidekick=True)
