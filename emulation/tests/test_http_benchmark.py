@@ -23,8 +23,8 @@ class HTTPDownloadTestCase(unittest.TestCase):
         os.chdir('..')
 
         # Setup a mininet network
-        self.net = self.setUpOneHopNetwork()
-        self.stopped = False
+        self.stopped = True
+        self.setUpOneHopNetwork()
 
         # Set default parameters
         self.label = 'my_benchmark'
@@ -50,40 +50,47 @@ class HTTPDownloadTestCase(unittest.TestCase):
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
         jitter1=None, jitter2=None, qdisc='red', pacing=False,
+        bridge_proxy=True
     ) -> OneHopNetwork:
-        net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                            jitter1, jitter2, qdisc, pacing)
-        return net
+        if self.stopped or bridge_proxy != self.bridge_proxy:
+            if not self.stopped:
+                self.stopNetwork()
+            self.net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
+                                     jitter1, jitter2, qdisc, pacing, bridge_proxy)
+            self.stopped = False
+            self.bridge_proxy = bridge_proxy
 
-    def setUpTCPBenchmark(self, pep=False) -> TCPBenchmark:
+    def setUpTCPBenchmark(self, pep=False, sidekick=False) -> TCPBenchmark:
         bm = TCPBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, pep=pep,
+            self.keyfile, self.logdir, pep=pep, sidekick=sidekick,
         )
         return bm
 
-    def setUpGoogleQUICBenchmark(self) -> GoogleQUICBenchmark:
+    def setUpGoogleQUICBenchmark(self, sidekick=False) -> GoogleQUICBenchmark:
         self.keyfile = 'deps/certs/out/leaf_cert.pkcs8'
         bm = GoogleQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir,
+            self.keyfile, self.logdir, sidekick=sidekick,
         )
         return bm
 
     def setUpCloudflareQUICBenchmark(
-        self, port: int=4433,
+        self, port: int=4433, sidekick=False
     ) -> CloudflareQUICBenchmark:
         bm = CloudflareQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, port=port,
+            self.keyfile, self.logdir, port=port, sidekick=sidekick,
         )
         return bm
 
     # def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
-    def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
+    def setUpPicoQUICBenchmark(
+        self, port: int=4433, sidekick=False
+    ) -> PicoQUICBenchmark:
         bm = PicoQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, port=port,
+            self.keyfile, self.logdir, port=port, sidekick=sidekick,
         )
         return bm
 
@@ -230,43 +237,93 @@ class TestRunBenchmark(HTTPDownloadTestCase):
             self.assertIsNone(output.get('additional_data'))
 
     def test_tcp_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpTCPBenchmark()
         self._test_run_benchmark(bm, 1)
 
     def test_tcp_pep_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpTCPBenchmark(pep=True)
         self._test_run_benchmark(bm, 1)
 
+    def test_tcp_sidekick_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpTCPBenchmark(sidekick=True)
+        self._test_run_benchmark(bm, 1)
+
     def test_tcp_run_benchmark_multiple_trials(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpTCPBenchmark()
         self._test_run_benchmark(bm, 5)
 
     def test_tcp_pep_run_benchmark_multiple_trial(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpTCPBenchmark(pep=True)
         self._test_run_benchmark(bm, 5)
 
+    def test_tcp_sidekick_run_benchmark_multiple_trial(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpTCPBenchmark(sidekick=True)
+        self._test_run_benchmark(bm, 5)
+
     def test_google_quic_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
+        self._test_run_benchmark(bm, 1)
+
+    def test_google_quic_sidekick_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpGoogleQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 1)
 
     def test_google_quic_run_benchmark_multiple_trials(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
+    def test_google_quic_sidekick_run_benchmark_multiple_trials(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpGoogleQUICBenchmark(sidekick=True)
+        self._test_run_benchmark(bm, 5)
+
     def test_cloudflare_quic_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
+        self._test_run_benchmark(bm, 1)
+
+    def test_cloudflare_quic_sidekick_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpCloudflareQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 1)
 
     def test_cloudflare_quic_run_benchmark_multiple_trials(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
+    def test_cloudflare_quic_sidekick_run_benchmark_multiple_trials(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpCloudflareQUICBenchmark(sidekick=True)
+        self._test_run_benchmark(bm, 5)
+
     def test_picoquic_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
+    def test_picoquic_sidekick_run_benchmark_one_trial(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpPicoQUICBenchmark(sidekick=True)
+        self._test_run_benchmark(bm, 1)
+
     def test_picoquic_run_benchmark_multiple_trials(self):
+        self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
+        self._test_run_benchmark(bm, 5)
+
+    def test_picoquic_sidekick_run_benchmark_multiple_trials(self):
+        self.setUpOneHopNetwork(bridge_proxy=False)
+        bm = self.setUpPicoQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
     def _test_hosts_write_to_logs(self, bm, proxy: bool):
