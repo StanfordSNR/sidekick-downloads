@@ -24,6 +24,7 @@ class HTTPDownloadTestCase(unittest.TestCase):
 
         # Setup a mininet network
         self.net = self.setUpOneHopNetwork()
+        self.bridge_proxy = True
         self.stopped = False
 
         # Set default parameters
@@ -50,10 +51,19 @@ class HTTPDownloadTestCase(unittest.TestCase):
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
         jitter1=None, jitter2=None, qdisc='red', pacing=False,
+        bridge_proxy=True
     ) -> OneHopNetwork:
         net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                            jitter1, jitter2, qdisc, pacing)
+                            jitter1, jitter2, qdisc, pacing, bridge_proxy)
         return net
+
+    def refreshOneHopNetwork(self, bridge_proxy=True):
+        if bridge_proxy != self.bridge_proxy and not self.stopped:
+            self.stopNetwork()
+        if self.bridge_proxy != bridge_proxy:
+            self.net = self.setUpOneHopNetwork(bridge_proxy=bridge_proxy)
+            self.stopped = False
+            self.bridge_proxy = bridge_proxy
 
     def setUpTCPBenchmark(self, pep=False, sidekick=False) -> TCPBenchmark:
         bm = TCPBenchmark(
@@ -232,74 +242,92 @@ class TestRunBenchmark(HTTPDownloadTestCase):
             self.assertIsNone(output.get('additional_data'))
 
     def test_tcp_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpTCPBenchmark()
         self._test_run_benchmark(bm, 1)
 
     def test_tcp_pep_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpTCPBenchmark(pep=True)
         self._test_run_benchmark(bm, 1)
 
     def test_tcp_sidekick_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpTCPBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 1)
 
     def test_tcp_run_benchmark_multiple_trials(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpTCPBenchmark()
         self._test_run_benchmark(bm, 5)
 
     def test_tcp_pep_run_benchmark_multiple_trial(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpTCPBenchmark(pep=True)
         self._test_run_benchmark(bm, 5)
 
     def test_tcp_sidekick_run_benchmark_multiple_trial(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpTCPBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
     def test_google_quic_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
     def test_google_quic_sidekick_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpGoogleQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 1)
 
     def test_google_quic_run_benchmark_multiple_trials(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
     def test_google_quic_sidekick_run_benchmark_multiple_trials(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpGoogleQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
     def test_cloudflare_quic_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
     def test_cloudflare_quic_sidekick_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpCloudflareQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 1)
 
     def test_cloudflare_quic_run_benchmark_multiple_trials(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
     def test_cloudflare_quic_sidekick_run_benchmark_multiple_trials(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpCloudflareQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
     def test_picoquic_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
     def test_picoquic_sidekick_run_benchmark_one_trial(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpPicoQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 1)
 
     def test_picoquic_run_benchmark_multiple_trials(self):
+        self.refreshOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
     def test_picoquic_sidekick_run_benchmark_multiple_trials(self):
+        self.refreshOneHopNetwork(bridge_proxy=False)
         bm = self.setUpPicoQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
