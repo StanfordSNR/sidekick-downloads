@@ -304,6 +304,8 @@ if __name__ == '__main__':
 
     try:
         if args.ty == 'cli':
+            if args.sidekick:
+                net.start_sidekick(logfile=None)
             CLI(net.net)
         else:
             init_logdir(args.logdir)
