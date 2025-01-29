@@ -13,10 +13,12 @@ class Iperf3Benchmark:
         n: int,
         cca: str,
         pep: bool,
+        sidekick: bool,
     ):
         self.net = net
         self.n = n
         self.pep = pep
+        self.sidekick = sidekick
         self.cca = cca
         net.set_tcp_congestion_control(cca)
 
@@ -38,6 +40,8 @@ class Iperf3Benchmark:
         self.start_server()
         if self.pep:
             self.net.start_tcp_pep()
+        elif self.sidekick:
+            self.net.start_sidekick()
         num_trials_left = num_trials
 
         while num_trials_left > 0:
@@ -48,6 +52,7 @@ class Iperf3Benchmark:
                 data_size=self.n,
                 cca=self.cca,
                 pep=self.pep,
+                sidekick=self.sidekick,
             )
 
             total_time_s = 0

@@ -5,6 +5,12 @@ This currently contains one example: a transparent bridge
 To build:
 
 ```
+proxy$ cargo build --bin bridge --release
+```
+
+Or, in debug mode:
+
+```
 proxy$ cargo build --bin bridge
 ```
 

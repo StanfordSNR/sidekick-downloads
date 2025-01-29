@@ -15,10 +15,11 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         self.data_size = 1000
         self.cca = 'cubic'
         self.pep = False
+        self.sidekick = False
 
     def test_initialize_result(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.pep)
+                                  self.cca, self.pep, self.sidekick)
         x = res.json()
         self.assertIsInstance(x, str)
 
@@ -42,7 +43,7 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
 
     def test_append_one_output(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.pep)
+                                  self.cca, self.pep, self.sidekick)
 
         # Check baseline
         x = json.loads(res.json())
@@ -76,7 +77,7 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
 
     def test_append_multiple_outputs(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.pep)
+                                  self.cca, self.pep, self.sidekick)
 
         # Check baseline
         x = json.loads(res.json())
