@@ -133,6 +133,9 @@ class EmulatedNetwork:
         self.popen(host, f'ethtool -K {iface} gso {gso} tso {tso}',
                    console_logger=DEBUG)
 
+        # Turn off checksum offloading for sidekick proxy
+        self.popen(host, f'ethtool -K {iface} tx off rx off', console_logger=DEBUG)
+
     def set_tcp_congestion_control(self, cca):
         version = get_linux_version()
         cmd = f'sysctl -w net.ipv4.tcp_congestion_control={cca}'
@@ -329,6 +332,22 @@ class EmulatedNetwork:
 
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile, func=quacker_log)
+
+    def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/bridge'):
+        condition = threading.Condition()
+        def notify_when_ready(line):
+            if 'Ready' in line:
+                with condition:
+                    condition.notify()
+
+        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
+                   background=True, console_logger=DEBUG,
+                   logfile=logfile, func=notify_when_ready)
+
+        with condition:
+            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            if not notified:
+                raise TimeoutError(f'start_sidekick_pep timeout {SETUP_TIMEOUT}s')
 
     def start_tcp_pep(self, logfile, timeout=SETUP_TIMEOUT):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
