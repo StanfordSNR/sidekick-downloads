@@ -43,9 +43,14 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
                 continue
         return lines
 
-    def _test_file_download_benchmark(self, protocol, sidekick=False):
-        network_options = ['--sidekick'] if sidekick else []
-        stdout, _ = self.execute_command(protocol, network_options)
+    def _test_file_download_benchmark(
+        self,
+        protocol,
+        network_options: List[str]=[],
+        protocol_options: List[str]=[],
+    ):
+        stdout, _ = self.execute_command(
+            protocol, network_options, protocol_options)
         self.assertNotEqual(stdout, '', 'results are logged to stdout')
         lines = self.parse_json_lines(stdout)
         self.assertEqual(len(lines), 1)
@@ -58,19 +63,22 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
 
     def test_tcp_benchmark(self):
         self._test_file_download_benchmark('tcp')
-        self._test_file_download_benchmark('tcp', sidekick=True)
+        self._test_file_download_benchmark('tcp', ['--sidekick'])
+        self._test_file_download_benchmark('tcp', protocol_options=['--pep'])
 
     def test_google_quic_benchmark(self):
         self._test_file_download_benchmark('quic')
-        self._test_file_download_benchmark('quic', sidekick=True)
+        self._test_file_download_benchmark('quic', ['--sidekick'])
 
     def test_cloudflare_quic_benchmark(self):
         self._test_file_download_benchmark('quiche')
-        self._test_file_download_benchmark('quiche', sidekick=True)
+        self._test_file_download_benchmark('quiche', ['--sidekick'])
 
     def test_picoquic_benchmark(self):
         self._test_file_download_benchmark('picoquic')
-        self._test_file_download_benchmark('picoquic', sidekick=True)
+        self._test_file_download_benchmark('picoquic', ['--sidekick'])
+        self._test_file_download_benchmark('picoquic', ['--quacker'])
+        self._test_file_download_benchmark('picoquic', ['--quacker', '--sidekick'])
 
     def test_quacker_prints_quacks(self):
         _, stderr = self.execute_command(
