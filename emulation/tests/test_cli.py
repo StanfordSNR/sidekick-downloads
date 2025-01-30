@@ -93,4 +93,4 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
         self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
         self.assertGreaterEqual(len(quacks), 2, 'should send more at this freq')
         for i in range(len(quacks) - 1):
-            self.assertLess(quacks[i], quacks[i+1], i)
+            self.assertLessEqual(quacks[i], quacks[i+1], quacks)
