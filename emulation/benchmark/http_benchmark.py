@@ -287,7 +287,6 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             certfile=certfile, keyfile=keyfile, logdir=logdir,
             proxy_type=proxy_type
         )
-        self.sidekick = sidekick
 
 
     def restart_server(self, timeout: int=SETUP_TIMEOUT):
@@ -421,7 +420,6 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
             certfile=certfile, keyfile=keyfile, logdir=logdir,
             proxy_type=proxy_type
         )
-        self.sidekick = sidekick
 
     def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting quiche-server')
@@ -550,7 +548,6 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             certfile=certfile, keyfile=keyfile, logdir=logdir,
             proxy_type=proxy_type
         )
-        self.sidekick = sidekick
 
     def start_server(self, timeout: int=SETUP_TIMEOUT):
         base = 'deps/chromium/src'
@@ -668,9 +665,6 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             certfile=certfile, keyfile=keyfile, proxy_type=proxy_type,
         )
         net.set_tcp_congestion_control(cca)
-
-        self.pep = pep
-        self.sidekick = sidekick
 
     def start_server(self, timeout: int=SETUP_TIMEOUT):
         cmd = f'python3 webserver/http_server.py '\
