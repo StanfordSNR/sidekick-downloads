@@ -316,6 +316,23 @@ class EmulatedNetwork:
         if self.net is not None:
             self.net.stop()
 
+    def start_client_quacker(
+        self, threshold: int, frequency_ms: int, quackee_port: int,
+        logfile=None,
+    ):
+        cmd = f'./quacker/target/release/quacker '\
+              f'--interface h1-eth0 '\
+              f'--threshold {threshold} --frequency-ms {frequency_ms} '\
+              f'--target-addr {self.h2.IP()}:{quackee_port}'
+
+        os.environ['RUST_LOG'] = 'info'
+        def quacker_log(line):
+            # Temporary: log debug output from the background process
+            print('[quack]', line.strip(), file=sys.stderr)
+
+        self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
+            logfile=logfile, func=quacker_log)
+
     def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/bridge'):
         condition = threading.Condition()
         def notify_when_ready(line):
