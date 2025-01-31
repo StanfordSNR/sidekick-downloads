@@ -4,6 +4,37 @@ use quack::{PowerSumQuack, PowerSumQuackU32};
 use crate::stream::Packet;
 use crate::identifier::{Identifier, IdentifierFunc};
 
+/// The packets in a quACKnowledgment that are currently in the cache.
+///
+/// Indexes refer to the index in the ordered cache view.
+#[derive(Debug, PartialEq, Eq)]
+pub struct DecodeResult {
+    /// One *plus* the index of the latest acknowledged packet.
+    /// The value is 0 if no packets are acknowledged.
+    pub last_index: usize,
+    /// Indexes of packets before the latest acknowledged packet that were
+    /// not acknowledged, in increasing order.
+    pub missing_indexes: Vec<usize>,
+}
+
+/// Types of errors when decoding the quACK.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DecodeError {
+    /// Number of missing packets exceeds threshold.
+    ExceededThreshold,
+}
+
+impl fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DecodeError::ExceededThreshold =>
+                write!(f, "Number of missing packets exceeds threshold"),
+        }
+    }
+}
+
+impl Error for DecodeError {}
+
 /// A cache of packets that is able to decode quACKs.
 ///
 /// The quACKs represent all packets that have ever been added to the cache,
@@ -54,6 +85,19 @@ impl QuackCache {
 
     /// Reset the cache.
     pub fn reset(&mut self) {
+        unimplemented!()
+    }
+
+    /// The quACK represents all packets that have ever been added to the
+    /// cache, including those that have already been evicted. The decoded
+    /// result communicates which packets currently in the cache the quACK
+    /// is acknowledging.
+    ///
+    /// The quACK fails to decode if
+    /// Returns None if we should send a reset and also reset the cache.
+    pub fn decode(
+        &self, quack: &PowerSumQuackU32,
+    ) -> Result<DecodeResult, DecodeError> {
         unimplemented!()
     }
 }
@@ -144,5 +188,98 @@ mod tests {
         cache.reset();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.view().len(), 0);
+    }
+
+    #[test]
+    fn test_decode_none_missing() {
+        let threshold = 4;
+        let num_packets = 10;
+        let mut q = PowerSumQuackU32::new(threshold);
+        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        for i in 0..num_packets {
+            q.insert(i as _);
+            cache.add(test_packet(&[i as _]));
+        }
+
+        // all packets are acked
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, num_packets);
+        assert_eq!(res.missing_indexes, vec![]);
+
+        // add more packets - a strict prefix is acked
+        cache.add(test_packet(&[43]));
+        cache.add(test_packet(&[27]));
+        cache.add(test_packet(&[36]));
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, num_packets);
+        assert_eq!(res.missing_indexes, vec![]);
+
+        // evict some packets
+        let num_to_evict = 5;
+        assert!(cache.evict(num_to_evict).is_ok());
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, num_packets - num_to_evict);
+        assert_eq!(res.missing_indexes, vec![]);
+    }
+
+    #[test]
+    fn test_decode_some_missing() {
+        let threshold = 4;
+        let num_packets = 10;
+        let mut q = PowerSumQuackU32::new(threshold);
+        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        for i in 0..num_packets {
+            q.insert(i as _);
+            cache.add(test_packet(&[i as _]));
+        }
+
+        // remove "missing" packets from the quack
+        q.remove(5);
+        q.remove(6);
+        q.remove(8);
+
+        // detect missing packets
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, num_packets);
+        assert_eq!(res.missing_indexes, vec![5, 6, 8]);
+
+        // add more packets to the suffix - detect missing packets still
+        cache.add(test_packet(&[43]));
+        cache.add(test_packet(&[27]));
+        cache.add(test_packet(&[36]));
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, num_packets);
+        assert_eq!(res.missing_indexes, vec![5, 6, 8]);
+
+        // evict some packets
+        let num_to_evict = 5;
+        assert!(cache.evict(num_to_evict).is_ok());
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, num_packets - num_to_evict);
+        assert_eq!(res.missing_indexes, vec![0, 1, 3]);
+    }
+
+    #[test]
+    fn test_decode_exceeded_threshold() {
+        let threshold = 4;
+        let num_packets = 10;
+        let mut q = PowerSumQuackU32::new(threshold);
+        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        for i in 0..num_packets {
+            q.insert(i as _);
+            cache.add(test_packet(&[i as _]));
+        }
+
+        // remove "missing" packets from the quack
+        q.remove(2);
+        q.remove(3);
+        q.remove(5);
+        q.remove(6);
+        q.remove(8);
+
+        // exceeded threshold
+        let res = cache.decode(&q);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err(), DecodeError::ExceededThreshold);
     }
 }
