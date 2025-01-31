@@ -10,7 +10,7 @@ const CHANNEL_CAPACITY: usize = 100;
 /// The interface identifier should be the `id` field in
 /// the socket struct and the index in the PacketStream
 /// sockets array.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Packet {
     pub iface: u16,
     pub data: [u8; BUFFER_SIZE],
