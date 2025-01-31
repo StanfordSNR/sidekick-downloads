@@ -51,28 +51,33 @@ pub struct QuackCache {
 impl QuackCache {
     /// Initialize a new cache.
     pub fn new(id_func: IdentifierFunc) -> Self {
-        unimplemented!()
+        Self {
+            packet_cache: vec![],
+            id_cache: vec![],
+            id_func,
+        }
     }
 
     /// The number of packets in the cache.
     pub fn len(&self) -> usize {
-        unimplemented!()
+        self.packet_cache.len()
     }
 
     /// Return a read-only view of packets in the cache, ordered from least
     /// to most recently added.
     pub fn view(&self) -> &[Packet] {
-        unimplemented!()
+        self.packet_cache.as_slice()
     }
 
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) {
-        unimplemented!()
+        self.id_cache.push(self.id_func.to_id(&packet.data));
+        self.packet_cache.push(packet);
     }
 
     /// Get the i-th packet (0-indexing) in the ordered cache view.
     pub fn get(&self, i: usize) -> Option<&Packet> {
-        unimplemented!()
+        self.packet_cache.get(i)
     }
 
     /// Evict the `n` least recently added packets from the cache.
@@ -80,12 +85,19 @@ impl QuackCache {
     /// If there aren't at least `n` packets to evict, returns an error without
     /// modifying the cache.
     pub fn evict(&mut self, n: usize) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+        if n <= self.len() {
+            self.id_cache.drain(0..n);
+            self.packet_cache.drain(0..n);
+            Ok(())
+        } else {
+            Err("not enough packets to evict".into())
+        }
     }
 
     /// Reset the cache.
     pub fn reset(&mut self) {
-        unimplemented!()
+        self.id_cache = vec![];
+        self.packet_cache = vec![];
     }
 
     /// The quACK represents all packets that have ever been added to the
