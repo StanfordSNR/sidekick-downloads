@@ -20,3 +20,6 @@ quack = { path = "../deps/quack" }
 
 [[bin]]
 name = "bridge"
+
+[[bin]]
+name = "sidekick"
