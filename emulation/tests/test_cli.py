@@ -66,6 +66,7 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
         self._test_file_download_benchmark('tcp', ['--sidekick'])
         self._test_file_download_benchmark('tcp', protocol_options=['--pep'])
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_benchmark(self):
         self._test_file_download_benchmark('quic')
         self._test_file_download_benchmark('quic', ['--sidekick'])

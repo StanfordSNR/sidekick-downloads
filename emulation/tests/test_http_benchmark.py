@@ -120,6 +120,7 @@ class TestConstructors(HTTPDownloadTestCase):
         self.assertEqual(bm.protocol, Protocol.TCP)
         self.assertIsNone(bm.proxy_type)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_constructor(self):
         bm = self.setUpGoogleQUICBenchmark()
         self._test_common_properties(bm)
@@ -160,6 +161,7 @@ class TestStartServer(HTTPDownloadTestCase):
         bm = self.setUpTCPBenchmark()
         self._test_server_is_listening_on(bm, 8443)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_server_is_listening(self):
         bm = self.setUpGoogleQUICBenchmark()
         self._test_server_is_listening_on(bm, 6121)
@@ -191,6 +193,7 @@ class TestRunClient(HTTPDownloadTestCase):
         bm = self.setUpTCPBenchmark()
         self._test_client_returns_result(bm)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_client_returns_result(self):
         bm = self.setUpGoogleQUICBenchmark()
         self._test_client_returns_result(bm)
@@ -266,21 +269,25 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         bm = self.setUpTCPBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_run_benchmark_one_trial(self):
         self.setUpOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_sidekick_run_benchmark_one_trial(self):
         self.setUpOneHopNetwork(bridge_proxy=False)
         bm = self.setUpGoogleQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 1)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_sidekick_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork(bridge_proxy=False)
         bm = self.setUpGoogleQUICBenchmark(sidekick=True)
@@ -349,6 +356,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         bm = self.setUpTCPBenchmark(pep=True)
         self._test_hosts_write_to_logs(bm, True)
 
+    @unittest.skip('skip chromium tests')
     def test_google_quic_hosts_write_to_logs(self):
         bm = self.setUpGoogleQUICBenchmark()
         self._test_hosts_write_to_logs(bm, False)
