@@ -82,8 +82,8 @@ class NetworkTestCase(unittest.TestCase):
             time.sleep(setup_time)
         return net
 
-    def ping(self, node1, node2, n=1) -> PingResult:
-        """Send n pings from node1 from node2 at a 0.1s interval.
+    def ping(self, node1, node2, n=1, interval=0.1) -> PingResult:
+        """Send n pings from node1 from node2.
 
         Asserts that the node is reachable and at least one ping reply was
         received. Assertions may be flaky with loss, but n should be large
@@ -91,7 +91,7 @@ class NetworkTestCase(unittest.TestCase):
 
         Returns the parsed ping statistics.
         """
-        output = node1.cmd(f'ping -i 0.1 -c {n} {node2.IP()}')
+        output = node1.cmd(f'ping -i {interval} -c {n} {node2.IP()}')
         result = PingResult(output)
         debug_output = f'{node1.name} -> {node2.name}\n{output}'
         self.assertTrue(result.success, debug_output)
@@ -99,12 +99,105 @@ class NetworkTestCase(unittest.TestCase):
         return result
 
 
-class TestNetStatistics(unittest.TestCase):
-    def setUp(self):
-        pass
+class TestNetStatistics(NetworkTestCase):
+    def assertSchemaIsCorrect(self, net, expected_ifaces):
+        stats = net.snapshot_statistics()
+        self.assertEqual(len(stats), 1 + len(EmulatedNetwork.METRICS), stats)
+        self.assertIn('ifaces', stats)
+        ifaces = stats['ifaces']
+        self.assertEqual(len(ifaces), len(expected_ifaces))
+        self.assertEqual(ifaces, list(sorted(expected_ifaces)))
+        for metric in EmulatedNetwork.METRICS:
+            self.assertIn(metric, stats)
+            self.assertEqual(len(stats[metric]), len(ifaces))
 
-    def test_tx_and_rx_statistics(self):
-        pass
+    def test_statistics_schema(self):
+        host_ifaces = ['h1-eth0', 'h2-eth0']
+        proxy_ifaces = ['p1-eth0', 'p1-eth1']
+
+        # one-hop network
+        net = self.setUpOneHopNetwork()
+        self.assertSchemaIsCorrect(net, host_ifaces + proxy_ifaces)
+        net.stop()
+
+        # direct network
+        net = self.setUpDirectNetwork()
+        self.assertSchemaIsCorrect(net, host_ifaces)
+        net.stop()
+
+        # one-hop network with a sidekick
+        cwd = os.getcwd()
+        os.chdir('..') # run from sidekick base directory
+        net = self.setUpOneHopNetwork(bridge_proxy=False)
+        net.start_sidekick(logfile=None)
+        self.assertSchemaIsCorrect(net, host_ifaces + proxy_ifaces)
+        net.stop()
+        os.chdir(cwd)
+
+    def test_reset_statistics(self):
+        net = self.setUpOneHopNetwork()
+        self.ping(net.h1, net.h2, 100, interval=0.01)
+        stats1 = net.snapshot_statistics()
+
+        # check statistics have been reduced since there may be non-ping packets
+        net.reset_statistics()
+        stats2 = net.snapshot_statistics()
+        for i, iface in enumerate(stats1['ifaces']):
+            for metric in EmulatedNetwork.METRICS:
+                debug_str = f'{iface} {metric}'
+                self.assertLess(stats2[metric][i], stats1[metric][i], debug_str)
+
+    def test_sending_packets_without_loss(self):
+        net = self.setUpOneHopNetwork()
+
+        # get the ARPs over with
+        self.ping(net.h1, net.h2, 1)
+        self.ping(net.h2, net.h1, 1)
+
+        # send n pings from h1 to h2
+        n = 100
+        net.reset_statistics()
+        self.ping(net.h1, net.h2, n, interval=0.01)
+
+        # 14-byte Ethernet header
+        # 20-byte IPv4 header
+        # 8-byte ICMP header
+        header_size = 42
+
+        # all interfaces have sent and received at least n packets
+        stats = net.snapshot_statistics()
+        for i, iface in enumerate(stats['ifaces']):
+            self.assertGreaterEqual(stats['tx_packets'][i], n, iface)
+            self.assertGreaterEqual(stats['rx_packets'][i], n, iface)
+            self.assertGreater(stats['tx_bytes'][i], n * header_size, iface)
+            self.assertGreater(stats['rx_bytes'][i], n * header_size, iface)
+
+    def test_sending_packets_with_loss(self):
+        net = self.setUpOneHopNetwork(loss1=20)
+
+        # get the ARPs over with
+        self.ping(net.h1, net.h2, 5)
+        self.ping(net.h2, net.h1, 5)
+
+        # send n pings from h1 to h2
+        num_requests = 100
+        net.reset_statistics()
+        self.ping(net.h1, net.h2, num_requests, interval=0.01)
+
+        # some packets are lost on the way there
+        # ifaces = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
+        stats = net.snapshot_statistics()
+        self.assertGreaterEqual(stats['tx_packets'][0], num_requests)
+        self.assertLess(stats['rx_packets'][2], num_requests)
+        self.assertLess(stats['tx_packets'][3], num_requests)
+        self.assertLess(stats['rx_packets'][1], num_requests)
+
+        # some packets are lost on the way back
+        self.assertLess(stats['tx_packets'][1], num_requests)
+        self.assertLess(stats['rx_packets'][3], num_requests)
+        num_replies = stats['tx_packets'][2]
+        self.assertLess(num_replies, num_requests)
+        self.assertLess(stats['rx_packets'][0], num_replies)
 
 
 class TestEmulatedNetwork(unittest.TestCase):
