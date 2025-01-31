@@ -1,8 +1,8 @@
-use std::fmt;
-use std::error::Error;
-use quack::{PowerSumQuack, PowerSumQuackU32};
-use crate::stream::Packet;
 use crate::identifier::{Identifier, IdentifierFunc};
+use crate::stream::Packet;
+use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
+use std::error::Error;
+use std::fmt;
 
 /// The packets in a quACKnowledgment that are currently in the cache.
 ///
@@ -20,15 +20,40 @@ pub struct DecodeResult {
 /// Types of errors when decoding the quACK.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DecodeError {
+    /// The client should only send quACKs if it has observed at least 1 packet.
+    EmptyClientQuack,
+    /// The threshold of the received quACK does not match our own threshold.
+    InvalidThreshold { expected: usize, actual: usize },
     /// Number of missing packets exceeds threshold.
-    ExceededThreshold,
+    ExceededThreshold {
+        num_missing: usize,
+        threshold: usize,
+    },
+    /// The last value the client received is not an identifier of a known
+    /// packet that is currently or was previously in our cache.
+    MissingLastValue { identifier: Identifier },
 }
 
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            DecodeError::ExceededThreshold =>
-                write!(f, "Number of missing packets exceeds threshold"),
+            DecodeError::EmptyClientQuack => {
+                write!(f, "Empty client quack")
+            }
+            DecodeError::InvalidThreshold { expected, actual } => {
+                write!(f, "Invalid threshold {} != {}", expected, actual)
+            }
+            DecodeError::ExceededThreshold {
+                num_missing,
+                threshold,
+            } => write!(
+                f,
+                "Number of missing packets exceeds threshold {} > {}",
+                num_missing, threshold
+            ),
+            DecodeError::MissingLastValue { identifier } => {
+                write!(f, "Missing last value {}", identifier)
+            }
         }
     }
 }
@@ -46,15 +71,18 @@ pub struct QuackCache {
     id_cache: Vec<Identifier>,
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
+
+    quack: PowerSumQuackU32,
 }
 
 impl QuackCache {
     /// Initialize a new cache.
-    pub fn new(id_func: IdentifierFunc) -> Self {
+    pub fn new(id_func: IdentifierFunc, quack_threshold: usize) -> Self {
         Self {
             packet_cache: vec![],
             id_cache: vec![],
             id_func,
+            quack: PowerSumQuackU32::new(quack_threshold),
         }
     }
 
@@ -105,18 +133,85 @@ impl QuackCache {
     /// result communicates which packets currently in the cache the quACK
     /// is acknowledging.
     ///
-    /// The quACK fails to decode if
-    /// Returns None if we should send a reset and also reset the cache.
-    pub fn decode(
-        &self, quack: &PowerSumQuackU32,
-    ) -> Result<DecodeResult, DecodeError> {
-        unimplemented!()
+    /// Returns an error if the quACK fails to decode.
+    pub fn decode(&self, client_quack: &PowerSumQuackU32) -> Result<DecodeResult, DecodeError> {
+        // Check empty client quACK
+        if client_quack.last_value().is_none() {
+            return Err(DecodeError::EmptyClientQuack);
+        }
+
+        // Check invalid threshold
+        if self.quack.threshold() != client_quack.threshold() {
+            return Err(DecodeError::InvalidThreshold {
+                expected: self.quack.threshold(),
+                actual: client_quack.threshold(),
+            });
+        }
+
+        // Insert ids in the id cache up to the last id received by the client.
+        // Assuming the client receives a subset of packets in the cache, if
+        // the last value doesn't exist in our cache, then the state is
+        // corrupted either by an early eviction or network packet corruption.
+        let mut last_index = 0;
+        let mut proxy_quack = self.quack.clone();
+        for &id in &self.id_cache {
+            if proxy_quack.last_value() == client_quack.last_value() {
+                break;
+            }
+            proxy_quack.insert(id);
+            last_index += 1;
+        }
+        if proxy_quack.last_value() != client_quack.last_value() {
+            return Err(DecodeError::MissingLastValue {
+                identifier: client_quack.last_value().unwrap(),
+            });
+        }
+
+        // Check that the number of missing packets is within the threshold.
+        // Note that it's possible for weird behavior to occur with overflows,
+        // but the state is invalid in either case.
+        let difference_quack = proxy_quack.sub(client_quack.clone());
+        if (difference_quack.count() as usize) > difference_quack.threshold() {
+            return Err(DecodeError::ExceededThreshold {
+                num_missing: difference_quack.count() as usize,
+                threshold: difference_quack.threshold(),
+            });
+        }
+
+        // No missing packets.
+        if difference_quack.count() == 0 {
+            return Ok(DecodeResult {
+                last_index,
+                missing_indexes: vec![],
+            });
+        }
+
+        // Decode the quACK using the identifier cache.
+        let coeffs = difference_quack.to_coeffs();
+        let missing_indexes = self
+            .id_cache
+            .iter()
+            .take(last_index)
+            .enumerate()
+            .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
+            .map(|(index, _)| index)
+            .collect();
+        Ok(DecodeResult {
+            last_index,
+            missing_indexes,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const DEFAULT_THRESHOLD: usize = 4;
+
+    fn new_cache() -> QuackCache {
+        QuackCache::new(IdentifierFunc::FirstByte, DEFAULT_THRESHOLD)
+    }
 
     fn test_packet(data: &[u8]) -> Packet {
         let mut pkt = Packet::new(0);
@@ -128,14 +223,14 @@ mod tests {
 
     #[test]
     fn test_new_quack_cache() {
-        let cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let cache = new_cache();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.view().len(), 0);
     }
 
     #[test]
     fn test_add_and_view() {
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut cache = new_cache();
         let packet1 = test_packet(&[1, 2, 3]);
         let packet2 = test_packet(&[4, 5, 6]);
 
@@ -150,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_add_and_get() {
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut cache = new_cache();
         let packet1 = test_packet(&[1, 2, 3]);
         let packet2 = test_packet(&[4, 5, 6]);
 
@@ -164,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_evict_success() {
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut cache = new_cache();
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
@@ -184,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_evict_error() {
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut cache = new_cache();
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
@@ -195,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_reset() {
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut cache = new_cache();
         cache.add(test_packet(&[1]));
         cache.reset();
         assert_eq!(cache.len(), 0);
@@ -207,7 +302,7 @@ mod tests {
         let threshold = 4;
         let num_packets = 10;
         let mut q = PowerSumQuackU32::new(threshold);
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -236,10 +331,9 @@ mod tests {
 
     #[test]
     fn test_decode_some_missing() {
-        let threshold = 4;
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(threshold);
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -273,10 +367,9 @@ mod tests {
 
     #[test]
     fn test_decode_exceeded_threshold() {
-        let threshold = 4;
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(threshold);
-        let mut cache = QuackCache::new(IdentifierFunc::FirstByte);
+        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -292,6 +385,12 @@ mod tests {
         // exceeded threshold
         let res = cache.decode(&q);
         assert!(res.is_err());
-        assert_eq!(res.unwrap_err(), DecodeError::ExceededThreshold);
+        assert_eq!(
+            res.unwrap_err(),
+            DecodeError::ExceededThreshold {
+                num_missing: 5,
+                threshold: DEFAULT_THRESHOLD,
+            }
+        );
     }
 }
