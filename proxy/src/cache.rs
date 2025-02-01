@@ -7,7 +7,7 @@ use std::fmt;
 /// The packets in a quACKnowledgment that are currently in the cache.
 ///
 /// Indexes refer to the index in the ordered cache view.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct DecodeResult {
     /// One *plus* the index of the latest acknowledged packet.
     /// The value is 0 if no packets are acknowledged.
@@ -73,6 +73,7 @@ pub struct QuackCache {
     id_func: IdentifierFunc,
 
     quack: PowerSumQuackU32,
+    last_decode_result: DecodeResult,
 }
 
 impl QuackCache {
@@ -83,6 +84,7 @@ impl QuackCache {
             id_cache: vec![],
             id_func,
             quack: PowerSumQuackU32::new(quack_threshold),
+            last_decode_result: DecodeResult::default(),
         }
     }
 
@@ -110,16 +112,40 @@ impl QuackCache {
 
     /// Evict the `n` least recently added packets from the cache.
     ///
+    /// The evicted packets must have all been decided to be either received or
+    /// lost based on the decode results of the last quACK. Eviction makes these
+    /// decisions final.
+    ///
     /// If there aren't at least `n` packets to evict, returns an error without
     /// modifying the cache.
     pub fn evict(&mut self, n: usize) -> Result<(), Box<dyn Error>> {
-        if n <= self.len() {
-            self.id_cache.drain(0..n);
-            self.packet_cache.drain(0..n);
-            Ok(())
-        } else {
-            Err("not enough packets to evict".into())
+        if n > self.len() {
+            return Err("not enough packets to evict".into());
         }
+        if n > self.last_decode_result.last_index {
+            return Err("quack hasn't made decision on packet fates".into());
+        }
+
+        // Make missing packet decisions final
+        let mut missing_indexes = vec![];
+        for &index in &self.last_decode_result.missing_indexes {
+            if index < n {
+                self.quack.remove(self.id_cache[index]);
+            } else {
+                missing_indexes.push(index - n);
+            }
+        }
+
+        // Make received packet decisions final and evict from caches
+        for id in self.id_cache.drain(0..n) {
+            self.quack.insert(id);
+        }
+        self.packet_cache.drain(0..n);
+
+        // Update last decode result
+        self.last_decode_result.last_index -= n;
+        self.last_decode_result.missing_indexes = missing_indexes;
+        Ok(())
     }
 
     /// Reset the cache.
@@ -128,13 +154,16 @@ impl QuackCache {
         self.packet_cache = vec![];
     }
 
-    /// The quACK represents all packets that have ever been added to the
-    /// cache, including those that have already been evicted. The decoded
-    /// result communicates which packets currently in the cache the quACK
-    /// is acknowledging.
+    /// The quACK is the cumulative representation of all packets that have ever
+    /// been added to the cache that the client has actually received, including
+    /// those that have already been evicted. The decoded result communicates
+    /// which packets that are *currently* in the cache are being quACKed.
+    ///
+    /// Modifies the internal decisions of which packets have been definitively
+    /// received or likely lost. On eviction, these decisions are made final.
     ///
     /// Returns an error if the quACK fails to decode.
-    pub fn decode(&self, client_quack: &PowerSumQuackU32) -> Result<DecodeResult, DecodeError> {
+    pub fn decode(&mut self, client_quack: &PowerSumQuackU32) -> Result<DecodeResult, DecodeError> {
         // Check empty client quACK
         if client_quack.last_value().is_none() {
             return Err(DecodeError::EmptyClientQuack);
@@ -178,28 +207,31 @@ impl QuackCache {
             });
         }
 
-        // No missing packets.
-        if difference_quack.count() == 0 {
-            return Ok(DecodeResult {
+        // Decode the quACK using the identifier cache.
+        let result = if difference_quack.count() == 0 {
+            DecodeResult {
                 last_index,
                 missing_indexes: vec![],
-            });
-        }
+            }
+        } else {
+            let coeffs = difference_quack.to_coeffs();
+            let missing_indexes = self
+                .id_cache
+                .iter()
+                .take(last_index)
+                .enumerate()
+                .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
+                .map(|(index, _)| index)
+                .collect();
+            DecodeResult {
+                last_index,
+                missing_indexes,
+            }
+        };
 
-        // Decode the quACK using the identifier cache.
-        let coeffs = difference_quack.to_coeffs();
-        let missing_indexes = self
-            .id_cache
-            .iter()
-            .take(last_index)
-            .enumerate()
-            .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
-            .map(|(index, _)| index)
-            .collect();
-        Ok(DecodeResult {
-            last_index,
-            missing_indexes,
-        })
+        // Cache the result.
+        self.last_decode_result = result.clone();
+        Ok(result)
     }
 }
 
@@ -264,17 +296,32 @@ mod tests {
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
 
+        // quack all packets
+        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        q.insert(1);
+        q.insert(2);
+        q.insert(3);
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, 3);
+        assert_eq!(res.missing_indexes, vec![]);
+
         // evict partial
         assert!(cache.evict(2).is_ok());
         assert_eq!(cache.len(), 1);
         assert_eq!(cache.view().len(), 1);
         assert_eq!(cache.get(0), Some(&test_packet(&[3])));
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, 1);
+        assert_eq!(res.missing_indexes, vec![]);
 
         // evict full
         assert!(cache.evict(1).is_ok());
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.view().len(), 0);
         assert_eq!(cache.get(0), None);
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, 0);
+        assert_eq!(res.missing_indexes, vec![]);
     }
 
     #[test]
@@ -283,6 +330,20 @@ mod tests {
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
+
+        // try to evict before decode
+        assert!(cache.evict(3).is_err());
+
+        // quack all packets
+        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        q.insert(1);
+        q.insert(2);
+        q.insert(3);
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, 3);
+        assert_eq!(res.missing_indexes, vec![]);
+
+        // try to evict after decode
         assert!(cache.evict(4).is_err());
         assert!(cache.evict(3).is_ok());
         assert!(cache.evict(1).is_err());
