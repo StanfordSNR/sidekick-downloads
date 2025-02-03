@@ -1,7 +1,7 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
 use crate::identifier::IdentifierFunc;
-use crate::buffer::UdpParser;
+use crate::buffer::{ID_OFFSET, UdpParser};
 
 use log::trace;
 
@@ -45,7 +45,7 @@ impl Sidekick {
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
         let cache = QuackCache::new(
-            IdentifierFunc::FirstByte,
+            IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
             quack_threshold
         );
         Self {
@@ -64,7 +64,7 @@ impl Sidekick {
     /// then to retransmit missing packets and delete acknowledged packets
     /// from the cache. If the quACK can't be decoded, reset the quACK by
     /// sending any message back to the client on the sidekick connection.
-    fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
+    fn handle_sidekick_packet_from_client(&mut self, _packet: Packet) {
         unimplemented!()
     }
 

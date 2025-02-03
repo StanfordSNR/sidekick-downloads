@@ -1,5 +1,5 @@
 use libc::c_uchar;
-use crate::BUFFER_SIZE;
+use crate::{identifier::{Identifier, IdentifierFunc}, BUFFER_SIZE};
 
 // Ethernet (14), IP (20), TCP/UDP (8) headers
 // The randomly-encrypted payload in a QUIC packet with a short header is at
@@ -35,11 +35,11 @@ pub struct UdpParser {
     pub dst_ip: String,
     pub src_port: u16,
     pub dst_port: u16,
-    pub identifier: u32,
+    pub identifier: Identifier,
 }
 
 impl UdpParser {
-    pub fn _parse(x: &[u8; BUFFER_SIZE]) -> Option<Self> {
+    pub fn _parse(x: &[u8; BUFFER_SIZE], identifier: IdentifierFunc) -> Option<Self> {
         let ip_protocol = x[23];
         if i32::from(ip_protocol) != libc::IPPROTO_UDP {
             return None;
@@ -59,12 +59,7 @@ impl UdpParser {
         let dst_ip = format!("{}.{}.{}.{}", x[30], x[31], x[32], x[33]);
         let src_port = u16::from_be_bytes([x[34], x[35]]);
         let dst_port = u16::from_be_bytes([x[36], x[37]]);
-        let identifier = u32::from_be_bytes([
-            x[ID_OFFSET],
-            x[ID_OFFSET + 1],
-            x[ID_OFFSET + 2],
-            x[ID_OFFSET + 3],
-        ]);
+        let identifier = identifier.to_id(x);
         Some(UdpParser {
             src_mac,
             dst_mac,
@@ -94,14 +89,4 @@ impl UdpParser {
         u16::from_be_bytes([x[36], x[37]])
     }
 
-    /// Returns the sidekick identifier assuming the buffer represents
-    /// a QUIC UDP packet.
-    pub fn parse_identifier(x: &[u8; BUFFER_SIZE]) -> u32 {
-        u32::from_be_bytes([
-            x[ID_OFFSET],
-            x[ID_OFFSET + 1],
-            x[ID_OFFSET + 2],
-            x[ID_OFFSET + 3],
-        ])
-    }
 }
