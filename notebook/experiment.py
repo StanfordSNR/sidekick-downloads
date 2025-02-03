@@ -5,81 +5,68 @@ from typing import List, Optional
 
 
 class Treatment:
-    def __init__(self, protocol):
+    def __init__(
+        self, protocol: str, label: str,
+        network_options: List[str]=[],
+        protocol_options: List[str]=[],
+    ):
         self.protocol = protocol
+        self._label = label
+        self._network_options = network_options
+        self._protocol_options = protocol_options
 
-    def label(self):
-        raise NotImplementedError
+    def label(self) -> str:
+        return self._label
+
+    @property
+    def network_options(self) -> List[str]:
+        return self._network_options
+
+    @property
+    def protocol_options(self) -> List[str]:
+        return self._protocol_options
 
 
 class TCPTreatment(Treatment):
-    def __init__(self, cca: str='cubic', pep: bool=False,
-                 label: Optional[str]=None):
-        super().__init__(protocol='tcp')
-        self.cca = cca
-        self.pep = pep
-        if label is not None:
-            self._label = label
-        elif pep:
-            self._label = f'pep_{self.cca}'
-        else:
-            self._label = f'{self.protocol}_{self.cca}'
-
-    def label(self) -> str:
-        return self._label
+    def __init__(self, label: str, cca: str='cubic', pep: bool=False):
+        protocol_options = ['-cca', cca]
+        if pep:
+            protocol_options.append('--pep')
+        super().__init__(
+            protocol='tcp', label=label, protocol_options=protocol_options)
 
 
 class QUICTreatment(Treatment):
-    def __init__(self, cca: str='cubic', label: Optional[str]=None):
-        super().__init__(protocol='quic')
-        self.cca = cca
-        if label is not None:
-            self._label = label
-        else:
-            self._label = f'{self.protocol}_{self.cca}'
+    def __init__(self, label: str, cca: str='cubic'):
+        super().__init__(
+            protocol='quic', label=label,
+            protocol_options=['-cca', cca],
+        )
 
-    def label(self) -> str:
-        return self._label
 
 class CloudflareQUICTreatment(Treatment):
-    def __init__(self, cca: str='cubic', label: Optional[str]=None):
-        super().__init__(protocol='quiche')
-        self.cca = cca
-        if label is not None:
-            self._label = label
-        else:
-            self._label = f'{self.protocol}_{self.cca}'
+    def __init__(self, label: str, cca: str='cubic'):
+        super().__init__(
+            protocol='quiche', label=label,
+            protocol_options=['-cca', cca],
+        )
 
-    def label(self) -> str:
-        return self._label
 
 class PicoQUICTreatment(Treatment):
-    def __init__(self, cca: str='cubic', label: Optional[str]=None):
-        super().__init__(protocol='picoquic')
-        self.cca = cca
-        if label is not None:
-            self._label = label
-        else:
-            self._label = f'{self.protocol}_{self.cca}'
+    def __init__(self, label: str, cca: str='cubic'):
+        super().__init__(
+            protocol='picoquic', label=label,
+            protocol_options=['-cca', cca],
+        )
 
-    def label(self) -> str:
-        return self._label
 
 class TCPIperf3Treatment(Treatment):
-    def __init__(self, cca: str='cubic', pep: bool=False,
-                 label: Optional[str]=None):
-        super().__init__(protocol='iperf3')
-        self.cca = cca
-        self.pep = pep
-        if label is not None:
-            self._label = label
-        elif pep:
-            self._label = f'pep_{self.cca}'
-        else:
-            self._label = f'{self.protocol}_{self.cca}'
-
-    def label(self) -> str:
-        return self._label
+    def __init__(self, label: str, cca: str='cubic', pep: bool=False):
+        protocol_options = ['-cca', cca]
+        if pep:
+            protocol_options.append('--pep')
+        super().__init__(
+            protocol='iperf3', label=label, protocol_options=protocol_options)
 
 
 class NetworkSetting:
