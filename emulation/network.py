@@ -65,7 +65,7 @@ class EmulatedNetwork:
         # Add netem with delay variability
         cmd = f'tc qdisc add dev {iface} root handle 2: '\
               f'netem delay {delay}ms '
-        if loss is not None and int(loss) > 0:
+        if loss is not None and float(loss) > 0:
             cmd += f'loss {loss}% '
         if jitter is not None:
             cmd += f'{jitter}ms {DEFAULT_DELAY_CORR}% distribution paretonormal'
