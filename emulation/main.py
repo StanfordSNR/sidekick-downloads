@@ -22,8 +22,7 @@ def benchmark_tcp(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        pep=args.proxy == ProxyType.PEPSAL,
-        sidekick=args.proxy == ProxyType.SIDEKICK,
+        proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -42,7 +41,7 @@ def benchmark_google_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        sidekick=args.proxy == ProxyType.SIDEKICK,
+        proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -61,7 +60,7 @@ def benchmark_cloudflare_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        sidekick=args.proxy == ProxyType.SIDEKICK,
+        proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -80,7 +79,7 @@ def benchmark_picoquic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        sidekick=args.proxy == ProxyType.SIDEKICK,
+        proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -95,8 +94,7 @@ def benchmark_iperf3(net, args):
         net,
         args.n,
         cca=args.congestion_control,
-        pep=args.proxy == ProxyType.PEPSAL,
-        sidekick=args.proxy == ProxyType.SIDEKICK,
+        proxy_type=args.proxy,
     )
     bm.run(
         args.label,

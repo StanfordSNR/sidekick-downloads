@@ -166,7 +166,11 @@ class HTTPDownloadBenchmark(ABC):
         Parameters:
         - timeout: The number of seconds to block during setup before an error.
         """
-        assert self.proxy_type is None
+        logfile = self.logfile(self.proxy)
+        if self.proxy_type == ProxyType.PEPSAL:
+            self.net.start_tcp_pep(logfile=logfile, timeout=timeout)
+        elif self.proxy_type == ProxyType.SIDEKICK:
+            self.net.start_sidekick(logfile=logfile, timeout=timeout)
 
     @abstractmethod
     def run_client(
@@ -224,8 +228,7 @@ class HTTPDownloadBenchmark(ABC):
             protocol=self.protocol.name,
             data_size=self.data_size,
             cca=self.cca,
-            pep=self.proxy_type == ProxyType.PEPSAL,
-            sidekick=self.proxy_type == ProxyType.SIDEKICK,
+            proxy_type='none' if self.proxy_type is None else self.proxy_type.value,
         )
 
         # Run the client
@@ -265,7 +268,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         keyfile: str,
         logdir: str,
         port: int=4433,
-        sidekick: bool=False,
+        proxy_type: Optional[ProxyType]=None,
     ):
         """
         Picoquic file download benchmark.
@@ -279,10 +282,9 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
         - port: The port to start the HTTP server on.
-        - sidekick: Whether to start Sidekick PEP on the p1 host.
+        - proxy: The type of network proxy.
         """
         self.port = port
-        proxy_type = ProxyType.SIDEKICK if sidekick else None
         super().__init__(
             protocol=Protocol.PICOQUIC,
             net=net, label=label, data_size=data_size, cca=cca,
@@ -330,11 +332,6 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
                 WARN("Server did not print expected output; continuing anyway")
                 # raise TimeoutError(f'start_server timeout {timeout}s')
         '''
-
-    def start_proxy(self, timeout=SETUP_TIMEOUT):
-        if self.proxy_type == ProxyType.SIDEKICK:
-            logfile = self.logfile(self.proxy)
-            self.net.start_sidekick(logfile=logfile, timeout=timeout)
 
     def run_client(
         self, timeout: Optional[int]=None,
@@ -401,7 +398,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         keyfile: str,
         logdir: str,
         port: int=4433,
-        sidekick: bool=False,
+        proxy_type: Optional[ProxyType]=None,
     ):
         """
         Cloudflare QUIC file download benchmark.
@@ -415,10 +412,9 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
         - port: The port to start the HTTP server on.
-        - sidekick: Whether to start Sidekick PEP on the p1 host.
+        - proxy: The type of network proxy.
         """
         self.port = port
-        proxy_type = ProxyType.SIDEKICK if sidekick else None
         super().__init__(
             protocol=Protocol.CLOUDFLARE_QUIC,
             net=net, label=label, data_size=data_size, cca=cca,
@@ -458,11 +454,6 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
             notified = condition.wait(timeout=timeout)
             if not notified:
                 raise TimeoutError(f'start_server timeout {timeout}s')
-
-    def start_proxy(self, timeout=SETUP_TIMEOUT):
-        if self.proxy_type == ProxyType.SIDEKICK:
-            logfile = self.logfile(self.proxy)
-            self.net.start_sidekick(logfile=logfile, timeout=timeout)
 
     def run_client(
         self, timeout: Optional[int]=None,
@@ -531,7 +522,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         certfile: str,
         keyfile: str,
         logdir: str,
-        sidekick: bool=False,
+        proxy_type: Optional[ProxyType]=None,
     ):
         """
         Google QUIC file download benchmark.
@@ -544,9 +535,8 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
-        - sidekick: Whether to start Sidekick PEP on the p1 host.
+        - proxy: The type of network proxy.
         """
-        proxy_type = ProxyType.SIDEKICK if sidekick else None
         super().__init__(
             protocol=Protocol.GOOGLE_QUIC,
             net=net, label=label, data_size=data_size, cca=cca,
@@ -577,11 +567,6 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             notified = condition.wait(timeout=timeout)
             if not notified:
                 raise TimeoutError(f'start_server timeout {timeout}s')
-
-    def start_proxy(self, timeout=SETUP_TIMEOUT):
-        if self.proxy_type == ProxyType.SIDEKICK:
-            logfile = self.logfile(self.proxy)
-            self.net.start_sidekick(logfile=logfile, timeout=timeout)
 
     def run_client(
         self, timeout: Optional[int]=None,
@@ -644,8 +629,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         certfile: str,
         keyfile: str,
         logdir: str,
-        pep: bool=False,
-        sidekick: bool=False,
+        proxy_type: Optional[ProxyType]=None,
     ):
         """
         TCP file download benchmark using a simple Python server and client.
@@ -660,10 +644,8 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
-        - pep: Whether to start a TCP PEP (pepsal) on the p1 host.
-        - sidekick: Whether to start Sidekick PEP on the p1 host.
+        - proxy: The type of network proxy.
         """
-        proxy_type = ProxyType.PEPSAL if pep else ProxyType.SIDEKICK if sidekick else None
         super().__init__(
             protocol=Protocol.TCP,
             net=net, label=label, data_size=data_size, cca=cca, logdir=logdir,
@@ -692,13 +674,6 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             notified = condition.wait(timeout=timeout)
             if not notified:
                 raise TimeoutError(f'start_server timeout {timeout}s')
-
-    def start_proxy(self, timeout=SETUP_TIMEOUT):
-        logfile = self.logfile(self.proxy)
-        if self.proxy_type == ProxyType.PEPSAL:
-            self.net.start_tcp_pep(logfile=logfile, timeout=timeout)
-        elif self.proxy_type == ProxyType.SIDEKICK:
-            self.net.start_sidekick(logfile=logfile, timeout=timeout)
 
     def run_client(
         self, timeout: Optional[int]=None,
