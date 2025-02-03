@@ -1,5 +1,5 @@
 use crate::BUFFER_SIZE;
-use crate::socket::{Socket, SockAddr};
+use crate::socket::{Socket, SockAddr, SocketType};
 use tokio::sync::mpsc;
 use log::{error, debug, trace};
 
@@ -36,10 +36,10 @@ pub struct PacketStream {
 
 impl PacketStream {
     /// Open sockets and mpsc channel, start polling packets
-    pub fn new(interface1: String, interface2: String) -> Self {
+    pub fn new(client_iface: String, server_iface: String) -> Self {
         let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let socket1 = Socket::new(interface1, 0).unwrap();
-        let socket2 = Socket::new(interface2, 1).unwrap();
+        let socket1 = Socket::new(client_iface, 0, SocketType::Client).unwrap();
+        let socket2 = Socket::new(server_iface, 1, SocketType::Server).unwrap();
         tokio::spawn(poll_packets(socket1.clone(), tx.clone()));
         tokio::spawn(poll_packets(socket2.clone(), tx));
         debug!("Created PacketStream between interfaces {}, {}", socket1.interface, socket2.interface);

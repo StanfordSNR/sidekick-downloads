@@ -3,6 +3,14 @@ use log::debug;
 use std::ffi::CString;
 use crate::BUFFER_SIZE;
 
+/// Caller-provided tag for a socket
+#[derive(Debug, Clone)]
+pub enum SocketType {
+    Client,
+    Server,
+    None
+}
+
 /// Structure representing a raw socket.
 #[derive(Debug, Clone)]
 pub struct Socket {
@@ -15,6 +23,8 @@ pub struct Socket {
     /// Caller-provided identifier that received packets
     /// will be marked with; generally an index in an array
     pub id: u16,
+    /// Caller-provided tag; may be useful for interpreting directionality
+    pub socktype: SocketType,
 }
 
 /// Wrapper for sockaddr_ll
@@ -37,7 +47,8 @@ impl SockAddr {
 
 impl Socket {
     /// Create a raw socket and bind it to a specific interface.
-    pub fn new(interface: String, id: u16) -> Result<Self, String> {
+    pub fn new(interface: String, id: u16,
+               socktype: SocketType) -> Result<Self, String> {
         let protocol = (ETH_P_ALL as i16).to_be() as c_int;
         let fd = unsafe { socket(AF_PACKET, SOCK_RAW, protocol) };
         if fd < 0 {
@@ -49,6 +60,7 @@ impl Socket {
                 interface: interface.clone(),
                 interface_c: CString::new(interface).unwrap(),
                 id,
+                socktype,
             };
             sock.bind(protocol)?;
             sock.set_promiscuous()?;

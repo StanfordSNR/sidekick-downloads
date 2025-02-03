@@ -44,5 +44,5 @@ async fn main() {
         args.quack_port,
         args.quack_threshold,
     );
-    sidekick.start()
+    sidekick.start().await;
 }
