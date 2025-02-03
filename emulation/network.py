@@ -57,7 +57,7 @@ class EmulatedNetwork:
             linux_version = get_linux_version()
             if pacing or linux_version < 5.0:
                 self.popen(host, f'tc qdisc add dev {iface} root handle 2: '\
-                                f'fq pacing', console_logger=DEBUG)
+                                f'fq pacing')
             return
 
         # Configure the network emulator node
@@ -69,7 +69,7 @@ class EmulatedNetwork:
             cmd += f'loss {loss}% '
         if jitter is not None:
             cmd += f'{jitter}ms {DEFAULT_DELAY_CORR}% distribution paretonormal'
-        self.popen(host, cmd, console_logger=DEBUG)
+        self.popen(host, cmd)
 
         # Add HTB for bandwidth
         # Take the min because sch_htb complains about the quantum being too big
@@ -79,11 +79,10 @@ class EmulatedNetwork:
         r2q = 10
         quantum = min(int(bw*1000000/8 / r2q), 200000)
         self.popen(host, f'tc qdisc add dev {iface} parent 2: handle 3: ' \
-                         f'htb default 10', console_logger=DEBUG)
+                         f'htb default 10')
         htb_rate = int(2*bw) if qdisc == 'policer' else bw
         self.popen(host, f'tc class add dev {iface} parent 3: ' \
-                         f'classid 10 htb rate {htb_rate}Mbit quantum {quantum}',
-                         console_logger=DEBUG)
+                         f'classid 10 htb rate {htb_rate}Mbit quantum {quantum}')
 
         # Add queue management
         if qdisc == 'policer':
@@ -93,7 +92,7 @@ class EmulatedNetwork:
                         f'protocol ip u32 match ip src 0.0.0.0/0 '\
                         f'action police rate {bw}mbit burst {burst} '\
                         f'conform-exceed drop'
-            self.popen(host, queue_cmd, console_logger=DEBUG)
+            self.popen(host, queue_cmd)
         elif qdisc is not None:
             queue_cmd = f'tc qdisc add dev {iface} parent 3:10 handle 11: '
             if qdisc == 'red':
@@ -126,16 +125,15 @@ class EmulatedNetwork:
                 queue_cmd += f'fq_codel'
             else:
                 raise NotImplementedError(qdisc)
-            self.popen(host, queue_cmd, console_logger=DEBUG)
+            self.popen(host, queue_cmd)
 
         # Turn off tso and gso to send MTU-sized packets
         gso = 'on' if gso else 'off'
         tso = 'on' if tso else 'off'
-        self.popen(host, f'ethtool -K {iface} gso {gso} tso {tso}',
-                   console_logger=DEBUG)
+        self.popen(host, f'ethtool -K {iface} gso {gso} tso {tso}')
 
         # Turn off checksum offloading for sidekick proxy
-        self.popen(host, f'ethtool -K {iface} tx off rx off', console_logger=DEBUG)
+        self.popen(host, f'ethtool -K {iface} tx off rx off')
 
     def set_tcp_congestion_control(self, cca):
         version = get_linux_version()
