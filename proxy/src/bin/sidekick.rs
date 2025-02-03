@@ -1,6 +1,6 @@
 use clap::Parser;
 use flexi_logger::{Logger, WriteMode, FileSpec};
-
+use std::{fs::File, path::Path};
 use proxy::Sidekick;
 
 #[derive(Parser)]
@@ -18,6 +18,7 @@ struct Cli {
     #[arg(long, short = 't', default_value_t = 20)]
     quack_threshold: usize,
     /// Logfile to write rust logs to (optional)
+    /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
     /// stdout/stderr can interfere with Mininet's packet buffers.
     #[arg(long, short = 'f')]
@@ -28,16 +29,25 @@ struct Cli {
 async fn main() {
     let args = Cli::parse();
     if let Some(logfile) = args.logfile {
+        if !Path::new(&logfile).exists() {
+            println!("Creating logfile {}", logfile);
+            let _ = File::create(&logfile).expect(&format!("Cannot create {} for logging", logfile));
+        }
         Logger::try_with_env_or_str("error").unwrap()
                                             .log_to_file(
                                                 FileSpec::try_from(&logfile)
                                                     .expect(&format!("Cannot open {} for logging", logfile))
                                             ).write_mode(WriteMode::BufferAndFlush)
                                              .start()
+                                             .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
                                              .unwrap();
     } else {
         env_logger::init();
     }
+    println!(
+        "Ready to start Sidekick with client {}; expecting server {}",
+        args.client_interface, args.server_interface
+    );
     let mut sidekick = Sidekick::new(
         &args.client_interface,
         &args.server_interface,
