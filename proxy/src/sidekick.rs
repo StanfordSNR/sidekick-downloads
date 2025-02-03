@@ -87,17 +87,21 @@ impl Sidekick {
     /// connection and handle them appropriately. Forward all other packets.
     fn handle_packet(&mut self, packet: Packet) {
         if !UdpParser::is_udp(&packet.data) {
-            trace!("Drop non-UDP packet");
+            trace!("Forward non-UDP packet");
+            self.stream.forward_packet(&packet, packet.nbytes as usize);
             return;
         }
         match self.connection_type(&packet) {
             ConnectionType::BaseCtos => {
+                trace!("Received base packet from client");
                 self.handle_base_packet_from_client(packet);
             }
             ConnectionType::BaseStoc => {
+                trace!("Received base packet from client");
                 self.handle_base_packet_from_server(packet);
             }
             ConnectionType::Sidekick => {
+                trace!("Received base packet from client");
                 self.handle_sidekick_packet_from_client(packet);
             }
             ConnectionType::None => {
