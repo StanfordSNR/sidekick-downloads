@@ -4,7 +4,7 @@ use std::ffi::CString;
 use crate::BUFFER_SIZE;
 
 /// Caller-provided tag for a socket
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SocketType {
     Client,
     Server,

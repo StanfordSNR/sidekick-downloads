@@ -1,6 +1,8 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
 use crate::identifier::IdentifierFunc;
+use crate::buffer::UdpParser;
+
 use log::trace;
 
 /// The sidekick provides in-network assistance to a single base connection
@@ -11,6 +13,21 @@ pub struct Sidekick {
     stream: PacketStream,
     cache: QuackCache,
     quack_port: u16,
+    base_connection_ctos: Option<[u8; 12]>,
+    base_connection_stoc: Option<[u8; 12]>,
+    sidekick_connection: Option<[u8; 12]>,
+}
+
+/// Identifies the connection as base or sidekick
+enum ConnectionType {
+    /// Base connection from client to server
+    BaseCtos,
+    /// Base connection from server to client
+    BaseStoc,
+    /// Sidekick connection
+    Sidekick,
+    /// Some other connection (forward only)
+    None
 }
 
 impl Sidekick {
@@ -34,7 +51,10 @@ impl Sidekick {
         Self {
             stream,
             cache,
-            quack_port
+            quack_port,
+            base_connection_ctos: None,
+            base_connection_stoc: None,
+            sidekick_connection: None,
         }
     }
 
@@ -66,7 +86,61 @@ impl Sidekick {
     /// Filter for packets that belong to the base connection or the sidekick
     /// connection and handle them appropriately. Forward all other packets.
     fn handle_packet(&mut self, packet: Packet) {
-        unimplemented!()
+        if !UdpParser::is_udp(&packet.data) {
+            trace!("Drop non-UDP packet");
+            return;
+        }
+        match self.connection_type(&packet) {
+            ConnectionType::BaseCtos => {
+                self.handle_base_packet_from_client(packet);
+            }
+            ConnectionType::BaseStoc => {
+                self.handle_base_packet_from_server(packet);
+            }
+            ConnectionType::Sidekick => {
+                self.handle_sidekick_packet_from_client(packet);
+            }
+            ConnectionType::None => {
+                trace!("Forwarding packet from unknown four-tuple");
+                self.stream.forward_packet(&packet, packet.nbytes as usize);
+            }
+        }
+    }
+
+    /// Returns whether this is a base or sidekick connection.
+    fn connection_type(&mut self, packet: &Packet) -> ConnectionType {
+        let addr_key = UdpParser::parse_addr_key(&packet.data);
+        if packet.iface == self.stream.client_iface() {
+            if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
+                match self.sidekick_connection {
+                    Some(key) if key == addr_key => return ConnectionType::Sidekick,
+                    Some(_) => return ConnectionType::None,
+                    None => {
+                        self.sidekick_connection = Some(addr_key);
+                        return ConnectionType::Sidekick;
+                    }
+                }
+            } else {
+                match self.base_connection_ctos {
+                    Some(key) if key == addr_key => return ConnectionType::BaseCtos,
+                    Some(_) => return ConnectionType::None,
+                    None => {
+                        self.base_connection_ctos = Some(addr_key);
+                        return ConnectionType::BaseCtos;
+                    }
+                }
+            }
+        } else if packet.iface == self.stream.server_iface() {
+            match self.base_connection_stoc {
+                Some(key) if key == addr_key => return ConnectionType::BaseStoc,
+                Some(_) => return ConnectionType::None,
+                None => {
+                    self.base_connection_stoc = Some(addr_key);
+                    return ConnectionType::BaseStoc;
+                }
+            }
+        }
+        ConnectionType::None
     }
 
     /// Start the sidekick on the packet stream.

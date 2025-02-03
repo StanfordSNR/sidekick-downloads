@@ -49,6 +49,18 @@ impl PacketStream {
         }
     }
 
+    /// Returns identifier of the interface that was tagged as server on construction
+    pub fn server_iface(&self) -> u16 {
+        debug_assert!(self.sockets[1].socktype == SocketType::Server);
+        1
+    }
+
+    /// Returns identifier of interface that was tagged as client on construction
+    pub fn client_iface(&self) -> u16 {
+        debug_assert!(self.sockets[0].socktype == SocketType::Client);
+        0
+    }
+
     /// Receive a message (tagged packet) from the channel
     pub async fn recv(&mut self) -> Option<Packet> {
         self.receiver.recv().await
