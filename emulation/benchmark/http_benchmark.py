@@ -20,8 +20,8 @@ class Protocol(Enum):
 
 
 class ProxyType(Enum):
-    PEPSAL = 0
-    SIDEKICK = 1
+    PEPSAL = 'pepsal'
+    SIDEKICK = 'sidekick'
 
 
 class HTTPDownloadBenchmark(ABC):

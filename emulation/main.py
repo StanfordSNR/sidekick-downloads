@@ -14,8 +14,6 @@ DEFAULT_SSL_KEYFILE_TCP = f'deps/certs/out/leaf_cert.key'
 
 
 def benchmark_tcp(net, args):
-    assert not (args.topology == 'direct' and (args.pep or args.sidekick))
-    assert not (args.sidekick and args.pep)
     bm = TCPBenchmark(
         net,
         label=args.label,
@@ -24,8 +22,8 @@ def benchmark_tcp(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        pep=args.pep,
-        sidekick=args.sidekick,
+        pep=args.proxy == ProxyType.PEPSAL,
+        sidekick=args.proxy == ProxyType.SIDEKICK,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -44,7 +42,7 @@ def benchmark_google_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        sidekick=args.sidekick,
+        sidekick=args.proxy == ProxyType.SIDEKICK,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -63,7 +61,7 @@ def benchmark_cloudflare_quic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        sidekick=args.sidekick,
+        sidekick=args.proxy == ProxyType.SIDEKICK,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -82,7 +80,7 @@ def benchmark_picoquic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
-        sidekick=args.sidekick,
+        sidekick=args.proxy == ProxyType.SIDEKICK,
     )
     result = bm.run_benchmark(
         args.trials,
@@ -97,8 +95,8 @@ def benchmark_iperf3(net, args):
         net,
         args.n,
         cca=args.congestion_control,
-        pep=args.pep,
-        sidekick=args.sidekick,
+        pep=args.proxy == ProxyType.PEPSAL,
+        sidekick=args.proxy == ProxyType.SIDEKICK,
     )
     bm.run(
         args.label,
@@ -153,8 +151,6 @@ if __name__ == '__main__':
         choices=['one_hop', 'direct'], default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
              'properties for the "near path segment" i.e. Link 1.')
-    exp_config.add_argument('--sidekick', action='store_true',
-        help='Enable Sidekick, a QuACK-ing PEP')
 
     ###########################################################################
     # Network Configurations
@@ -187,6 +183,7 @@ if __name__ == '__main__':
     # Proxy configurations
     ###########################################################################
     proxy_config = parser.add_argument_group('proxy_config')
+    proxy_config.add_argument('--proxy', type=ProxyType, choices=list(ProxyType))
     proxy_config.add_argument('--quacker', action='store_true',
         help='Enable a sniffer on the client to send quacks to the proxy')
     proxy_config.add_argument('--threshold', type=int, default=20,
@@ -212,8 +209,6 @@ if __name__ == '__main__':
     tcp.add_argument('-cca', '--congestion-control',
         choices=['reno', 'cubic', 'bbr', 'bbr2'], default='cubic',
         help='Congestion control algorithm at endpoints')
-    tcp.add_argument('--pep', action='store_true',
-        help='Enable PEPsal, a connection-splitting TCP PEP')
     tcp.add_argument('--certfile', type=str, default=DEFAULT_SSL_CERTFILE,
         help='Path to SSL certificate')
     tcp.add_argument('--keyfile', type=str, default=DEFAULT_SSL_KEYFILE_TCP,
@@ -292,8 +287,6 @@ if __name__ == '__main__':
     iperf3.add_argument('-cca', '--congestion-control',
         choices=['cubic', 'bbr'], default='cubic',
         help='Congestion control algorithm at endpoints')
-    iperf3.add_argument('--pep', action='store_true',
-        help='Enable PEPsal, a connection-splitting TCP PEP')
 
     args = parser.parse_args()
 
@@ -309,9 +302,9 @@ if __name__ == '__main__':
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
-            bridge_proxy=not args.sidekick)
+            bridge_proxy=args.proxy != ProxyType.SIDEKICK)
     elif args.topology == 'direct':
-        assert not args.sidekick
+        assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
             args.qdisc, pacing)
     else:
@@ -323,7 +316,7 @@ if __name__ == '__main__':
 
     try:
         if args.ty == 'cli':
-            if args.sidekick:
+            if args.proxy == ProxyType.SIDEKICK:
                 net.start_sidekick(logfile=None)
             CLI(net.net)
         else:
