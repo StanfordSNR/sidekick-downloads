@@ -353,7 +353,7 @@ class EmulatedNetwork:
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile, func=quacker_log)
 
-    def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/bridge'):
+    def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/sidekick'):
         condition = threading.Condition()
         def notify_when_ready(line):
             if 'Ready' in line:
