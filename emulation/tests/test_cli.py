@@ -68,6 +68,20 @@ class TestCommandLineOptions(CLITestCase):
 
     @patch('main.benchmark_tcp')
     @patch('main.benchmark_picoquic')
+    @patch.object(EmulatedNetwork, 'start_bridge')
+    def test_start_bridge(
+        self, mock_start_bridge, mock_benchmark_tcp, mock_benchmark_picoquic,
+    ):
+        mock_start_bridge.assert_not_called()
+        self.execute_main_func('tcp')
+        mock_start_bridge.assert_not_called()
+        self.execute_main_func('tcp', ['--proxy', 'bridge'])
+        mock_start_bridge.assert_called_once()
+        self.execute_main_func('picoquic', ['--proxy', 'bridge'])
+        self.assertEqual(mock_start_bridge.call_count, 2)
+
+    @patch('main.benchmark_tcp')
+    @patch('main.benchmark_picoquic')
     @patch.object(EmulatedNetwork, 'start_sidekick')
     def test_start_sidekick(
         self, mock_start_sidekick, mock_benchmark_tcp, mock_benchmark_picoquic,
@@ -120,24 +134,38 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self.assertEqual(len(outputs), 1)
         self.assertTrue(outputs[0].get('success'))
 
-    def test_tcp_benchmark(self):
-        self._test_file_download_benchmark('tcp')
-        self._test_file_download_benchmark('tcp', ['--proxy', 'sidekick'])
-        self._test_file_download_benchmark('tcp', ['--proxy', 'pepsal'])
+    @unittest.skip('skip chromium tests')
+    def test_google_quic_benchmark_default(self):
+        self._test_file_download_benchmark('quic')
 
     @unittest.skip('skip chromium tests')
-    def test_google_quic_benchmark(self):
-        self._test_file_download_benchmark('quic')
+    def test_google_quic_benchmark_with_proxy(self):
         self._test_file_download_benchmark('quic', ['--proxy', 'sidekick'])
 
     @unittest.skip('skip cloudflare tests')
-    def test_cloudflare_quic_benchmark(self):
+    def test_cloudflare_quic_benchmark_default(self):
         self._test_file_download_benchmark('quiche')
+
+    @unittest.skip('skip cloudflare tests')
+    def test_cloudflare_quic_benchmark_with_proxy(self):
         self._test_file_download_benchmark('quiche', ['--proxy', 'sidekick'])
 
-    def test_picoquic_benchmark(self):
+    def test_tcp_benchmark_default(self):
+        self._test_file_download_benchmark('tcp')
+
+    def test_tcp_benchmark_with_proxy(self):
+        self._test_file_download_benchmark('tcp', ['--proxy', 'pepsal'])
+        self._test_file_download_benchmark('tcp', ['--proxy', 'bridge'])
+        self._test_file_download_benchmark('tcp', ['--proxy', 'sidekick'])
+
+    def test_picoquic_benchmark_default(self):
         self._test_file_download_benchmark('picoquic')
+
+    def test_picoquic_benchmark_with_proxy(self):
+        self._test_file_download_benchmark('picoquic', ['--proxy', 'bridge'])
         self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick'])
+
+    def test_picoquic_benchmark_with_quacker(self):
         self._test_file_download_benchmark('picoquic', ['--quacker'])
         self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick', '--quacker'])
 

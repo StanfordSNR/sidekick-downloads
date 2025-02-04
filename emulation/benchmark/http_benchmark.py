@@ -21,6 +21,7 @@ class Protocol(Enum):
 
 class ProxyType(Enum):
     PEPSAL = 'pepsal'
+    BRIDGE = 'bridge'
     SIDEKICK = 'sidekick'
 
 

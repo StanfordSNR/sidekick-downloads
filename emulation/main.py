@@ -301,7 +301,7 @@ def main(args):
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
-            bridge_proxy=args.proxy != ProxyType.SIDEKICK)
+            bridge_proxy=args.proxy not in [ProxyType.BRIDGE, ProxyType.SIDEKICK])
     elif args.topology == 'direct':
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
@@ -313,6 +313,8 @@ def main(args):
     proxy_logfile = f'{args.logdir}/{ROUTER_LOGFILE}'
     if args.proxy == ProxyType.PEPSAL:
         net.start_tcp_pep(proxy_logfile)
+    elif args.proxy == ProxyType.BRIDGE:
+        net.start_bridge(proxy_logfile)
     elif args.proxy == ProxyType.SIDEKICK:
         net.start_sidekick(proxy_logfile)
 

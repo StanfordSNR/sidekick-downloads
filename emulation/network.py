@@ -351,7 +351,7 @@ class EmulatedNetwork:
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile, func=quacker_log)
 
-    def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/bridge'):
+    def start_bridge(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/bridge'):
         condition = threading.Condition()
         def notify_when_ready(line):
             if 'Ready' in line:
@@ -366,6 +366,9 @@ class EmulatedNetwork:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
             if not notified:
                 raise TimeoutError(f'start_sidekick_pep timeout {SETUP_TIMEOUT}s')
+
+    def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/bridge'):
+        self.start_bridge(logfile, timeout, executable)
 
     def start_tcp_pep(self, logfile, timeout=SETUP_TIMEOUT):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
