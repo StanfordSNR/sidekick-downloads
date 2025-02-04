@@ -448,6 +448,10 @@ class PlottableData:
                         'timeout' not in output or not output['timeout'], outputs))
                     if len(outputs) == 0:
                         continue
-                    values = [output[metric] for output in outputs]
+                    # Parse the metric value for each output
+                    if isinstance(metric, str):
+                        values = [output[metric] for output in outputs]
+                    else:
+                        values = [metric(output) for output in outputs]
                     pdp = PlottableDataPoint(values)
                     self.data[treatment][network_setting][data_size] = pdp
