@@ -296,7 +296,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
 
         DEBUG(f'{self.server.name} {cmd}')
         self.server.cmd(cmd + ' &')
-        time.sleep(2)
+        time.sleep(1)
 
         '''
         TODO FIGURE OUT WHY POPEN ISN'T STARTING for picoquic

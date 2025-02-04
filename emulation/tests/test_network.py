@@ -83,7 +83,7 @@ class NetworkTestCase(unittest.TestCase):
             time.sleep(setup_time)
         return net
 
-    def ping(self, node1, node2, n=1, interval=0.1) -> PingResult:
+    def ping(self, node1, node2, n=1, interval=0.05) -> PingResult:
         """Send n pings from node1 from node2.
 
         Asserts that the node is reachable and at least one ping reply was
