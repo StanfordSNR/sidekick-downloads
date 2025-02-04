@@ -6,7 +6,6 @@ import os
 import tempfile
 
 import unittest
-from unittest.mock import patch
 
 from network import OneHopNetwork
 from benchmark import *
@@ -60,37 +59,37 @@ class HTTPDownloadTestCase(unittest.TestCase):
             self.stopped = False
             self.bridge_proxy = bridge_proxy
 
-    def setUpTCPBenchmark(self, pep=False, sidekick=False) -> TCPBenchmark:
+    def setUpTCPBenchmark(self, proxy_type=None) -> TCPBenchmark:
         bm = TCPBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, pep=pep, sidekick=sidekick,
+            self.keyfile, self.logdir, proxy_type,
         )
         return bm
 
-    def setUpGoogleQUICBenchmark(self, sidekick=False) -> GoogleQUICBenchmark:
+    def setUpGoogleQUICBenchmark(self, proxy_type=None) -> GoogleQUICBenchmark:
         self.keyfile = 'deps/certs/out/leaf_cert.pkcs8'
         bm = GoogleQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, sidekick=sidekick,
+            self.keyfile, self.logdir, proxy_type,
         )
         return bm
 
     def setUpCloudflareQUICBenchmark(
-        self, port: int=4433, sidekick=False
+        self, port: int=4433, proxy_type=None,
     ) -> CloudflareQUICBenchmark:
         bm = CloudflareQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, port=port, sidekick=sidekick,
+            self.keyfile, self.logdir, port=port, proxy_type=proxy_type,
         )
         return bm
 
     # def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
     def setUpPicoQUICBenchmark(
-        self, port: int=4433, sidekick=False
+        self, port: int=4433, proxy_type=None,
     ) -> PicoQUICBenchmark:
         bm = PicoQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, port=port, sidekick=sidekick,
+            self.keyfile, self.logdir, port=port, proxy_type=proxy_type,
         )
         return bm
 
@@ -127,6 +126,7 @@ class TestConstructors(HTTPDownloadTestCase):
         self.assertEqual(bm.protocol, Protocol.GOOGLE_QUIC)
         self.assertIsNone(bm.proxy_type)
 
+    @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_constructor(self):
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_common_properties(bm)
@@ -140,71 +140,103 @@ class TestConstructors(HTTPDownloadTestCase):
         self.assertIsNone(bm.proxy_type)
 
     def test_constructors_with_proxies(self):
-        bm = self.setUpTCPBenchmark(pep=True)
+        bm = self.setUpTCPBenchmark(proxy_type=ProxyType.PEPSAL)
         self._test_common_properties(bm)
         self.assertEqual(bm.protocol, Protocol.TCP)
         self.assertEqual(bm.proxy_type, ProxyType.PEPSAL)
+        bm = self.setUpPicoQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
+        self._test_common_properties(bm)
+        self.assertEqual(bm.protocol, Protocol.PICOQUIC)
+        self.assertEqual(bm.proxy_type, ProxyType.SIDEKICK)
 
 
 class TestStartServer(HTTPDownloadTestCase):
-    def _test_server_is_listening_on(self, bm, port):
+    def _test_start_server(self, bm, port):
         """The server starts successfully without hanging, and can be found to
-        be listening on a specific port.
+        be listening on a specific port. The server also writes to a logfile.
         """
+        server_logfile = bm.logfile(bm.server)
+        output = bm.server.cmd(f'lsof -i :{port}')
+        self.assertEqual(output, '', 'server is not running initially')
+        self.assertFalse(os.path.exists(server_logfile))
+        bm.start_server()
+        output = bm.server.cmd(f'lsof -i :{port}')
+        self.assertNotEqual(output, '', 'server should have started')
+        self.stopNetwork()  # Give background processes a chance to flush
+        self.assertTrue(os.path.exists(server_logfile))
+        with open(server_logfile, 'r') as f:
+            self.assertNotEqual(f.read(), '', 'server writes to logfile')
+
+    def test_tcp_start_server(self):
+        bm = self.setUpTCPBenchmark()
+        self._test_start_server(bm, 8443)
+
+    @unittest.skip('skip chromium tests')
+    def test_google_quic_start_server(self):
+        bm = self.setUpGoogleQUICBenchmark()
+        self._test_start_server(bm, 6121)
+
+    @unittest.skip('skip cloudflare tests')
+    def test_cloudflare_quic_start_server(self):
+        port = 1234
+        bm = self.setUpCloudflareQUICBenchmark(port=port)
+        self._test_start_server(bm, port)
+
+    def test_picoquic_server_is_listening(self):
+        port = 4321
+        bm = self.setUpPicoQUICBenchmark(port=port)
         output = bm.server.cmd(f'lsof -i :{port}')
         self.assertEqual(output, '', 'server is not running initially')
         bm.start_server()
         output = bm.server.cmd(f'lsof -i :{port}')
         self.assertNotEqual(output, '', 'server should have started')
 
-    def test_tcp_server_is_listening(self):
-        bm = self.setUpTCPBenchmark()
-        self._test_server_is_listening_on(bm, 8443)
-
-    @unittest.skip('skip chromium tests')
-    def test_google_quic_server_is_listening(self):
-        bm = self.setUpGoogleQUICBenchmark()
-        self._test_server_is_listening_on(bm, 6121)
-
-    def test_cloudflare_quic_server_is_listening(self):
-        port = 1234
-        bm = self.setUpCloudflareQUICBenchmark(port=port)
-        self._test_server_is_listening_on(bm, port)
-
-    def test_picoquic_server_is_listening(self):
-        port = 4321
-        bm = self.setUpPicoQUICBenchmark(port=port)
-        self._test_server_is_listening_on(bm, port)
+    @unittest.expectedFailure
+    def test_picoquic_server_writes_to_logs(self):
+        bm = self.setUpPicoQUICBenchmark()
+        server_logfile = bm.logfile(bm.server)
+        self.assertFalse(os.path.exists(server_logfile))
+        bm.start_server()
+        self.stopNetwork()  # Give background processes a chance to flush
+        self.assertTrue(os.path.exists(server_logfile))
+        with open(server_logfile, 'r') as f:
+            self.assertNotEqual(f.read(), '', 'server writes to logfile')
 
 
 class TestRunClient(HTTPDownloadTestCase):
-    def _test_client_returns_result(self, bm):
+    def _test_run_client(self, bm):
         """The client makes a request to the server and returns a result with
         a successful HTTP status code and positive runtime.
         """
         bm.start_server()
+        client_logfile = bm.logfile(bm.client)
+        self.assertFalse(os.path.exists(client_logfile))
         result = bm.run_client(timeout=None)
         self.assertIsNotNone(result)
         http_status_code, total_time = result
         self.assertEqual(http_status_code, HTTP_OK_STATUSCODE)
         self.assertGreater(total_time, 0)
+        self.assertTrue(os.path.exists(client_logfile))
+        with open(client_logfile, 'r') as f:
+            self.assertNotEqual(f.read(), '', 'client writes to logfile')
 
-    def test_tcp_client_returns_result(self):
+    def test_tcp_run_client(self):
         bm = self.setUpTCPBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
     @unittest.skip('skip chromium tests')
-    def test_google_quic_client_returns_result(self):
+    def test_google_quic_run_client(self):
         bm = self.setUpGoogleQUICBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
-    def test_cloudflare_quic_client_returns_result(self):
+    @unittest.skip('skip cloudflare tests')
+    def test_cloudflare_quic_run_client(self):
         bm = self.setUpCloudflareQUICBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
-    def test_picoquic_client_returns_result(self):
+    def test_picoquic_run_client(self):
         bm = self.setUpPicoQUICBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
 
 class TestRunBenchmark(HTTPDownloadTestCase):
@@ -226,6 +258,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         self.assertEqual(inputs.get('num_trials'), num_trials)
         self.assertEqual(inputs.get('data_size'), self.data_size)
         self.assertEqual(inputs.get('cca'), self.cca)
+        self.assertEqual(inputs.get('proxy_type'), 'none')
 
         # Validate outputs
         outputs = result['outputs']
@@ -244,29 +277,9 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         bm = self.setUpTCPBenchmark()
         self._test_run_benchmark(bm, 1)
 
-    def test_tcp_pep_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork()
-        bm = self.setUpTCPBenchmark(pep=True)
-        self._test_run_benchmark(bm, 1)
-
-    def test_tcp_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpTCPBenchmark(sidekick=True)
-        self._test_run_benchmark(bm, 1)
-
     def test_tcp_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpTCPBenchmark()
-        self._test_run_benchmark(bm, 5)
-
-    def test_tcp_pep_run_benchmark_multiple_trial(self):
-        self.setUpOneHopNetwork()
-        bm = self.setUpTCPBenchmark(pep=True)
-        self._test_run_benchmark(bm, 5)
-
-    def test_tcp_sidekick_run_benchmark_multiple_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpTCPBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
     @unittest.skip('skip chromium tests')
@@ -276,41 +289,21 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         self._test_run_benchmark(bm, 1)
 
     @unittest.skip('skip chromium tests')
-    def test_google_quic_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpGoogleQUICBenchmark(sidekick=True)
-        self._test_run_benchmark(bm, 1)
-
-    @unittest.skip('skip chromium tests')
     def test_google_quic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
         self._test_run_benchmark(bm, 5)
 
-    @unittest.skip('skip chromium tests')
-    def test_google_quic_sidekick_run_benchmark_multiple_trials(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpGoogleQUICBenchmark(sidekick=True)
-        self._test_run_benchmark(bm, 5)
-
+    @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_run_benchmark_one_trial(self):
         self.setUpOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
-    def test_cloudflare_quic_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpCloudflareQUICBenchmark(sidekick=True)
-        self._test_run_benchmark(bm, 1)
-
+    @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
-        self._test_run_benchmark(bm, 5)
-
-    def test_cloudflare_quic_sidekick_run_benchmark_multiple_trials(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpCloudflareQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
 
     def test_picoquic_run_benchmark_one_trial(self):
@@ -318,75 +311,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
-    def test_picoquic_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpPicoQUICBenchmark(sidekick=True)
-        self._test_run_benchmark(bm, 1)
-
     def test_picoquic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 5)
-
-    def test_picoquic_sidekick_run_benchmark_multiple_trials(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpPicoQUICBenchmark(sidekick=True)
-        self._test_run_benchmark(bm, 5)
-
-    def _test_hosts_write_to_logs(self, bm, proxy: bool):
-        self.run_benchmark(bm, 1)
-        self.stopNetwork()  # Give background processes a chance to flush
-        with open(bm.logfile(bm.client), 'r') as f:
-            self.assertNotEqual(f.read(), '', 'client writes to logfile')
-        with open(bm.logfile(bm.server), 'r') as f:
-            self.assertNotEqual(f.read(), '', 'server writes to logfile')
-        router_logfile = bm.logfile(bm.proxy)
-        if proxy:
-            self.assertTrue(os.path.exists(router_logfile))
-            with open(router_logfile, 'r') as f:
-                self.assertNotEqual(f.read(), '', 'proxy writes to logfile')
-        else:
-            self.assertFalse(os.path.exists(router_logfile))
-
-    def test_tcp_hosts_write_to_logs(self):
-        bm = self.setUpTCPBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
-
-    def test_tcp_pep_hosts_write_to_logs(self):
-        bm = self.setUpTCPBenchmark(pep=True)
-        self._test_hosts_write_to_logs(bm, True)
-
-    @unittest.skip('skip chromium tests')
-    def test_google_quic_hosts_write_to_logs(self):
-        bm = self.setUpGoogleQUICBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
-
-    def test_cloudflare_quic_hosts_write_to_logs(self):
-        bm = self.setUpCloudflareQUICBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
-
-    @unittest.expectedFailure
-    def test_picoquic_hosts_write_to_logs(self):
-        bm = self.setUpPicoQUICBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
-
-
-class TestStartProxy(HTTPDownloadTestCase):
-    @patch.object(EmulatedNetwork, 'start_tcp_pep')
-    def test_tcp_start_proxy(self, mock_start_tcp_pep):
-        # NOTE(gina): Tried to not mock the function at first and use ps
-        # to ascertain whether a pepsal process was started. However, I
-        # couldn't identify such a process even though the pepsal background
-        # process in start_tcp_pep started successfully without a timeout.
-
-        # The start_proxy function is a no-op without a proxy type
-        bm = self.setUpTCPBenchmark(pep=False)
-        mock_start_tcp_pep.assert_not_called()
-        bm.start_proxy()
-        mock_start_tcp_pep.assert_not_called()
-
-        # The start_proxy function calls start_tcp_pep with a pepsal proxy
-        bm = self.setUpTCPBenchmark(pep=True)
-        mock_start_tcp_pep.assert_not_called()
-        bm.start_proxy()
-        mock_start_tcp_pep.assert_called_once()

@@ -14,12 +14,11 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         self.protocol = 'TCP'
         self.data_size = 1000
         self.cca = 'cubic'
-        self.pep = False
-        self.sidekick = False
+        self.proxy_type = 'pepsal'
 
     def test_initialize_result(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.pep, self.sidekick)
+                                  self.cca, self.proxy_type)
         x = res.json()
         self.assertIsInstance(x, str)
 
@@ -34,7 +33,7 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         self.assertEqual(inputs.get('protocol'), self.protocol)
         self.assertEqual(inputs.get('data_size'), self.data_size)
         self.assertEqual(inputs.get('cca'), self.cca)
-        self.assertEqual(inputs.get('pep'), self.pep)
+        self.assertEqual(inputs.get('proxy_type'), self.proxy_type)
         self.assertIsInstance(inputs.get('start_time'), str)
         self.assertEqual(inputs.get('num_trials'), 0)
 
@@ -43,7 +42,7 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
 
     def test_append_one_output(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.pep, self.sidekick)
+                                  self.cca, self.proxy_type)
 
         # Check baseline
         x = json.loads(res.json())
@@ -77,7 +76,7 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
 
     def test_append_multiple_outputs(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.pep, self.sidekick)
+                                  self.cca, self.proxy_type)
 
         # Check baseline
         x = json.loads(res.json())

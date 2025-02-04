@@ -4,7 +4,7 @@ from datetime import datetime
 
 class HTTPBenchmarkResult:
     def __init__(self, label: str, protocol: str, data_size: int, cca: str,
-                 pep: bool, sidekick: bool):
+                 proxy_type: str):
         """Initialize the data structure for tracking benchmark results over
         multiple trials.
         """
@@ -15,8 +15,7 @@ class HTTPBenchmarkResult:
             'start_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'data_size': data_size,
             'cca': cca,
-            'pep': pep,
-            'sidekick': sidekick,
+            'proxy_type': proxy_type,
         }
         self.outputs = []
 
@@ -67,7 +66,7 @@ class HTTPBenchmarkResult:
                 'start_time': str,
                 'data_size': int,
                 'cca': str,
-                'pep': bool
+                'proxy_type': str
             },
             'outputs': [
                 {

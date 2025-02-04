@@ -58,13 +58,9 @@ class RawDataFile:
         cmd.append(str(num_trials))
         cmd.append('--label')
         cmd.append(self._treatment.label())
-        protocol = self._treatment.protocol
-        cmd.append(protocol)
-        if protocol == 'tcp' and self._treatment.pep:
-            cmd.append('--pep')
-        if self._treatment.cca:
-            cmd.append('-cca')
-            cmd.append(self._treatment.cca)
+        cmd += self._treatment.network_options
+        cmd.append(self._treatment.protocol)
+        cmd += self._treatment.protocol_options
         cmd.append('-n')
         cmd.append(str(data_size))
         return ' '.join(cmd)

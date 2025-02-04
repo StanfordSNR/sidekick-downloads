@@ -2,6 +2,7 @@
 Test network.py.
 """
 import unittest
+import os
 import time
 import tempfile
 from network import *
@@ -82,7 +83,7 @@ class NetworkTestCase(unittest.TestCase):
             time.sleep(setup_time)
         return net
 
-    def ping(self, node1, node2, n=1, interval=0.1) -> PingResult:
+    def ping(self, node1, node2, n=1, interval=0.05) -> PingResult:
         """Send n pings from node1 from node2.
 
         Asserts that the node is reachable and at least one ping reply was
@@ -660,3 +661,21 @@ class TestPopen(NetworkTestCase):
     def test_appends_output_to_logfile(self):
         self._test_appends_output_to_logfile(background=False)
         self._test_appends_output_to_logfile(background=True)
+
+
+class TestProxyFunctions(NetworkTestCase):
+    def setUp(self):
+        super().setUp()
+        self._logdir = tempfile.TemporaryDirectory()
+        self.logfile = f'{self._logdir.name}/{ROUTER_LOGFILE}'
+
+    def test_start_tcp_pep(self):
+        net = self.setUpOneHopNetwork()
+        self.assertFalse(os.path.exists(self.logfile))
+        net.start_tcp_pep(logfile=self.logfile, timeout=2)
+        output = net.p1.cmd('ps aux | grep pep')
+        self.assertIn('pepsal', output, 'tcp pep started')
+        net.stop()  # flush processes
+        self.assertTrue(os.path.exists(self.logfile))
+        with open(self.logfile, 'r') as f:
+            self.assertNotEqual(f.read(), '', 'proxy writes to logfile')
