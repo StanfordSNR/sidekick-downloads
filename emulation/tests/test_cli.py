@@ -6,11 +6,16 @@ import subprocess
 import os
 import json
 import re
+import sys
 
 from typing import List, Tuple
+from unittest.mock import patch
+
+from network import EmulatedNetwork
+from main import parse_args, main
 
 
-class TestFileDownloadBenchmarks(unittest.TestCase):
+class CLITestCase(unittest.TestCase):
     def setUp(self):
         # Run tests from the upper-level directory (the sidekick home)
         self._cwd = os.getcwd()
@@ -33,6 +38,60 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout, result.stderr
 
+    def execute_main_func(
+        self,
+        protocol,
+        network_options: List[str]=[],
+        protocol_options: List[str]=[],
+    ):
+        argv = []
+        argv += network_options
+        argv += [protocol]
+        argv += protocol_options
+        main(parse_args(argv))
+
+
+class TestCommandLineOptions(CLITestCase):
+    def setUp(self):
+        super().setUp()
+        # Suppress logging
+        self._stderr = sys.stderr
+        self._stdout = sys.stdout
+        sys.stderr = open(os.devnull, 'w')
+        sys.stdout = open(os.devnull, 'w')
+
+    @patch.object(EmulatedNetwork, 'start_tcp_pep')
+    def test_start_tcp_pep(self, mock_start_tcp_pep):
+        mock_start_tcp_pep.assert_not_called()
+        self.execute_main_func('tcp', ['--proxy', 'pepsal'])
+        mock_start_tcp_pep.assert_called_once()
+
+    @patch('main.benchmark_tcp')
+    @patch('main.benchmark_picoquic')
+    @patch.object(EmulatedNetwork, 'start_sidekick')
+    def test_start_sidekick(
+        self, mock_start_sidekick, mock_benchmark_tcp, mock_benchmark_picoquic,
+    ):
+        mock_start_sidekick.assert_not_called()
+        self.execute_main_func('tcp')
+        mock_start_sidekick.assert_not_called()
+        self.execute_main_func('tcp', ['--proxy', 'sidekick'])
+        mock_start_sidekick.assert_called_once()
+        self.execute_main_func('picoquic', ['--proxy', 'sidekick'])
+        self.assertEqual(mock_start_sidekick.call_count, 2)
+
+    @patch.object(EmulatedNetwork, 'start_client_quacker')
+    def test_start_client_quacker(self, mock_start_client_quacker):
+        mock_start_client_quacker.assert_not_called()
+        self.execute_main_func('picoquic')
+        mock_start_client_quacker.assert_not_called()
+        self.execute_main_func('picoquic', ['--quacker'])
+        mock_start_client_quacker.assert_called_once()
+        self.execute_main_func('picoquic', ['--quacker', '--proxy', 'sidekick'])
+        self.assertEqual(mock_start_client_quacker.call_count, 2)
+
+
+class TestFileDownloadBenchmarks(CLITestCase):
     def parse_json_lines(self, output):
         lines = []
         for line in output.split('\n'):

@@ -157,21 +157,6 @@ class HTTPDownloadBenchmark(ABC):
         """
         pass
 
-    def start_proxy(self, timeout: int=SETUP_TIMEOUT):
-        """Starts the proxy on the p1 host, if configured.
-
-        This function runs the proxy in the background but blocks until the
-        proxy is ready to serve connections. Raises an error if unsuccessful.
-
-        Parameters:
-        - timeout: The number of seconds to block during setup before an error.
-        """
-        logfile = self.logfile(self.proxy)
-        if self.proxy_type == ProxyType.PEPSAL:
-            self.net.start_tcp_pep(logfile=logfile, timeout=timeout)
-        elif self.proxy_type == ProxyType.SIDEKICK:
-            self.net.start_sidekick(logfile=logfile, timeout=timeout)
-
     @abstractmethod
     def run_client(
         self, timeout: Optional[int]=None,
@@ -220,7 +205,6 @@ class HTTPDownloadBenchmark(ABC):
         - A HTTPBenchmarkResult corresponding to the result of this benchmark.
         """
         self.start_server()
-        self.start_proxy()
 
         # Initialize the benchmark result
         result = HTTPBenchmarkResult(

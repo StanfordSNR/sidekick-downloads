@@ -121,9 +121,8 @@ def parse_data_size(n):
     except Exception:
         raise ValueError(f'invalid data size {n}')
 
-if __name__ == '__main__':
-    setLogLevel('info')
 
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         prog='Sidekick',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -286,8 +285,10 @@ if __name__ == '__main__':
         choices=['cubic', 'bbr'], default='cubic',
         help='Congestion control algorithm at endpoints')
 
-    args = parser.parse_args()
+    return parser.parse_args(args=argv)
 
+
+def main(args):
     # Some BBR implementations require pacing.
     # This includes Cloudflare quiche and Linux kernel versions <5.0.
     # We automatically set pacing for Linux TCP BBR, but we need to set it
@@ -308,17 +309,29 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError(args.topology)
 
+    # Start the network proxy if configured
+    proxy_logfile = f'{args.logdir}/{ROUTER_LOGFILE}'
+    if args.proxy == ProxyType.PEPSAL:
+        net.start_tcp_pep(proxy_logfile)
+    elif args.proxy == ProxyType.SIDEKICK:
+        net.start_sidekick(proxy_logfile)
+
+    # Start the client quacker if using a sniffing version
     if args.quacker:
         net.start_client_quacker(args.threshold, args.frequency,
             args.quackee_port)
 
     try:
         if args.ty == 'cli':
-            if args.proxy == ProxyType.SIDEKICK:
-                net.start_sidekick(logfile=None)
             CLI(net.net)
         else:
             init_logdir(args.logdir)
             args.benchmark(net, args)
     finally:
         net.stop()
+
+
+if __name__ == '__main__':
+    setLogLevel('info')
+    args = parse_args()
+    main(args)

@@ -6,7 +6,6 @@ import os
 import tempfile
 
 import unittest
-from unittest.mock import patch
 
 from network import OneHopNetwork
 from benchmark import *
@@ -259,6 +258,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         self.assertEqual(inputs.get('num_trials'), num_trials)
         self.assertEqual(inputs.get('data_size'), self.data_size)
         self.assertEqual(inputs.get('cca'), self.cca)
+        self.assertEqual(inputs.get('proxy_type'), 'none')
 
         # Validate outputs
         outputs = result['outputs']
@@ -277,29 +277,9 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         bm = self.setUpTCPBenchmark()
         self._test_run_benchmark(bm, 1)
 
-    def test_tcp_pep_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork()
-        bm = self.setUpTCPBenchmark(proxy_type=ProxyType.PEPSAL)
-        self._test_run_benchmark(bm, 1)
-
-    def test_tcp_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpTCPBenchmark(proxy_type=ProxyType.SIDEKICK)
-        self._test_run_benchmark(bm, 1)
-
     def test_tcp_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpTCPBenchmark()
-        self._test_run_benchmark(bm, 5)
-
-    def test_tcp_pep_run_benchmark_multiple_trial(self):
-        self.setUpOneHopNetwork()
-        bm = self.setUpTCPBenchmark(proxy_type=ProxyType.PEPSAL)
-        self._test_run_benchmark(bm, 5)
-
-    def test_tcp_sidekick_run_benchmark_multiple_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpTCPBenchmark(proxy_type=ProxyType.SIDEKICK)
         self._test_run_benchmark(bm, 5)
 
     @unittest.skip('skip chromium tests')
@@ -309,21 +289,9 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         self._test_run_benchmark(bm, 1)
 
     @unittest.skip('skip chromium tests')
-    def test_google_quic_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpGoogleQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
-        self._test_run_benchmark(bm, 1)
-
-    @unittest.skip('skip chromium tests')
     def test_google_quic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
-        self._test_run_benchmark(bm, 5)
-
-    @unittest.skip('skip chromium tests')
-    def test_google_quic_sidekick_run_benchmark_multiple_trials(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpGoogleQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
         self._test_run_benchmark(bm, 5)
 
     @unittest.skip('skip cloudflare tests')
@@ -333,21 +301,9 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         self._test_run_benchmark(bm, 1)
 
     @unittest.skip('skip cloudflare tests')
-    def test_cloudflare_quic_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpCloudflareQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
-        self._test_run_benchmark(bm, 1)
-
-    @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
-        self._test_run_benchmark(bm, 5)
-
-    @unittest.skip('skip cloudflare tests')
-    def test_cloudflare_quic_sidekick_run_benchmark_multiple_trials(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpCloudflareQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
         self._test_run_benchmark(bm, 5)
 
     def test_picoquic_run_benchmark_one_trial(self):
@@ -355,38 +311,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 1)
 
-    def test_picoquic_sidekick_run_benchmark_one_trial(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpPicoQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
-        self._test_run_benchmark(bm, 1)
-
     def test_picoquic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
         self._test_run_benchmark(bm, 5)
-
-    def test_picoquic_sidekick_run_benchmark_multiple_trials(self):
-        self.setUpOneHopNetwork(bridge_proxy=False)
-        bm = self.setUpPicoQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
-        self._test_run_benchmark(bm, 5)
-
-
-class TestStartProxy(HTTPDownloadTestCase):
-    @patch.object(EmulatedNetwork, 'start_tcp_pep')
-    def test_tcp_start_proxy(self, mock_start_tcp_pep):
-        # NOTE(gina): Tried to not mock the function at first and use ps
-        # to ascertain whether a pepsal process was started. However, I
-        # couldn't identify such a process even though the pepsal background
-        # process in start_tcp_pep started successfully without a timeout.
-
-        # The start_proxy function is a no-op without a proxy type
-        bm = self.setUpTCPBenchmark(None)
-        mock_start_tcp_pep.assert_not_called()
-        bm.start_proxy()
-        mock_start_tcp_pep.assert_not_called()
-
-        # The start_proxy function calls start_tcp_pep with a pepsal proxy
-        bm = self.setUpTCPBenchmark(ProxyType.PEPSAL)
-        mock_start_tcp_pep.assert_not_called()
-        bm.start_proxy()
-        mock_start_tcp_pep.assert_called_once()
