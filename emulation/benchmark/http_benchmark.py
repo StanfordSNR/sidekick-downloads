@@ -147,7 +147,7 @@ class HTTPDownloadBenchmark(ABC):
 
     @abstractmethod
     def start_server(self, timeout: int=SETUP_TIMEOUT):
-        """Start the HTTP server on the h2 host.
+        """Start the HTTP server on the h2 host and write output to a logfile.
 
         This function runs the server in the background but blocks until the
         server is ready to accept requests. Raises an error if unsuccessful.
@@ -173,6 +173,8 @@ class HTTPDownloadBenchmark(ABC):
         self, timeout: Optional[int]=None,
     ) -> Optional[Tuple[int, float]]:
         """
+        Runs the HTTP client on the h1 host and writes output to a logfile.
+
         Parameters:
         - timeout: If provided, the number of seconds to wait for the client
           to complete its request.
@@ -367,6 +369,9 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         for line in output.split('\n'):
             parse_result(line)
 
+        logfile = self.logfile(self.client)
+        with open(logfile, 'a') as f:
+            f.write(output)
         # TODO figure out why popen isn't working
         # timeout_flag = self.net.popen(self.client, cmd, background=False,
         #     console_logger=DEBUG, logfile=logfile, func=parse_result,

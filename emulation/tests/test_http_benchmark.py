@@ -148,66 +148,92 @@ class TestConstructors(HTTPDownloadTestCase):
 
 
 class TestStartServer(HTTPDownloadTestCase):
-    def _test_server_is_listening_on(self, bm, port):
+    def _test_start_server(self, bm, port):
         """The server starts successfully without hanging, and can be found to
-        be listening on a specific port.
+        be listening on a specific port. The server also writes to a logfile.
         """
+        server_logfile = bm.logfile(bm.server)
+        output = bm.server.cmd(f'lsof -i :{port}')
+        self.assertEqual(output, '', 'server is not running initially')
+        self.assertFalse(os.path.exists(server_logfile))
+        bm.start_server()
+        output = bm.server.cmd(f'lsof -i :{port}')
+        self.assertNotEqual(output, '', 'server should have started')
+        self.stopNetwork()  # Give background processes a chance to flush
+        self.assertTrue(os.path.exists(server_logfile))
+        with open(server_logfile, 'r') as f:
+            self.assertNotEqual(f.read(), '', 'server writes to logfile')
+
+    def test_tcp_start_server(self):
+        bm = self.setUpTCPBenchmark()
+        self._test_start_server(bm, 8443)
+
+    @unittest.skip('skip chromium tests')
+    def test_google_quic_start_server(self):
+        bm = self.setUpGoogleQUICBenchmark()
+        self._test_start_server(bm, 6121)
+
+    @unittest.skip('skip cloudflare tests')
+    def test_cloudflare_quic_start_server(self):
+        port = 1234
+        bm = self.setUpCloudflareQUICBenchmark(port=port)
+        self._test_start_server(bm, port)
+
+    def test_picoquic_server_is_listening(self):
+        port = 4321
+        bm = self.setUpPicoQUICBenchmark(port=port)
         output = bm.server.cmd(f'lsof -i :{port}')
         self.assertEqual(output, '', 'server is not running initially')
         bm.start_server()
         output = bm.server.cmd(f'lsof -i :{port}')
         self.assertNotEqual(output, '', 'server should have started')
 
-    def test_tcp_server_is_listening(self):
-        bm = self.setUpTCPBenchmark()
-        self._test_server_is_listening_on(bm, 8443)
-
-    @unittest.skip('skip chromium tests')
-    def test_google_quic_server_is_listening(self):
-        bm = self.setUpGoogleQUICBenchmark()
-        self._test_server_is_listening_on(bm, 6121)
-
-    @unittest.skip('skip cloudflare tests')
-    def test_cloudflare_quic_server_is_listening(self):
-        port = 1234
-        bm = self.setUpCloudflareQUICBenchmark(port=port)
-        self._test_server_is_listening_on(bm, port)
-
-    def test_picoquic_server_is_listening(self):
-        port = 4321
-        bm = self.setUpPicoQUICBenchmark(port=port)
-        self._test_server_is_listening_on(bm, port)
+    @unittest.expectedFailure
+    def test_picoquic_server_writes_to_logs(self):
+        bm = self.setUpPicoQUICBenchmark()
+        server_logfile = bm.logfile(bm.server)
+        self.assertFalse(os.path.exists(server_logfile))
+        bm.start_server()
+        self.stopNetwork()  # Give background processes a chance to flush
+        self.assertTrue(os.path.exists(server_logfile))
+        with open(server_logfile, 'r') as f:
+            self.assertNotEqual(f.read(), '', 'server writes to logfile')
 
 
 class TestRunClient(HTTPDownloadTestCase):
-    def _test_client_returns_result(self, bm):
+    def _test_run_client(self, bm):
         """The client makes a request to the server and returns a result with
         a successful HTTP status code and positive runtime.
         """
         bm.start_server()
+        client_logfile = bm.logfile(bm.client)
+        self.assertFalse(os.path.exists(client_logfile))
         result = bm.run_client(timeout=None)
         self.assertIsNotNone(result)
         http_status_code, total_time = result
         self.assertEqual(http_status_code, HTTP_OK_STATUSCODE)
         self.assertGreater(total_time, 0)
+        self.assertTrue(os.path.exists(client_logfile))
+        with open(client_logfile, 'r') as f:
+            self.assertNotEqual(f.read(), '', 'client writes to logfile')
 
-    def test_tcp_client_returns_result(self):
+    def test_tcp_run_client(self):
         bm = self.setUpTCPBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
     @unittest.skip('skip chromium tests')
-    def test_google_quic_client_returns_result(self):
+    def test_google_quic_run_client(self):
         bm = self.setUpGoogleQUICBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
     @unittest.skip('skip cloudflare tests')
-    def test_cloudflare_quic_client_returns_result(self):
+    def test_cloudflare_quic_run_client(self):
         bm = self.setUpCloudflareQUICBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
-    def test_picoquic_client_returns_result(self):
+    def test_picoquic_run_client(self):
         bm = self.setUpPicoQUICBenchmark()
-        self._test_client_returns_result(bm)
+        self._test_run_client(bm)
 
 
 class TestRunBenchmark(HTTPDownloadTestCase):
@@ -339,44 +365,6 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         self.setUpOneHopNetwork(bridge_proxy=False)
         bm = self.setUpPicoQUICBenchmark(sidekick=True)
         self._test_run_benchmark(bm, 5)
-
-    def _test_hosts_write_to_logs(self, bm, proxy: bool):
-        self.run_benchmark(bm, 1)
-        self.stopNetwork()  # Give background processes a chance to flush
-        with open(bm.logfile(bm.client), 'r') as f:
-            self.assertNotEqual(f.read(), '', 'client writes to logfile')
-        with open(bm.logfile(bm.server), 'r') as f:
-            self.assertNotEqual(f.read(), '', 'server writes to logfile')
-        router_logfile = bm.logfile(bm.proxy)
-        if proxy:
-            self.assertTrue(os.path.exists(router_logfile))
-            with open(router_logfile, 'r') as f:
-                self.assertNotEqual(f.read(), '', 'proxy writes to logfile')
-        else:
-            self.assertFalse(os.path.exists(router_logfile))
-
-    def test_tcp_hosts_write_to_logs(self):
-        bm = self.setUpTCPBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
-
-    def test_tcp_pep_hosts_write_to_logs(self):
-        bm = self.setUpTCPBenchmark(pep=True)
-        self._test_hosts_write_to_logs(bm, True)
-
-    @unittest.skip('skip chromium tests')
-    def test_google_quic_hosts_write_to_logs(self):
-        bm = self.setUpGoogleQUICBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
-
-    @unittest.skip('skip cloudflare tests')
-    def test_cloudflare_quic_hosts_write_to_logs(self):
-        bm = self.setUpCloudflareQUICBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
-
-    @unittest.expectedFailure
-    def test_picoquic_hosts_write_to_logs(self):
-        bm = self.setUpPicoQUICBenchmark()
-        self._test_hosts_write_to_logs(bm, False)
 
 
 class TestStartProxy(HTTPDownloadTestCase):
