@@ -374,6 +374,7 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
+        os.environ['RUST_LOG'] = 'debug'
         self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)

@@ -5,6 +5,7 @@ use crate::{identifier::{Identifier, IdentifierFunc}, BUFFER_SIZE};
 // The randomly-encrypted payload in a QUIC packet with a short header is at
 // offset 63.
 pub const ID_OFFSET: usize = 63;
+const UDP_PAYLOAD_OFFSET: usize = 42;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Direction {
@@ -89,4 +90,8 @@ impl UdpParser {
         u16::from_be_bytes([x[36], x[37]])
     }
 
+    /// Returns the UDP payload.
+    pub fn payload(x: &[u8; BUFFER_SIZE]) -> &[u8] {
+        &x[UDP_PAYLOAD_OFFSET..]
+    }
 }

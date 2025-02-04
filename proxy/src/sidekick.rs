@@ -3,7 +3,8 @@ use crate::stream::{Packet, PacketStream};
 use crate::identifier::IdentifierFunc;
 use crate::buffer::{ID_OFFSET, UdpParser};
 
-use log::trace;
+use log::{trace, debug};
+use quack::{PowerSumQuack, PowerSumQuackU32};
 
 /// The sidekick provides in-network assistance to a single base connection
 /// identified by a UDP 4-tuple. It also participates in a separate sidekick
@@ -64,8 +65,26 @@ impl Sidekick {
     /// then to retransmit missing packets and delete acknowledged packets
     /// from the cache. If the quACK can't be decoded, reset the quACK by
     /// sending any message back to the client on the sidekick connection.
-    fn handle_sidekick_packet_from_client(&mut self, _packet: Packet) {
-        unimplemented!()
+    fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
+        let payload = UdpParser::payload(&packet.data);
+        let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
+        match self.cache.decode(&quack) {
+            Ok(result) => {
+                debug!("quack {} cache_len={} last_index={} missing={:?}",
+                    quack.count(), self.cache.len(),
+                    result.last_index, result.missing_indexes);
+                for index in result.missing_indexes {
+                    let retx = self.cache.get(index).unwrap();
+                    self.stream.forward_packet(&retx, retx.nbytes as usize);
+                    self.cache.add(retx.clone()); // TODO: avoid clone
+                }
+                self.cache.evict(result.last_index).unwrap();
+            }
+            Err(_) => {
+                // TODO: send any packet to the UDP src of the quacks to reset
+                // self.cache.reset();
+            }
+        }
     }
 
     /// Handle a packet from the client in the base connection.

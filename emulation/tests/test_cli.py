@@ -168,9 +168,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_benchmark_with_quacker(self):
         self._test_file_download_benchmark('picoquic', ['--quacker'])
 
-    @unittest.expectedFailure
     def test_picoquic_benchmark_with_quacker_and_sidekick(self):
-        # should fix: some issue with both the sniffing quacker and sidekick
         self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick', '--quacker'])
 
     def test_quacker_prints_quacks(self):
