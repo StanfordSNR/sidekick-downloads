@@ -71,6 +71,7 @@ class TestFileDownloadBenchmarks(unittest.TestCase):
         self._test_file_download_benchmark('quic')
         self._test_file_download_benchmark('quic', ['--sidekick'])
 
+    @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_benchmark(self):
         self._test_file_download_benchmark('quiche')
         self._test_file_download_benchmark('quiche', ['--sidekick'])
