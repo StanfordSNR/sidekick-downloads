@@ -63,22 +63,41 @@ class NetworkTestCase(unittest.TestCase):
         self._stderr = sys.stderr
         sys.stderr = open(os.devnull, 'w')
 
+        self.net = None
+        self.stopped = True
+
+    def stopNetwork(self):
+        if not self.stopped:
+            self.net.stop()
+            self.stopped = True
+
+    def tearDown(self):
+        self.stopNetwork()
+
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
         jitter1=None, jitter2=None, qdisc='red', pacing=False, setup_time=0,
-        bridge_proxy=True
+        bridge_proxy=True, cache=True,
     ) -> OneHopNetwork:
         net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
                             jitter1, jitter2, qdisc, pacing, bridge_proxy)
+        if cache:
+            self.stopNetwork()
+            self.net = net
+            self.stopped = False
         if setup_time > 0:
             time.sleep(setup_time)
         return net
 
     def setUpDirectNetwork(
         self, delay=10, loss=0, bw=10, jitter=None, qdisc='red', pacing=False,
-        setup_time=0,
+        setup_time=0, cache=True,
     ) -> DirectNetwork:
         net = DirectNetwork(delay, loss, bw, jitter, qdisc, pacing)
+        if cache:
+            self.stopNetwork()
+            self.net = net
+            self.stopped = False
         if setup_time > 0:
             time.sleep(setup_time)
         return net
@@ -119,12 +138,10 @@ class TestNetStatistics(NetworkTestCase):
         # one-hop network
         net = self.setUpOneHopNetwork()
         self.assertSchemaIsCorrect(net, host_ifaces + proxy_ifaces)
-        net.stop()
 
         # direct network
         net = self.setUpDirectNetwork()
         self.assertSchemaIsCorrect(net, host_ifaces)
-        net.stop()
 
         # one-hop network with a sidekick
         cwd = os.getcwd()
@@ -132,7 +149,6 @@ class TestNetStatistics(NetworkTestCase):
         net = self.setUpOneHopNetwork(bridge_proxy=False)
         net.start_sidekick(logfile=None)
         self.assertSchemaIsCorrect(net, host_ifaces + proxy_ifaces)
-        net.stop()
         os.chdir(cwd)
 
     def test_reset_statistics(self):
@@ -244,14 +260,12 @@ class TestNetworkReachability(NetworkTestCase):
         net = self.setUpOneHopNetwork()
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
-        net.stop()
 
     def test_one_hop_hosts_are_reachable_pepsal(self):
         net = self.setUpOneHopNetwork()
         net.start_tcp_pep(logfile=None)
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
-        net.stop()
 
     def test_one_hop_hosts_are_reachable_sidekick(self):
         cwd = os.getcwd()
@@ -260,7 +274,6 @@ class TestNetworkReachability(NetworkTestCase):
         net.start_sidekick(logfile=None)
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
-        net.stop()
         os.chdir(cwd)
 
     def test_one_hop_proxy_is_reachable(self):
@@ -269,7 +282,6 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.p1, net.h2)
         self.assertReachable(net.h1, net.p1)
         self.assertReachable(net.h2, net.p1)
-        net.stop()
 
     def test_one_hop_proxy_is_reachable_pepsal(self):
         net = self.setUpOneHopNetwork()
@@ -278,7 +290,6 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.p1, net.h2)
         self.assertReachable(net.h1, net.p1)
         self.assertReachable(net.h2, net.p1)
-        net.stop()
 
     def test_one_hop_proxy_is_reachable_sidekick(self):
         cwd = os.getcwd()
@@ -289,14 +300,12 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.p1, net.h2)
         self.assertReachable(net.h1, net.p1)
         self.assertReachable(net.h2, net.p1)
-        net.stop()
         os.chdir(cwd)
 
     def test_direct_hosts_are_reachable(self):
         net = self.setUpDirectNetwork()
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
-        net.stop()
 
 class TestDelayConfig(NetworkTestCase):
     def assertDelayIsCorrect(self, node1, node2, expected_delay, n=10):
@@ -327,7 +336,6 @@ class TestDelayConfig(NetworkTestCase):
         # ping each pair of nodes
         self.assertDelayIsCorrect(net.h1, net.h2, delay)
         self.assertDelayIsCorrect(net.h2, net.h1, delay)
-        net.stop()
 
     def test_one_hop_delay_config(self):
         delay1 = 100  # one-way delay, in ms
@@ -345,7 +353,6 @@ class TestDelayConfig(NetworkTestCase):
             # ping each pair of nodes
             self.assertDelayIsCorrect(node1, node2, delay)
             self.assertDelayIsCorrect(node2, node1, delay)
-        net.stop()
 
 
 class TestLossConfig(NetworkTestCase):
@@ -364,7 +371,6 @@ class TestLossConfig(NetworkTestCase):
         net = self.setUpDirectNetwork(loss=20, setup_time=2)
         self.assertLossIsCorrect(net.h1, net.h2, True)
         self.assertLossIsCorrect(net.h2, net.h1, True)
-        net.stop()
 
     @unittest.skip('pings are flaky when there is loss')
     def test_one_hop_loss_config(self):
@@ -376,7 +382,6 @@ class TestLossConfig(NetworkTestCase):
         ]:
             self.assertLossIsCorrect(node1, node2, True)
             self.assertLossIsCorrect(node2, node1, True)
-        net.stop()
 
     @unittest.skip('pings are flaky when there is loss')
     def test_one_hop_asymmetric_loss_config(self):
@@ -388,7 +393,6 @@ class TestLossConfig(NetworkTestCase):
         ]:
             self.assertLossIsCorrect(node1, node2, loss)
             self.assertLossIsCorrect(node2, node1, loss)
-        net.stop()
 
 
 class TestBandwidthConfig(NetworkTestCase):
@@ -402,8 +406,8 @@ class TestQdiscConfig(NetworkTestCase):
 class TestSetTCPCongestionControl(NetworkTestCase):
     def setUp(self):
         super().setUp()
-        self.net1 = self.setUpDirectNetwork()
-        self.net2 = self.setUpOneHopNetwork()
+        self.net1 = self.setUpDirectNetwork(cache=False)
+        self.net2 = self.setUpOneHopNetwork(cache=False)
 
     def tearDown(self):
         self.net1.stop()
@@ -444,13 +448,7 @@ class TestSetTCPCongestionControl(NetworkTestCase):
 class TestPopen(NetworkTestCase):
     def setUp(self):
         super().setUp()
-        self.net = self.setUpDirectNetwork()
-        self.stopped = False
-
-    def tearDown(self):
-        if not self.stopped:
-            self.net.stop()
-            self.stopped = True
+        self.setUpDirectNetwork()
 
     def test_invalid_configurations(self):
         logfile = tempfile.NamedTemporaryFile()
@@ -675,7 +673,7 @@ class TestProxyFunctions(NetworkTestCase):
         net.start_tcp_pep(logfile=self.logfile, timeout=2)
         output = net.p1.cmd('ps aux | grep pep')
         self.assertIn('pepsal', output, 'tcp pep started')
-        net.stop()  # flush processes
+        self.stopNetwork()  # flush processes
         self.assertTrue(os.path.exists(self.logfile))
         with open(self.logfile, 'r') as f:
             self.assertNotEqual(f.read(), '', 'proxy writes to logfile')
