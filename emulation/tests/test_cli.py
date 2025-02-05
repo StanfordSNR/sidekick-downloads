@@ -153,16 +153,22 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_tcp_benchmark_default(self):
         self._test_file_download_benchmark('tcp')
 
-    def test_tcp_benchmark_with_proxy(self):
+    def test_tcp_benchmark_with_pepsal(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'pepsal'])
+
+    def test_tcp_benchmark_with_bridge(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'bridge'])
+
+    def test_tcp_benchmark_with_sidekick(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'sidekick'])
 
     def test_picoquic_benchmark_default(self):
         self._test_file_download_benchmark('picoquic')
 
-    def test_picoquic_benchmark_with_proxy(self):
+    def test_picoquic_benchmark_with_bridge(self):
         self._test_file_download_benchmark('picoquic', ['--proxy', 'bridge'])
+
+    def test_picoquic_benchmark_with_sidekick(self):
         self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick'])
 
     def test_picoquic_benchmark_with_quacker(self):
