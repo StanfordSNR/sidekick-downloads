@@ -38,6 +38,7 @@ See [instructions](https://github.com/ygina/sidekick-downloads/blob/main/proxy/)
 export SIDEKICK_HOME=$HOME/sidekick-downloads
 cd $SIDEKICK_HOME/proxy
 cargo build --bin bridge --release
+cargo build --bin sidekick --release
 ```
 
 ### Build the client-side sniffer
