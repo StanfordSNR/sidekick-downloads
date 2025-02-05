@@ -170,11 +170,14 @@ See the section on generating certificates under "TCP Benchmarks".
 
 ### Build and Install PicoQUIC
 
-This is a fork of picoquic on the main branch as of January 2024. The picoquic library is unchanged, but the sample server has been modified to always return N bytes, regardless of the client request, where N is an argument provided by the CLI.
+This is a fork of picoquic on the main branch as of January 2024. The picoquic
+library is unchanged, but the sample server has been modified to always return
+N bytes, regardless of the client request, where N is an argument provided by
+the CLI. There will also be some ongoing sidekick modifications...
 
 ```
 cd $SIDEKICK_HOME/deps
-git clone --recursive https://github.com/thearossman/picoquic
+git clone --recursive https://github.com/ygina/picoquic.git
 ./build_deps.sh 4
 ```
 

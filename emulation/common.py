@@ -50,10 +50,11 @@ def read_subprocess_pipe(p):
     while p.poll() is None:
         ready, _, _ = select.select(streams, [], [])
         for stream in ready:
-            line = stream.readline()
-            if not line:
-                continue
-            yield (line, stream)
+            while True:
+                line = stream.readline()
+                if not line:
+                    break
+                yield (line, stream)
     for stream in streams:
         for line in stream.readlines():
             yield (line, stream)

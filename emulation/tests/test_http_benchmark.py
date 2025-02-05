@@ -182,25 +182,10 @@ class TestStartServer(HTTPDownloadTestCase):
         bm = self.setUpCloudflareQUICBenchmark(port=port)
         self._test_start_server(bm, port)
 
-    def test_picoquic_server_is_listening(self):
+    def test_picoquic_start_server(self):
         port = 4321
         bm = self.setUpPicoQUICBenchmark(port=port)
-        output = bm.server.cmd(f'lsof -i :{port}')
-        self.assertEqual(output, '', 'server is not running initially')
-        bm.start_server()
-        output = bm.server.cmd(f'lsof -i :{port}')
-        self.assertNotEqual(output, '', 'server should have started')
-
-    @unittest.expectedFailure
-    def test_picoquic_server_writes_to_logs(self):
-        bm = self.setUpPicoQUICBenchmark()
-        server_logfile = bm.logfile(bm.server)
-        self.assertFalse(os.path.exists(server_logfile))
-        bm.start_server()
-        self.stopNetwork()  # Give background processes a chance to flush
-        self.assertTrue(os.path.exists(server_logfile))
-        with open(server_logfile, 'r') as f:
-            self.assertNotEqual(f.read(), '', 'server writes to logfile')
+        self._test_start_server(bm, port)
 
 
 class TestRunClient(HTTPDownloadTestCase):

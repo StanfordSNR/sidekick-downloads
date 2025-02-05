@@ -277,7 +277,6 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             proxy_type=proxy_type
         )
 
-
     def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting picoquic-server')
         self.server.cmd('killall picoquic_sample')
@@ -294,12 +293,6 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{self.data_size} '\
               f'{self.cca}'
 
-        DEBUG(f'{self.server.name} {cmd}')
-        self.server.cmd(cmd + ' &')
-        time.sleep(1)
-
-        '''
-        TODO FIGURE OUT WHY POPEN ISN'T STARTING for picoquic
         condition = threading.Condition()
         def notify_when_ready(line):
             if 'serving' in line.lower():
@@ -309,14 +302,13 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         # The start_server() function blocks until the server is ready to
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
+        logfile = self.logfile(self.server)
         self.net.popen(self.server, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
         with condition:
             notified = condition.wait(timeout=timeout)
             if not notified:
-                WARN("Server did not print expected output; continuing anyway")
-                # raise TimeoutError(f'start_server timeout {timeout}s')
-        '''
+                raise TimeoutError(f'start_server timeout {timeout}s')
 
     def run_client(
         self, timeout: Optional[int]=None,
@@ -329,12 +321,6 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'/tmp '\
               f'{self.cca} '\
               f'{self.data_size}.html '
-        if timeout is None:
-            DEBUG(f'{self.client.name} {cmd}')
-            output = self.client.cmd(cmd)
-        else:
-            DEBUG(f'{self.client.name} timeout {timeout} {cmd}')
-            output = self.client.cmd(f"timeout {timeout} {cmd}")
 
         result = []
         def parse_result(line):
@@ -347,27 +333,17 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             except:
                 pass
 
-        print(output, file=sys.stderr)
-        for line in output.split('\n'):
-            parse_result(line)
-
         logfile = self.logfile(self.client)
-        with open(logfile, 'a') as f:
-            f.write(output)
-        # TODO figure out why popen isn't working
-        # timeout_flag = self.net.popen(self.client, cmd, background=False,
-        #     console_logger=DEBUG, logfile=logfile, func=parse_result,
-        #     timeout=timeout, raise_error=False)
+        timeout_flag = self.net.popen(self.client, cmd, background=False,
+            console_logger=DEBUG, logfile=logfile, func=parse_result,
+            timeout=timeout, raise_error=False)
 
         if len(result) == 0:
             WARN('PicoQUIC client failed to return result')
-            if timeout is not None:
-                WARN('assuming picoquic timeout')
-                return (HTTP_TIMEOUT_STATUSCODE, timeout)
-            else:
-                return None
         elif len(result) > 1:
             WARN(f'PicoQUIC client returned multiple results {result}')
+        elif timeout_flag:
+            return (HTTP_TIMEOUT_STATUSCODE, timeout)
         else:
             return (HTTP_OK_STATUSCODE, result[0])
 
