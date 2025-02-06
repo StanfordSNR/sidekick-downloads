@@ -311,25 +311,25 @@ def main(args):
     else:
         raise NotImplementedError(args.topology)
 
-    # Start the network proxy if configured
-    proxy_logfile = f'{args.logdir}/{ROUTER_LOGFILE}'
-    if args.proxy == ProxyType.PEPSAL:
-        net.start_tcp_pep(proxy_logfile)
-    elif args.proxy == ProxyType.BRIDGE:
-        net.start_bridge(proxy_logfile)
-    elif args.proxy == ProxyType.SIDEKICK:
-        net.start_sidekick(proxy_logfile)
-
-    # Start the packet trace collector
-    if args.tcpdump:
-        net.start_tcpdump(args.logdir)
-
-    # Start the client quacker if using a sniffing version
-    if args.quacker:
-        net.start_client_quacker(args.threshold, args.frequency,
-            args.quackee_port)
-
     try:
+        # Start the network proxy if configured
+        proxy_logfile = f'{args.logdir}/{ROUTER_LOGFILE}'
+        if args.proxy == ProxyType.PEPSAL:
+            net.start_tcp_pep(proxy_logfile)
+        elif args.proxy == ProxyType.BRIDGE:
+            net.start_bridge(proxy_logfile)
+        elif args.proxy == ProxyType.SIDEKICK:
+            net.start_sidekick(proxy_logfile)
+
+        # Start the packet trace collector
+        if args.tcpdump:
+            net.start_tcpdump(args.logdir)
+
+        # Start the client quacker if using a sniffing version
+        if args.quacker:
+            net.start_client_quacker(args.threshold, args.frequency,
+                args.quackee_port)
+
         if args.ty == 'cli':
             CLI(net.net)
         else:
