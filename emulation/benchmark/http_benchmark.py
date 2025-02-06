@@ -3,6 +3,7 @@ import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional, Tuple
+from dataclasses import dataclass
 import re
 
 import mininet
@@ -23,6 +24,13 @@ class ProxyType(Enum):
     PEPSAL = 'pepsal'
     BRIDGE = 'bridge'
     SIDEKICK = 'sidekick'
+
+
+@dataclass(frozen=True)
+class HTTPClientOutput:
+    status_code: int
+    time_s: int
+    num_spurious: Optional[int] = None
 
 
 class HTTPDownloadBenchmark(ABC):
@@ -161,7 +169,7 @@ class HTTPDownloadBenchmark(ABC):
     @abstractmethod
     def run_client(
         self, timeout: Optional[int]=None,
-    ) -> Optional[Tuple[int, float]]:
+    ) -> Optional[HTTPClientOutput]:
         """
         Runs the HTTP client on the h1 host and writes output to a logfile.
 
@@ -171,10 +179,10 @@ class HTTPDownloadBenchmark(ABC):
 
         Returns:
         - If there is an error that is not a timeout, returns None.
-        - (http_status_code, total_time): The HTTP status code and the total
-          runtime, in seconds, of the GET request. If the client has timed out,
-          returns HTTP_TIMEOUT_STATUSCODE even though the timeout may not have
-          occurred in the actual endpoints.
+        - The HTTP status code and the total runtime, in seconds, of the GET
+          request, along with other optional statistics. If the client has
+          timed out, returns HTTP_TIMEOUT_STATUSCODE even though the timeout
+          may not have occurred in the actual endpoints.
         """
         pass
 
@@ -233,10 +241,9 @@ class HTTPDownloadBenchmark(ABC):
                 continue
 
             # Handle a successful trial
-            status_code, time_s = output
-            result.set_success(status_code == HTTP_OK_STATUSCODE)
-            result.set_timeout(status_code == HTTP_TIMEOUT_STATUSCODE)
-            result.set_time_s(time_s)
+            result.set_success(output.status_code == HTTP_OK_STATUSCODE)
+            result.set_timeout(output.status_code == HTTP_TIMEOUT_STATUSCODE)
+            result.set_time_s(output.time_s)
 
         # Return the result
         return result
@@ -312,7 +319,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
 
     def run_client(
         self, timeout: Optional[int]=None,
-    ) -> Optional[Tuple[int, float]]:
+    ) -> Optional[HTTPClientOutput]:
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'client '\
@@ -343,9 +350,9 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         elif len(result) > 1:
             WARN(f'PicoQUIC client returned multiple results {result}')
         elif timeout_flag:
-            return (HTTP_TIMEOUT_STATUSCODE, timeout)
+            return HTTPClientOutput(HTTP_TIMEOUT_STATUSCODE, timeout)
         else:
-            return (HTTP_OK_STATUSCODE, result[0])
+            return HTTPClientOutput(HTTP_OK_STATUSCODE, result[0])
 
 
 class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
@@ -418,7 +425,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
 
     def run_client(
         self, timeout: Optional[int]=None,
-    ) -> Optional[Tuple[int, float]]:
+    ) -> Optional[HTTPClientOutput]:
         # Required outputs are in INFO logs
         os.environ['RUST_LOG'] = 'info'
 
@@ -464,13 +471,13 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
             WARN('Cloudflare QUIC client failed (idle timeout)')
             return None
         elif timeout_flag:
-            return (HTTP_TIMEOUT_STATUSCODE, timeout)
+            return HTTPClientOutput(HTTP_TIMEOUT_STATUSCODE, timeout)
         elif len(result) == 0:
             WARN('Cloudflare QUIC client failed to return result')
         elif len(result) > 1:
             WARN(f'Cloudflare QUIC client returned multiple results {result}')
         else:
-            return (HTTP_OK_STATUSCODE, result[0])
+            return HTTPClientOutput(HTTP_OK_STATUSCODE, result[0])
 
 
 class GoogleQUICBenchmark(HTTPDownloadBenchmark):
@@ -531,7 +538,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
 
     def run_client(
         self, timeout: Optional[int]=None,
-    ) -> Optional[Tuple[int, float]]:
+    ) -> Optional[HTTPClientOutput]:
         base = 'deps/chromium/src'
         cmd = f'./{base}/out/Default/quic_client '\
               f'--allow_unknown_root_cert '\
@@ -561,7 +568,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
                 assert line[1][0] == 'time_s'
                 status_code = int(line[0][1])
                 time_s = float(line[1][1].strip()[:-1])  # output ends in "s"
-                result.append((status_code, time_s))
+                result.append(HTTPClientOutput(status_code, time_s))
             except:
                 pass
 
@@ -570,7 +577,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout)
         if timeout_flag:
-            return (HTTP_TIMEOUT_STATUSCODE, timeout)
+            return HTTPClientOutput(HTTP_TIMEOUT_STATUSCODE, timeout)
         elif len(result) == 0:
             # E.g., 404 not found
             WARN('QUIC client failed to return result')
@@ -638,7 +645,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
 
     def run_client(
         self, timeout: Optional[int]=None,
-    ) -> Optional[Tuple[int, float]]:
+    ) -> Optional[HTTPClientOutput]:
         cmd = f'python3 webserver/http_client.py '\
               f'--server-ip {self.server.IP()} -n {self.data_size}'
 
@@ -653,7 +660,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
                 assert line[1][0] == 'time_s'
                 status_code = int(line[0][1])
                 time_s = float(line[1][1])
-                result.append((status_code, time_s))
+                result.append(HTTPClientOutput(status_code, time_s))
             except:
                 pass
 
@@ -662,7 +669,7 @@ class TCPBenchmark(HTTPDownloadBenchmark):
             console_logger=DEBUG, logfile=logfile, func=parse_result,
             timeout=timeout)
         if timeout_flag:
-            return (HTTP_TIMEOUT_STATUSCODE, timeout)
+            return HTTPClientOutput(HTTP_TIMEOUT_STATUSCODE, timeout)
         elif len(result) == 0:
             WARN('TCP client failed to return result')
         elif len(result) > 1:

@@ -198,9 +198,8 @@ class TestRunClient(HTTPDownloadTestCase):
         self.assertFalse(os.path.exists(client_logfile))
         result = bm.run_client(timeout=None)
         self.assertIsNotNone(result)
-        http_status_code, total_time = result
-        self.assertEqual(http_status_code, HTTP_OK_STATUSCODE)
-        self.assertGreater(total_time, 0)
+        self.assertEqual(result.status_code, HTTP_OK_STATUSCODE)
+        self.assertGreater(result.time_s, 0)
         self.assertTrue(os.path.exists(client_logfile))
         with open(client_logfile, 'r') as f:
             self.assertNotEqual(f.read(), '', 'client writes to logfile')
