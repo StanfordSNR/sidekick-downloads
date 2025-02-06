@@ -30,6 +30,19 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 . "$HOME/.cargo/env"
 ```
 
+### Install quACK
+
+The proxy and the client-side sniffer rely on this.
+
+The quack library needs nightly rust for unessential reasons.
+
+```
+export SIDEKICK_HOME=$HOME/sidekick-downloads
+cd $SIDEKICK_HOME/deps
+git clone git@github.com:ygina/quack.git
+rustup default nightly-2024-01-26
+```
+
 ### Build the proxy
 
 See [instructions](https://github.com/ygina/sidekick-downloads/blob/main/proxy/).
@@ -43,14 +56,11 @@ cargo build --bin sidekick --release
 
 ### Build the client-side sniffer
 
-The quack library needs nightly rust for unessential reasons.
 
 ```
 export SIDEKICK_HOME=$HOME/sidekick-downloads
 cd $SIDEKICK_HOME/deps
-git clone git@github.com:ygina/quack.git
 cd $SIDEKICK_HOME/quacker
-rustup default nightly-2024-01-26
 cargo build --release
 ```
 
