@@ -15,6 +15,7 @@ class EmulatedNetwork:
 
     def __init__(self):
         self.net = Mininet(controller=None, link=TCLink)
+        self.primary_ifaces = []
         self.iface_to_host = {}
 
         # Keep track of background processes/threads for cleanup
@@ -146,18 +147,10 @@ class EmulatedNetwork:
             for host in self.net.hosts:
                 self.popen(host, cmd, stderr=False, console_logger=DEBUG)
 
-    def reset_statistics(self, ifaces: Optional[List[str]]=None):
+    def reset_statistics(self):
         """After a reset, an immediate snapshot would return all 0 values.
-
-        The constructor must also call `reset_statistics()` for the first time,
-        providing a list of `ifaces` for which we want statistics. After that,
-        if the `ifaces` argument is not provided, the snapshot will use the
-        previous ifaces.
         """
-        if ifaces is None:
-            ifaces = self.raw_metrics['ifaces']
-        ifaces = list(sorted(ifaces))
-        self.raw_metrics = self._read_raw_metrics(ifaces)
+        self.raw_metrics = self._read_raw_metrics()
 
     def snapshot_statistics(self) -> dict:
         """Return a snapshot of metrics since the last reset. This is a
@@ -176,20 +169,19 @@ class EmulatedNetwork:
         in 'ifaces'. There is one interface for each endpoint, and two
         interfaces for the proxy.
         """
-        ifaces = self.raw_metrics['ifaces']
-        snapshot = self._read_raw_metrics(ifaces)
+        snapshot = self._read_raw_metrics()
         for metric in self.METRICS:
-            for i in range(len(ifaces)):
+            for i in range(len(self.primary_ifaces)):
                 snapshot[metric][i] -= self.raw_metrics[metric][i]
         return snapshot
 
-    def _read_raw_metrics(self, ifaces: List[str]) -> dict:
-        """Read the current raw metrics of the provided ifaces.
+    def _read_raw_metrics(self) -> dict:
+        """Read the current raw metrics of the primary ifaces.
         """
-        stats = { 'ifaces': ifaces }
+        stats = { 'ifaces': self.primary_ifaces }
         for metric in self.METRICS:
             stats[metric] = []
-            for iface in ifaces:
+            for iface in self.primary_ifaces:
                 stats[metric].append(self._read_raw_metric(iface, metric))
         return stats
 
@@ -440,6 +432,7 @@ class OneHopNetwork(EmulatedNetwork):
         self.net.build()
 
         # Initialize statistics
+        self.primary_ifaces = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
         self.iface_to_host = {
             'h1-eth0': self.h1,
             'p1-eth0': self.p1,
@@ -450,7 +443,7 @@ class OneHopNetwork(EmulatedNetwork):
             'e2-eth0': self.e2,
             'e2-eth1': self.e2,
         }
-        self.reset_statistics(['h1-eth0', 'p1-eth0', 'p1-eth1', 'h2-eth0'])
+        self.reset_statistics()
 
         # Setup routing and forwarding (e2 acts as router)
         self.popen(self.e2, "ifconfig e2-eth0 0")
@@ -526,13 +519,14 @@ class DirectNetwork(EmulatedNetwork):
         self.net.build()
 
         # Initialize statistics
+        self.primary_ifaces = ['h1-eth0', 'h2-eth0']
         self.iface_to_host = {
             'h1-eth0': self.h1,
             'h2-eth0': self.h2,
             'e1-eth0': self.e1,
             'e1-eth1': self.e1,
         }
-        self.reset_statistics(['h1-eth0', 'h2-eth0'])
+        self.reset_statistics()
 
         # Setup routing
         self.popen(self.h1, "ip route add 172.16.2.0/24 via 172.16.1.10")
