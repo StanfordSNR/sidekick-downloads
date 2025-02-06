@@ -327,6 +327,12 @@ class EmulatedNetwork:
         if self.net is not None:
             self.net.stop()
 
+    def start_tcpdump(self, logdir: str):
+        for iface in self.primary_ifaces:
+            host = self.iface_to_host[iface]
+            cmd = f'tcpdump -i {iface} -w {logdir}/{iface}.pcap'
+            self.popen(host, cmd, background=True, console_logger=DEBUG)
+
     def start_client_quacker(
         self, threshold: int, frequency_ms: int, quackee_port: int,
         logfile=None,

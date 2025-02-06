@@ -7,6 +7,7 @@ import os
 import json
 import re
 import sys
+import tempfile
 
 from typing import List, Tuple
 from unittest.mock import patch
@@ -199,3 +200,20 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self.assertGreaterEqual(len(quacks), 2, 'should send more at this freq')
         for i in range(len(quacks) - 1):
             self.assertLessEqual(quacks[i], quacks[i+1], quacks)
+
+    def test_tcpdump(self):
+        try:
+            logdir = tempfile.TemporaryDirectory()
+            self.assertEqual(len(os.listdir(logdir.name)), 0)
+            network_options = ['--tcpdump', '--logdir', logdir.name]
+            self.execute_command('picoquic', network_options)
+            entries = os.listdir(logdir.name)
+            self.assertGreater(len(entries), 0, entries)
+            hosts = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
+            for host in hosts:
+                self.assertIn(f'{host}.pcap', entries, host)
+            for host in hosts:
+                file_size = os.path.getsize(f'{logdir.name}/{host}.pcap')
+                self.assertGreater(file_size, 0, host)
+        finally:
+            logdir.cleanup()

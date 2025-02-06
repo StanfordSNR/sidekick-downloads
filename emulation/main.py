@@ -144,6 +144,8 @@ def parse_args(argv=None):
         help='Directory where host logs are written, in server.log and client.log')
     exp_config.add_argument('--network-statistics', action='store_true',
         help='Include measured network statistics in experiment output')
+    exp_config.add_argument('--tcpdump', action='store_true',
+        help='Collect packet traces at each interface of each host in --logdir')
     exp_config.add_argument('--topology',
         choices=['one_hop', 'direct'], default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
@@ -317,6 +319,10 @@ def main(args):
         net.start_bridge(proxy_logfile)
     elif args.proxy == ProxyType.SIDEKICK:
         net.start_sidekick(proxy_logfile)
+
+    # Start the packet trace collector
+    if args.tcpdump:
+        net.start_tcpdump(args.logdir)
 
     # Start the client quacker if using a sniffing version
     if args.quacker:
