@@ -38,7 +38,7 @@ async fn main() {
         args.client_interface.clone(),
         args.server_interface.clone(),
     );
-    println!(
+    eprintln!(
         "Ready to bridge between {} and {}",
         args.client_interface, args.server_interface
     );

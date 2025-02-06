@@ -44,7 +44,7 @@ async fn main() {
     } else {
         env_logger::init();
     }
-    println!(
+    eprintln!(
         "Ready to start Sidekick with client {}; expecting server {}",
         args.client_interface, args.server_interface
     );
