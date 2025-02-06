@@ -229,7 +229,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
         result = json.loads(result.json())
         return result
 
-    def _test_run_benchmark(self, bm, num_trials):
+    def _test_run_benchmark(self, bm, num_trials, additional_data=None):
         """The benchmark runs and returns successful results for the given
         number of trials.
         """
@@ -254,7 +254,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
             self.assertLess(output.get('time_s'), 10, 'sanity check runtime')
             self.assertGreater(output.get('throughput_mbps'), 0)
             self.assertIsNone(output.get('statistics'))
-            self.assertIsNone(output.get('additional_data'))
+            self.assertEqual(output.get('additional_data'), additional_data)
 
     def test_tcp_run_benchmark_one_trial(self):
         self.setUpOneHopNetwork()
@@ -293,9 +293,9 @@ class TestRunBenchmark(HTTPDownloadTestCase):
     def test_picoquic_run_benchmark_one_trial(self):
         self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
-        self._test_run_benchmark(bm, 1)
+        self._test_run_benchmark(bm, 1, additional_data={'num_spurious': 0})
 
     def test_picoquic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
-        self._test_run_benchmark(bm, 5)
+        self._test_run_benchmark(bm, 5, additional_data={'num_spurious': 0})

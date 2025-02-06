@@ -244,6 +244,10 @@ class HTTPDownloadBenchmark(ABC):
             result.set_success(output.status_code == HTTP_OK_STATUSCODE)
             result.set_timeout(output.status_code == HTTP_TIMEOUT_STATUSCODE)
             result.set_time_s(output.time_s)
+            if output.num_spurious is not None:
+                result.set_additional_data({
+                    'num_spurious': output.num_spurious,
+                })
 
         # Return the result
         return result
@@ -284,6 +288,10 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             proxy_type=proxy_type
         )
 
+        # Fields for the server to notify the client of certain statistics
+        self.condition = threading.Condition()
+        self.num_spurious = None
+
     def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting picoquic-server')
         self.server.cmd('killall picoquic_sample')
@@ -300,18 +308,29 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{self.data_size} '\
               f'{self.cca}'
 
+
         condition = threading.Condition()
-        def notify_when_ready(line):
-            if 'serving' in line.lower():
+        def parse_output(line):
+            # The server needs to parse output for two purposes:
+            # 1) Notify the active process when it is ready to serve requests.
+            if line.startswith('Serving'):
                 with condition:
                     condition.notify()
+                return
+            # 2) On request completion, log the number of spurious retxs.
+            pattern = r'Finished file transfer.*(?P<spurious>\d+) spurious'
+            match = re.search(pattern, line)
+            if match is not None:
+                with self.condition:
+                    self.num_spurious = int(match.group(1))
+                    self.condition.notify()
 
         # The start_server() function blocks until the server is ready to
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
         logfile = self.logfile(self.server)
         self.net.popen(self.server, cmd, background=True,
-            console_logger=DEBUG, logfile=logfile, func=notify_when_ready)
+            console_logger=DEBUG, logfile=logfile, func=parse_output)
         with condition:
             notified = condition.wait(timeout=timeout)
             if not notified:
@@ -331,28 +350,31 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
 
         result = []
         def parse_result(line):
-            if 'complete' not in line:
+            pattern = r'complete.*in ([\d.]+) seconds'
+            match = re.search(pattern, line)
+            if match is None:
                 return
-            try:
-                match = re.search(r'\d+\.\d+ seconds', line).group(0)
-                time_s = float(match.split(' ')[0])
-                result.append(time_s)
-            except:
-                pass
+            time_s = float(match.group(1))
+            result.append(time_s)
 
-        logfile = self.logfile(self.client)
-        timeout_flag = self.net.popen(self.client, cmd, background=False,
-            console_logger=DEBUG, logfile=logfile, func=parse_result,
-            timeout=timeout, raise_error=False)
+        with self.condition:
+            logfile = self.logfile(self.client)
+            timeout_flag = self.net.popen(self.client, cmd, background=False,
+                console_logger=DEBUG, logfile=logfile, func=parse_result,
+                timeout=timeout, raise_error=False)
 
-        if len(result) == 0:
-            WARN('PicoQUIC client failed to return result')
-        elif len(result) > 1:
-            WARN(f'PicoQUIC client returned multiple results {result}')
-        elif timeout_flag:
-            return HTTPClientOutput(HTTP_TIMEOUT_STATUSCODE, timeout)
-        else:
-            return HTTPClientOutput(HTTP_OK_STATUSCODE, result[0])
+            # Check for an error running the client
+            if len(result) == 0:
+                WARN('PicoQUIC client failed to return result')
+            elif len(result) > 1:
+                WARN(f'PicoQUIC client returned multiple results {result}')
+            elif timeout_flag:
+                return HTTPClientOutput(HTTP_TIMEOUT_STATUSCODE, timeout)
+
+            # Wait for the server to log the number of spurious retransmissions.
+            if not self.condition.wait(timeout=5):
+                raise TimeoutError(f'timeout waiting for server stats')
+            return HTTPClientOutput(HTTP_OK_STATUSCODE, result[0], self.num_spurious)
 
 
 class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
