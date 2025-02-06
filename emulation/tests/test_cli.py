@@ -22,7 +22,12 @@ class CLITestCase(unittest.TestCase):
         self._cwd = os.getcwd()
         os.chdir('..')
 
+        # Set up logging directory
+        self._logdir = tempfile.TemporaryDirectory()
+        self.logdir = self._logdir.name
+
     def tearDown(self):
+        self._logdir.cleanup()
         os.chdir(self._cwd)
 
     def execute_command(
@@ -32,6 +37,7 @@ class CLITestCase(unittest.TestCase):
         protocol_options: List[str]=[],
     ) -> Tuple[str, str]:
         cmd = ['python3', 'emulation/main.py']
+        cmd += ['--logdir', self.logdir]
         cmd += network_options
         cmd += [protocol]
         cmd += protocol_options
@@ -46,6 +52,7 @@ class CLITestCase(unittest.TestCase):
         protocol_options: List[str]=[],
     ):
         argv = []
+        argv += ['--logdir', self.logdir]
         argv += network_options
         argv += [protocol]
         argv += protocol_options
@@ -202,18 +209,14 @@ class TestFileDownloadBenchmarks(CLITestCase):
             self.assertLessEqual(quacks[i], quacks[i+1], quacks)
 
     def test_tcpdump(self):
-        try:
-            logdir = tempfile.TemporaryDirectory()
-            self.assertEqual(len(os.listdir(logdir.name)), 0)
-            network_options = ['--tcpdump', '--logdir', logdir.name]
-            self.execute_command('picoquic', network_options)
-            entries = os.listdir(logdir.name)
-            self.assertGreater(len(entries), 0, entries)
-            hosts = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
-            for host in hosts:
-                self.assertIn(f'{host}.pcap', entries, host)
-            for host in hosts:
-                file_size = os.path.getsize(f'{logdir.name}/{host}.pcap')
-                self.assertGreater(file_size, 0, host)
-        finally:
-            logdir.cleanup()
+        self.assertEqual(len(os.listdir(self.logdir)), 0)
+        network_options = ['--tcpdump']
+        self.execute_command('picoquic', network_options)
+        entries = os.listdir(self.logdir)
+        self.assertGreater(len(entries), 0, entries)
+        hosts = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
+        for host in hosts:
+            self.assertIn(f'{host}.pcap', entries, host)
+        for host in hosts:
+            file_size = os.path.getsize(f'{self.logdir}/{host}.pcap')
+            self.assertGreater(file_size, 0, host)
