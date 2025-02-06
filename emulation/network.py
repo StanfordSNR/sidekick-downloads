@@ -323,7 +323,8 @@ class EmulatedNetwork:
         else:
             ERROR(f'{host}({cmd}) = {exitcode}')
             if raise_error:
-                raise ValueError(f'{host}({cmd}) = {p.returncode}')
+                debug_str = f'{host}({cmd}) = {p.returncode}'
+                raise ValueError(debug_str)
 
     def stop(self):
         for p in self.background_processes:
