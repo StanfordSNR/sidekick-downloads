@@ -667,6 +667,10 @@ class TestProxyFunctions(NetworkTestCase):
         self._logdir = tempfile.TemporaryDirectory()
         self.logfile = f'{self._logdir.name}/{ROUTER_LOGFILE}'
 
+    def tearDown(self):
+        super().tearDown()
+        self._logdir.cleanup()
+
     def test_start_tcp_pep(self):
         net = self.setUpOneHopNetwork()
         self.assertFalse(os.path.exists(self.logfile))
