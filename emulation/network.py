@@ -40,7 +40,7 @@ class EmulatedNetwork:
 
     def _config_iface(self, iface, netem: bool, pacing: bool=False,
                       delay=None, loss=None, bw=None, bdp=None, qdisc=None,
-                      gso=True, tso=True, jitter=None):
+                      jitter=None):
         """Configures the given interface <iface>:
         - Netem: whether this is a network emulation node (i.e., delay, loss, etc.
           should be configured)
@@ -50,6 +50,10 @@ class EmulatedNetwork:
         - Bandwidth-delay product: <bdp> is used to set the queue size
         """
         host = self.iface_to_host[iface]
+
+        # Turn off segmentation offloading to send MTU-sized packets
+        self.popen(host, f'ethtool -K {iface} gso off tso off')
+        self.popen(host, f'ethtool -K {iface} tx-udp-segmentation off')
 
         # Configure the end-host or proxy
         if not netem:
@@ -127,11 +131,6 @@ class EmulatedNetwork:
             else:
                 raise NotImplementedError(qdisc)
             self.popen(host, queue_cmd)
-
-        # Turn off tso and gso to send MTU-sized packets
-        gso = 'on' if gso else 'off'
-        tso = 'on' if tso else 'off'
-        self.popen(host, f'ethtool -K {iface} gso {gso} tso {tso}')
 
         # Turn off checksum offloading for sidekick proxy
         self.popen(host, f'ethtool -K {iface} tx off rx off')
