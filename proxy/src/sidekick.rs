@@ -3,7 +3,7 @@ use crate::stream::{Packet, PacketStream};
 use crate::identifier::IdentifierFunc;
 use crate::buffer::{ID_OFFSET, UdpParser};
 
-use log::{trace, debug};
+use log::{trace, debug, info};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 /// The sidekick provides in-network assistance to a single base connection
@@ -75,6 +75,7 @@ impl Sidekick {
                     result.last_index, result.missing_indexes);
                 for index in result.missing_indexes {
                     let retx = self.cache.get(index).unwrap();
+                    info!("retransmit");
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
                     self.cache.add(retx.clone()); // TODO: avoid clone
                 }
