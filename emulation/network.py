@@ -38,6 +38,11 @@ class EmulatedNetwork:
         bw_mbps = min(bw1, bw2)
         return rtt_ms * bw_mbps * 1000000. / 1000. / 8.
 
+    @staticmethod
+    def _calculate_cwnd(bdp, mss=1460):
+        # See above - BDP is in bytes
+        return int(bdp / mss)
+
     def _config_iface(self, iface, netem: bool, pacing: bool=False,
                       delay=None, loss=None, bw=None, bdp=None, qdisc=None,
                       jitter=None):
@@ -373,7 +378,7 @@ class EmulatedNetwork:
                     condition.notify()
 
         os.environ['RUST_LOG'] = 'debug'
-        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
+        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1 --cache-capacity {self.cwnd}',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
 
@@ -500,6 +505,9 @@ class OneHopNetwork(EmulatedNetwork):
         self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
         self._config_iface('e2-eth1', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
 
+        # Save the cwnd
+        self.cwnd = self._calculate_cwnd(bdp)
+
 
 """
 Defines an emulated network in mininet that directly connects the client /
@@ -550,3 +558,4 @@ class DirectNetwork(EmulatedNetwork):
         self._config_iface('h2-eth0', False, pacing)
         self._config_iface('e1-eth0', True, False, delay, loss, bw, bdp, qdisc, jitter=jitter)
         self._config_iface('e1-eth1', True, False, delay, loss, bw, bdp, qdisc, jitter=jitter)
+        self.cwnd = self._calculate_cwnd(bdp)

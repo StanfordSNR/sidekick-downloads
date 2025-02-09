@@ -43,11 +43,13 @@ impl Sidekick {
         server_interface: &str,
         quack_port: u16,
         quack_threshold: usize,
+        cache_capacity: usize,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
         let cache = QuackCache::new(
             IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
-            quack_threshold
+            quack_threshold,
+            cache_capacity
         );
         Self {
             stream,
