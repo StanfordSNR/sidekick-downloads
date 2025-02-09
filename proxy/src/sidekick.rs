@@ -117,11 +117,11 @@ impl Sidekick {
                 self.handle_base_packet_from_client(packet);
             }
             ConnectionType::BaseStoc => {
-                trace!("Received base packet from client");
+                trace!("Received base packet from server");
                 self.handle_base_packet_from_server(packet);
             }
             ConnectionType::Sidekick => {
-                trace!("Received base packet from client");
+                trace!("Received sidekick packet from client");
                 self.handle_sidekick_packet_from_client(packet);
             }
             ConnectionType::None => {
