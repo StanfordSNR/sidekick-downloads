@@ -1,7 +1,7 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
 use crate::identifier::IdentifierFunc;
-use crate::buffer::{ID_OFFSET, UdpParser};
+use crate::buffer::{ID_OFFSET, UdpParser, AddrKey};
 
 use log::{trace, debug, info};
 use quack::{PowerSumQuack, PowerSumQuackU32};
@@ -14,9 +14,9 @@ pub struct Sidekick {
     stream: PacketStream,
     cache: QuackCache,
     quack_port: u16,
-    base_connection_ctos: Option<[u8; 12]>,
-    base_connection_stoc: Option<[u8; 12]>,
-    sidekick_connection: Option<[u8; 12]>,
+    base_connection_ctos: Option<AddrKey>,
+    base_connection_stoc: Option<AddrKey>,
+    sidekick_connection: Option<AddrKey>,
 }
 
 /// Identifies the connection as base or sidekick
