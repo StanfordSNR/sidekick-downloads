@@ -88,6 +88,13 @@ impl UdpParser {
         ]
     }
 
+    /// Flip AddrKey to be dst_ip, dst_port, src_ip, src_port
+    pub fn flip_addr_key(mut x: AddrKey) -> AddrKey {
+        let (src, dst) = x.split_at_mut(6);
+        src.swap_with_slice(dst);
+        x
+    }
+
     /// Returns the dst_port assuming the buffer represents a UDP packet.
     pub fn parse_dst_port(x: &[u8; BUFFER_SIZE]) -> u16 {
         u16::from_be_bytes([x[36], x[37]])
