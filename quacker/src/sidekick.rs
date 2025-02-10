@@ -5,7 +5,7 @@ use tokio::sync::oneshot;
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
 use sidekick_utils::socket::{SockAddr, Socket};
-use sidekick_utils::buffer::{UdpParser, Direction};
+use sidekick_utils::buffer::{UdpParser, Direction, AddrKey};
 use sidekick_utils::identifier::IdentifierFunc;
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
@@ -14,6 +14,7 @@ pub struct Sidekick {
     pub interface: String,
     pub threshold: usize,
     pub bits: usize,
+    pub base: Option<AddrKey>, // base conn 4-tuple
     quack: PowerSumQuackU32,
     log: Vec<u32>,
 }
@@ -26,6 +27,7 @@ impl Sidekick {
             interface: interface.to_string(),
             threshold,
             bits,
+            base: None,
             quack: PowerSumQuackU32::new(threshold),
             log: vec![],
         }
@@ -97,6 +99,15 @@ impl Sidekick {
                     trace!("underfilled buffer: {} < {}", n, BUFFER_SIZE);
                     continue;
                 }
+
+                // Update base connection identifier for sending disc packet.
+                {
+                    let mut sc = sc.lock().unwrap();
+                    if sc.base.is_none() {
+                        sc.base = Some(UdpParser::parse_addr_key(&buf));
+                    }
+                }
+
                 let id = UdpParser::parse_identifier(&buf,
                                                           identifier_func.clone());
                 trace!("insert {} ({:#10x})", id, id);
