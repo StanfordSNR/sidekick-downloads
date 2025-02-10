@@ -146,6 +146,8 @@ def parse_args(argv=None):
         help='Include measured network statistics in experiment output')
     exp_config.add_argument('--tcpdump', action='store_true',
         help='Collect packet traces at each interface of each host in --logdir')
+    exp_config.add_argument('--debug', action='store_true',
+        help='More verbose debug logging')
     exp_config.add_argument('--topology',
         choices=['one_hop', 'direct'], default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
@@ -317,9 +319,9 @@ def main(args):
         if args.proxy == ProxyType.PEPSAL:
             net.start_tcp_pep(proxy_logfile)
         elif args.proxy == ProxyType.BRIDGE:
-            net.start_bridge(proxy_logfile)
+            net.start_bridge(proxy_logfile, debug=args.debug)
         elif args.proxy == ProxyType.SIDEKICK:
-            net.start_sidekick(proxy_logfile)
+            net.start_sidekick(proxy_logfile, debug=args.debug)
 
         # Start the packet trace collector
         if args.tcpdump:
@@ -328,7 +330,7 @@ def main(args):
         # Start the client quacker if using a sniffing version
         if args.quacker:
             net.start_client_quacker(args.threshold, args.frequency,
-                args.quackee_port)
+                args.quackee_port, debug=args.debug)
 
         if args.ty == 'cli':
             CLI(net.net)

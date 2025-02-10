@@ -192,7 +192,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_quacker_prints_quacks(self):
         _, stderr = self.execute_command(
             'picoquic',
-            network_options=['--quacker', '--frequency', '100'],
+            network_options=['--quacker', '--frequency', '100', '--debug'],
         )
 
         # Parse debug output related to the quacker for lines that describe the
