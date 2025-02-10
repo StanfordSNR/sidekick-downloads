@@ -52,11 +52,7 @@ async fn send_quacks(
                      .unwrap()
                      .base
                      .expect("First packet received but no base connection");
-        let disc = DiscoveryPayload::new(
-            socket.local_addr().expect("UDP socket not bound to local"),
-            addr,
-            base);
-        let bytes = bincode::serialize(&disc).unwrap();
+        let bytes = bincode::serialize(&DiscoveryPayload::new(base)).unwrap();
         if socket.send_to(&bytes, addr).await.is_err() {
             info!("Failed to send discovery packet");
             return;
