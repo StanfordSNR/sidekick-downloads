@@ -4,6 +4,7 @@ use crate::stream::{Packet, PacketStream};
 use sidekick_utils::ID_OFFSET;
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
+use sidekick_utils::discovery::DiscoveryPayload;
 
 use log::{trace, debug};
 use quack::{PowerSumQuack, PowerSumQuackU32};
@@ -30,6 +31,8 @@ enum ConnectionType {
     BaseStoc,
     /// Sidekick connection
     Sidekick,
+    /// Sidekick configuration packet
+    Discovery,
     /// Some other connection (forward only)
     None
 }
@@ -136,6 +139,7 @@ impl Sidekick {
                 trace!("Forwarding packet from unknown four-tuple");
                 self.stream.forward_packet(&packet, packet.nbytes as usize);
             }
+            _ => {}
         }
     }
 
@@ -143,13 +147,41 @@ impl Sidekick {
     fn connection_type(&mut self, packet: &Packet) -> ConnectionType {
         let addr_key = UdpParser::parse_addr_key(&packet.data);
         if packet.iface == self.stream.client_iface() {
+            // We expect this to be a quACK
             if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
+                // Check for discovery packet first
+                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
+                    let base = UdpParser::flip_addr_key(disc.base_connection_ctos);
+                    info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
+                          disc.sidekick_connection.iter()
+                                                  .map(|b| format!("{:02x}", b))
+                                                  .collect::<String>(),
+                          base.iter()
+                              .map(|b| format!("{:02x}", b))
+                              .collect::<String>(),
+                          self.sidekick_connection.is_some());
+                    self.sidekick_connection = Some(disc.sidekick_connection);
+                    self.base_connection_stoc = Some(base);
+                    return ConnectionType::Discovery;
+                }
+                // Match against sidekick connection
                 match self.sidekick_connection {
-                    Some(key) if key == addr_key => return ConnectionType::Sidekick,
-                    Some(_) => return ConnectionType::None,
-                    None => {
-                        self.sidekick_connection = Some(addr_key);
+                    Some(stored_key) if stored_key == addr_key => {
                         return ConnectionType::Sidekick;
+                    }
+                    Some(stored_key) => {
+                        trace!("Unknown sidekick AddrKey: {} (expected: {})",
+                               addr_key.iter()
+                                       .map(|b| format!("{:02x}", b))
+                                       .collect::<String>(),
+                               stored_key.iter()
+                                         .map(|b| format!("{:02x}", b))
+                                         .collect::<String>());
+                        return ConnectionType::None;
+                    }
+                    None => {
+                        trace!("ctos packet received before discovery packet");
+                        return ConnectionType::None;
                     }
                 }
             } else {

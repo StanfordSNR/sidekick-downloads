@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
 use tokio::time::{self, Duration};
+use sidekick_utils::discovery::DiscoveryPayload;
 
 /// Sends quACKs in the sidekick protocol, receives data in the base protocol.
 #[derive(Parser)]
@@ -45,6 +46,22 @@ async fn send_quacks(
         rx.await
             .expect("couldn't receive notice that 1st packet was sniffed");
         let mut interval = time::interval(Duration::from_millis(frequency_ms));
+
+        // For the first packet, send a discovery
+        let base = sc.lock()
+                     .unwrap()
+                     .base
+                     .expect("First packet received but no base connection");
+        let disc = DiscoveryPayload::new(
+            socket.local_addr().expect("UDP socket not bound to local"),
+            addr,
+            base);
+        let bytes = bincode::serialize(&disc).unwrap();
+        if socket.send_to(&bytes, addr).await.is_err() {
+            info!("Failed to send discovery packet");
+            return;
+        }
+
         // The first tick completes immediately
         interval.tick().await;
         loop {
