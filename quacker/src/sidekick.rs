@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
 
-use crate::buffer::{Direction, UdpParser, BUFFER_SIZE};
-use crate::socket::{SockAddr, Socket};
+use crate::buffer::{Direction, UdpParser};
+use sidekick_utils::{BUFFER_SIZE, socket::{SockAddr, Socket}};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 #[derive(Clone)]

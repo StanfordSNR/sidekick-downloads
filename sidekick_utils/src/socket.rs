@@ -1,34 +1,15 @@
 use libc::*;
-use log::debug;
+use log::{debug, error};
 use std::ffi::CString;
 use crate::BUFFER_SIZE;
 
-/// Caller-provided tag for a socket
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SocketType {
-    Client,
-    Server,
-    None
-}
-
-/// Structure representing a raw socket.
 #[derive(Debug, Clone)]
 pub struct Socket {
-    /// File descriptor for read/write ops
     pub fd: i32,
-    /// Interface name (e.g., "eth0")
     pub interface: String,
-    /// Interface name (e.g., "eth0") as CString
     interface_c: CString,
-    /// Caller-provided identifier that received packets
-    /// will be marked with; generally an index in an array
-    pub id: u16,
-    /// Caller-provided tag; may be useful for interpreting directionality
-    pub socktype: SocketType,
 }
 
-/// Wrapper for sockaddr_ll
-/// See https://man7.org/linux/man-pages/man7/packet.7.html
 pub struct SockAddr {}
 
 impl SockAddr {
@@ -47,28 +28,24 @@ impl SockAddr {
 
 impl Socket {
     /// Create a raw socket and bind it to a specific interface.
-    pub fn new(interface: String, id: u16,
-               socktype: SocketType) -> Result<Self, String> {
+    pub fn new(interface: String) -> Result<Self, String> {
         let protocol = (ETH_P_ALL as i16).to_be() as c_int;
         let fd = unsafe { socket(AF_PACKET, SOCK_RAW, protocol) };
         if fd < 0 {
             Err(format!("socket: {}", fd))
         } else {
-            debug!("opened socket with fd={}, interface={}, id={}", fd, interface, id);
+            debug!("opened socket with fd={}", fd);
             let sock = Self {
                 fd,
                 interface: interface.clone(),
                 interface_c: CString::new(interface).unwrap(),
-                id,
-                socktype,
             };
             sock.bind(protocol)?;
-            sock.set_promiscuous()?;
             Ok(sock)
         }
     }
 
-    /// Bind to a specific interface.
+    /// Bind the sniffer to a specific interface.
     fn bind(&self, protocol: c_int) -> Result<(), String> {
         debug!("binding the socket to interface={}", self.interface);
         let res = unsafe {
@@ -103,7 +80,7 @@ impl Socket {
 
     /// Set the network card in promiscuous mode.
     pub fn set_promiscuous(&self) -> Result<(), String> {
-        debug!("setting {} to promiscuous mode", self.interface);
+        debug!("setting the network card to promiscuous mode");
         let mut ethreq = ifreq {
             ifr_name: [0; IF_NAMESIZE],
             ifr_ifru: __c_anonymous_ifr_ifru { ifru_flags: 0 },
@@ -127,9 +104,8 @@ impl Socket {
         Ok(())
     }
 
-    /// Receive a packet with up to `BUFFER_SIZE` bytes into `buf`, and
-    /// fill in socket address information.
-    /// This is a blocking operation.
+    /// Receive first `BUFFER_SIZE` packets of a buffer, and fill in socket
+    /// address information.
     pub fn recvfrom(
         &self,
         addr: &mut sockaddr_ll,
@@ -149,8 +125,8 @@ impl Socket {
             )
         };
         if n < 0 {
-            let errno = unsafe { *libc::__errno_location() };
-            return Err(format!("recv: {}", errno));
+            error!("failed to recv: {}", n);
+            return Err(format!("recv: {}", n));
         }
         Ok(n)
     }
@@ -164,7 +140,6 @@ impl Socket {
         }
         Ok(n)
     }
-
 }
 
 impl Drop for Socket {

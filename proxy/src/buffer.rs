@@ -1,5 +1,6 @@
 use libc::c_uchar;
-use crate::{identifier::{Identifier, IdentifierFunc}, BUFFER_SIZE};
+use crate::identifier::{Identifier, IdentifierFunc};
+use sidekick_utils::BUFFER_SIZE;
 
 // Ethernet (14), IP (20), TCP/UDP (8) headers
 // The randomly-encrypted payload in a QUIC packet with a short header is at
