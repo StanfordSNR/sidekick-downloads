@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
 
-use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, SockAddr, Socket};
+use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
+use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
 use quack::{PowerSumQuack, PowerSumQuackU32};

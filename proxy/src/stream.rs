@@ -1,6 +1,7 @@
 use tokio::sync::mpsc;
 use log::{error, debug, trace};
-use sidekick_utils::{Socket, BUFFER_SIZE, SockAddr};
+use sidekick_utils::socket::{Socket, SockAddr};
+use sidekick_utils::BUFFER_SIZE;
 use libc::sockaddr_ll;
 
 const CHANNEL_CAPACITY: usize = 100;

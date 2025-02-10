@@ -1,5 +1,6 @@
 use libc::c_uchar;
-use crate::{BUFFER_SIZE, Identifier, IdentifierFunc};
+use crate::BUFFER_SIZE;
+use crate::identifier::{IdentifierFunc, Identifier};
 
 // Ethernet (14), IP (20), TCP/UDP (8) headers
 const UDP_PAYLOAD_OFFSET: usize = 42;
