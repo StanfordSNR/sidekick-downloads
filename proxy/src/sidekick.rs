@@ -153,14 +153,14 @@ impl Sidekick {
                 if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
                     let base = UdpParser::flip_addr_key(disc.base_connection_ctos);
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
-                          disc.sidekick_connection.iter()
-                                                  .map(|b| format!("{:02x}", b))
-                                                  .collect::<String>(),
+                          addr_key.iter()
+                                  .map(|b| format!("{:02x}", b))
+                                  .collect::<String>(),
                           base.iter()
                               .map(|b| format!("{:02x}", b))
                               .collect::<String>(),
                           self.sidekick_connection.is_some());
-                    self.sidekick_connection = Some(disc.sidekick_connection);
+                    self.sidekick_connection = Some(addr_key);
                     self.base_connection_stoc = Some(base);
                     return ConnectionType::Discovery;
                 }
@@ -202,12 +202,11 @@ impl Sidekick {
                         return ConnectionType::None;
                     }
                     None => {
-                        self.base_connection_stoc = Some(flipped_key);
-                        trace!("Set AddrKey from CTOS stream (flipped): {}",
+                        trace!("Received from ctos stream before discovery (flipped AddrKey: {})",
                                flipped_key.iter()
                                           .map(|b| format!("{:02x}", b))
                                           .collect::<String>());
-                        return ConnectionType::BaseCtos;
+                        return ConnectionType::None;
                     }
                 }
             }
@@ -227,12 +226,11 @@ impl Sidekick {
                     return ConnectionType::None;
                 }
                 None => {
-                    self.base_connection_stoc = Some(addr_key);
-                    trace!("Set AddrKey from STOC stream: {}",
+                    trace!("Received from stoc stream before discovery (AddrKey: {})",
                            addr_key.iter()
                                    .map(|b| format!("{:02x}", b))
                                    .collect::<String>());
-                    return ConnectionType::BaseStoc;
+                    return ConnectionType::None;
                 }
             }
         }
