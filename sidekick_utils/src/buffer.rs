@@ -2,7 +2,8 @@ use libc::c_uchar;
 use crate::BUFFER_SIZE;
 use crate::identifier::{IdentifierFunc, Identifier};
 
-/// src_ip, src_port, dst_ip, dst_port (UDP)
+/// UDP four-tuple: src_ip, src_port, dst_ip, dst_port (UDP)
+/// Fields expected to be read from packets; should be in NBO
 pub type AddrKey = [u8; 12];
 
 #[derive(Debug, PartialEq, Eq)]

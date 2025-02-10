@@ -1,6 +1,7 @@
 pub mod socket;
 pub mod identifier;
 pub mod buffer;
+pub mod discovery;
 
 pub const ID_OFFSET: usize = 63;
 pub const UDP_PAYLOAD_OFFSET: usize = 42;
