@@ -14,7 +14,7 @@ pub struct Sidekick {
     pub interface: String,
     pub threshold: usize,
     pub bits: usize,
-    pub base: Option<AddrKey>, // base conn 4-tuple
+    pub base_stoc: Option<AddrKey>, // base conn 4-tuple
     quack: PowerSumQuackU32,
     log: Vec<u32>,
 }
@@ -27,7 +27,7 @@ impl Sidekick {
             interface: interface.to_string(),
             threshold,
             bits,
-            base: None,
+            base_stoc: None,
             quack: PowerSumQuackU32::new(threshold),
             log: vec![],
         }
@@ -103,8 +103,9 @@ impl Sidekick {
                 // Update base connection identifier for sending disc packet.
                 {
                     let mut sc = sc.lock().unwrap();
-                    if sc.base.is_none() {
-                        sc.base = Some(UdpParser::parse_addr_key(&buf));
+                    if sc.base_stoc.is_none() {
+                        // Direction is incoming, so this packet is from the server.
+                        sc.base_stoc = Some(UdpParser::parse_addr_key(&buf));
                     }
                 }
 
