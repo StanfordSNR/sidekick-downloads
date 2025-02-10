@@ -17,6 +17,8 @@ pub struct Sidekick {
     base_connection_ctos: Option<[u8; 12]>,
     base_connection_stoc: Option<[u8; 12]>,
     sidekick_connection: Option<[u8; 12]>,
+    num_retx: usize,
+    num_tx: usize,
 }
 
 /// Identifies the connection as base or sidekick
@@ -56,6 +58,8 @@ impl Sidekick {
             base_connection_ctos: None,
             base_connection_stoc: None,
             sidekick_connection: None,
+            num_retx: 0,
+            num_tx: 0,
         }
     }
 
@@ -75,7 +79,8 @@ impl Sidekick {
                     result.last_index, result.missing_indexes);
                 for index in result.missing_indexes {
                     let retx = self.cache.get(index).unwrap();
-                    info!("retransmit");
+                    self.num_retx += 1;
+                    info!("retransmit {}/{}", self.num_retx, self.num_tx);
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
                     self.cache.add(retx.clone()); // TODO: avoid clone
                 }
@@ -101,6 +106,7 @@ impl Sidekick {
     fn handle_base_packet_from_server(&mut self, packet: Packet) {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
         self.cache.add(packet);
+        self.num_tx += 1;
     }
 
     /// Filter for packets that belong to the base connection or the sidekick
