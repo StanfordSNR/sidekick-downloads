@@ -363,7 +363,7 @@ class EmulatedNetwork:
         with condition:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
             if not notified:
-                raise TimeoutError(f'start_sidekick_pep timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/sidekick'):
         condition = threading.Condition()
@@ -380,7 +380,7 @@ class EmulatedNetwork:
         with condition:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
             if not notified:
-                raise TimeoutError(f'start_sidekick_pep timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_sidekick timeout {SETUP_TIMEOUT}s')
 
     def start_tcp_pep(self, logfile, timeout=SETUP_TIMEOUT):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
