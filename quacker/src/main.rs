@@ -50,7 +50,7 @@ async fn send_quacks(
         // For the first packet, send a discovery
         let base = sc.lock()
                      .unwrap()
-                     .base
+                     .base_stoc
                      .expect("First packet received but no base connection");
         let bytes = bincode::serialize(&DiscoveryPayload::new(base)).unwrap();
         if socket.send_to(&bytes, addr).await.is_err() {

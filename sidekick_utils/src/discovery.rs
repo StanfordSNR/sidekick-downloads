@@ -10,18 +10,18 @@ pub struct DiscoveryPayload {
     /// Identifies the packet as Sidekick Discovery.
     pub magic: [u8; 6],
     /// Four-tuple (src_ip, src_port, dst_ip, dst_port) of the
-    /// base connection from the perspective of the client (receiver).
+    /// base connection from the perspective of the server (sender).
     /// Fields should be in NBO.
-    pub base_connection_ctos: AddrKey,
+    pub base_connection_stoc: AddrKey,
 }
 
 impl DiscoveryPayload {
     pub fn new(
-        base_connection_ctos: AddrKey,
+        base_connection_stoc: AddrKey,
     ) -> Self {
         Self {
             magic: MAGIC,
-            base_connection_ctos,
+            base_connection_stoc,
         }
     }
 

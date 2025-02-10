@@ -151,7 +151,7 @@ impl Sidekick {
             if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
                 // Check for discovery packet first
                 if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
-                    let base = UdpParser::flip_addr_key(disc.base_connection_ctos);
+                    let base = disc.base_connection_stoc;
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
                           addr_key.iter()
                                   .map(|b| format!("{:02x}", b))
