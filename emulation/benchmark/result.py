@@ -50,10 +50,19 @@ class HTTPBenchmarkResult:
         """
         self.outputs[-1]['statistics'] = statistics
 
-    def set_additional_data(self, data):
+    def set_additional_data(self, data, merge=False):
         """Set any additional data for the most recent trial.
+        If applicable and merging, merge the two dictionaries together, using
+        the entries in the most recent dictionary when there is a conflict.
         """
-        self.outputs[-1]['additional_data'] = data
+        data_init = self.outputs[-1].get('additional_data')
+        if (data_init is None) or not merge:
+            self.outputs[-1]['additional_data'] = data
+        else:
+            assert isinstance(data_init, dict)
+            assert isinstance(data, dict)
+            for k, v in data.items():
+                data_init[k] = v
 
     def json(self, prettify=False) -> str:
         """Format the current result as a JSON string.
