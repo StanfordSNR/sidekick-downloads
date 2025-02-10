@@ -1,5 +1,6 @@
 use crate::buffer::AddrKey;
 use serde::{Deserialize, Serialize};
+use log::trace;
 
 const MAGIC: [u8; 6] = *b"SKDISC";
 
@@ -19,6 +20,10 @@ impl DiscoveryPayload {
     pub fn new(
         base_connection_stoc: AddrKey,
     ) -> Self {
+        trace!("Creating new DiscoveryPayload for base connection {}",
+               base_connection_stoc.iter()
+                                   .map(|b| format!("{:02x}", b))
+                                   .collect::<String>());
         Self {
             magic: MAGIC,
             base_connection_stoc,
