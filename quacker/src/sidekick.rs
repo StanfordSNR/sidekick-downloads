@@ -88,6 +88,16 @@ impl Sidekick {
                     continue;
                 }
 
+                // Update base connection identifier for sending discovery
+                // to proxy. Identify by first UDP connection.
+                {
+                    let mut sc = sc.lock().unwrap();
+                    if sc.base_stoc.is_none() {
+                        // Direction is incoming, so this packet is from the server.
+                        sc.base_stoc = Some(UdpParser::parse_addr_key(&buf));
+                    }
+                }
+
                 // Reset the quack if the dst port is the one we are sending on.
                 if UdpParser::parse_dst_port(&buf) == my_port {
                     sc.lock().unwrap().reset();
@@ -98,15 +108,6 @@ impl Sidekick {
                 if n != (BUFFER_SIZE as _) {
                     trace!("underfilled buffer: {} < {}", n, BUFFER_SIZE);
                     continue;
-                }
-
-                // Update base connection identifier for sending disc packet.
-                {
-                    let mut sc = sc.lock().unwrap();
-                    if sc.base_stoc.is_none() {
-                        // Direction is incoming, so this packet is from the server.
-                        sc.base_stoc = Some(UdpParser::parse_addr_key(&buf));
-                    }
                 }
 
                 let id = UdpParser::parse_identifier(&buf,
