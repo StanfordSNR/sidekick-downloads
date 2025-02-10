@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
 
-use crate::buffer::{Direction, UdpParser};
-use sidekick_utils::{BUFFER_SIZE, socket::{SockAddr, Socket}};
+use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, SockAddr, Socket};
+use sidekick_utils::buffer::{UdpParser, Direction};
+use sidekick_utils::identifier::IdentifierFunc;
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 #[derive(Clone)]
@@ -53,6 +54,7 @@ impl Sidekick {
     pub async fn start(
         sc: Arc<Mutex<Sidekick>>,
     ) -> Result<(UdpSocket, oneshot::Receiver<()>), String> {
+        let identifier_func = IdentifierFunc::FixedOffset(ID_OFFSET);
         let interface = sc.lock().unwrap().interface.clone();
         let sock = Socket::new(interface.clone())?;
         let sendsock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
@@ -94,7 +96,8 @@ impl Sidekick {
                     trace!("underfilled buffer: {} < {}", n, BUFFER_SIZE);
                     continue;
                 }
-                let id = UdpParser::parse_identifier(&buf);
+                let id = UdpParser::parse_identifier(&buf,
+                                                          identifier_func.clone());
                 debug!("insert {} ({:#10x})", id, id);
                 // TODO: filter by QUIC connection?
                 {
@@ -120,6 +123,7 @@ impl Sidekick {
         frequency_pkts: usize,
         sendaddr: std::net::SocketAddr,
     ) -> Result<(), String> {
+        let identifier_func = IdentifierFunc::FixedOffset(ID_OFFSET);
         let recvsock = Socket::new(self.interface.clone())?;
         let sendsock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
         let my_port = sendsock.local_addr().unwrap().port();
@@ -159,7 +163,7 @@ impl Sidekick {
                 trace!("underfilled buffer: {} < {}", n, BUFFER_SIZE);
                 continue;
             }
-            let id = UdpParser::parse_identifier(&buf);
+            let id = UdpParser::parse_identifier(&buf, identifier_func.clone());
             debug!("insert {} ({:#10x})", id, id);
             // TODO: filter by QUIC connection?
             self.insert_packet(id);

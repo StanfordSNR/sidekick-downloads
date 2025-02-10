@@ -1,9 +1,14 @@
 pub mod socket;
 pub use socket::{Socket, SockAddr};
 
+pub mod identifier;
+pub use identifier::{IdentifierFunc, Identifier};
+
+pub mod buffer;
+pub use buffer::{AddrKey, UdpParser};
+
 pub const ID_OFFSET: usize = 63;
 pub const DEFAULT_MTU: usize = 1500;
-
 
 // Ethernet (14), IP (20), TCP/UDP (8) headers
 // The randomly-encrypted payload in a QUIC packet with a short header is at

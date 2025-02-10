@@ -1,11 +1,7 @@
 use libc::c_uchar;
-use crate::identifier::{Identifier, IdentifierFunc};
-use sidekick_utils::BUFFER_SIZE;
+use crate::{BUFFER_SIZE, Identifier, IdentifierFunc};
 
 // Ethernet (14), IP (20), TCP/UDP (8) headers
-// The randomly-encrypted payload in a QUIC packet with a short header is at
-// offset 63.
-pub const ID_OFFSET: usize = 63;
 const UDP_PAYLOAD_OFFSET: usize = 42;
 
 /// src_ip, src_port, dst_ip, dst_port (UDP)
@@ -104,5 +100,11 @@ impl UdpParser {
     /// Returns the UDP payload.
     pub fn payload(x: &[u8; BUFFER_SIZE]) -> &[u8] {
         &x[UDP_PAYLOAD_OFFSET..]
+    }
+
+    /// Returns the sidekick identifier assuming the buffer
+    /// represents a QUIC UDP packet.
+    pub fn parse_identifier(x: &[u8; BUFFER_SIZE], identifier: IdentifierFunc) -> Identifier {
+        identifier.to_id(x)
     }
 }

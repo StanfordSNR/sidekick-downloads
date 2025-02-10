@@ -1,5 +1,4 @@
 mod sidekick;
-mod buffer;
 
 use clap::Parser;
 use log::{debug, info};
