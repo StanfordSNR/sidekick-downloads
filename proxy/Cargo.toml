@@ -17,6 +17,7 @@ rand = "0.8.5"
 chrono = "0.4.39"
 flexi_logger = "0.29.8"
 quack = { path = "../deps/quack" }
+sidekick-utils = { path = "../sidekick_utils/" }
 
 [[bin]]
 name = "bridge"

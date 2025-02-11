@@ -1,4 +1,4 @@
-use crate::identifier::{Identifier, IdentifierFunc};
+use sidekick_utils::identifier::{Identifier, IdentifierFunc};
 use crate::stream::Packet;
 use log::info;
 use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};

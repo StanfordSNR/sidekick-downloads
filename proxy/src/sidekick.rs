@@ -1,7 +1,9 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
-use crate::identifier::IdentifierFunc;
-use crate::buffer::{ID_OFFSET, UdpParser, AddrKey};
+
+use sidekick_utils::ID_OFFSET;
+use sidekick_utils::identifier::IdentifierFunc;
+use sidekick_utils::buffer::{UdpParser, AddrKey};
 
 use log::{trace, debug, info};
 use quack::{PowerSumQuack, PowerSumQuackU32};
