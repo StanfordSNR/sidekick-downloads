@@ -1,4 +1,5 @@
 use log::{debug, info, trace};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
@@ -7,6 +8,7 @@ use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
 use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction, AddrKey};
 use sidekick_utils::identifier::IdentifierFunc;
+use sidekick_utils::discovery::DiscoveryPayload;
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 #[derive(Clone)]
@@ -91,10 +93,13 @@ impl Sidekick {
                 // Update base connection identifier for sending discovery
                 // to proxy. Identify by first UDP connection.
                 {
+                    let addr_key = UdpParser::parse_addr_key(&buf);
                     let mut sc = sc.lock().unwrap();
-                    if sc.base_stoc.is_none() {
+                    if sc.base_stoc != Some(addr_key){
                         // Direction is incoming, so this packet is from the server.
                         sc.base_stoc = Some(UdpParser::parse_addr_key(&buf));
+                        // Reset the sidekick -- could be an update.
+                        sc.reset();
                     }
                 }
 
@@ -124,6 +129,17 @@ impl Sidekick {
             }
         });
         Ok((sendsock, rx))
+    }
+
+    /// Send a discovery packet through `socket` to `addr`
+    /// `base` is assumed to be the AddrKey of the base connection
+    /// `socket` and `addr` are assumed to be the sidekick connection.
+    pub async fn send_discovery(socket: &UdpSocket, base: &AddrKey, addr: SocketAddr) {
+        let bytes = bincode::serialize(&DiscoveryPayload::new(*base)).unwrap();
+        if socket.send_to(&bytes, addr).await.is_err() {
+            info!("Failed to send discovery packet");
+            return;
+        }
     }
 
     /// Start the raw socket that listens to the specified interface and

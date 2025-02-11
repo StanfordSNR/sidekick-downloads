@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
 use tokio::time::{self, Duration};
-use sidekick_utils::discovery::DiscoveryPayload;
 
 /// Sends quACKs in the sidekick protocol, receives data in the base protocol.
 #[derive(Parser)]
@@ -48,21 +47,29 @@ async fn send_quacks(
         let mut interval = time::interval(Duration::from_millis(frequency_ms));
 
         // For the first packet, send a discovery
-        let base = sc.lock()
-                     .unwrap()
-                     .base_stoc
-                     .expect("First packet received but no base connection");
-        let bytes = bincode::serialize(&DiscoveryPayload::new(base)).unwrap();
-        if socket.send_to(&bytes, addr).await.is_err() {
-            info!("Failed to send discovery packet");
-            return;
-        }
+        let mut base = sc.lock()
+                         .unwrap()
+                         .base_stoc
+                         .expect("First packet received but no base connection");
+        Sidekick::send_discovery(&socket, &base, addr).await;
 
         // The first tick completes immediately
         interval.tick().await;
         loop {
+            let quack;
+            let curr_stoc;
             interval.tick().await;
-            let quack = sc.lock().unwrap().quack();
+            {
+                let sc = sc.lock().unwrap();
+                quack = sc.quack();
+                curr_stoc = sc.base_stoc.expect("No base connection");
+            }
+            // Update discovery if needed
+            if curr_stoc != base {
+                Sidekick::send_discovery(&socket, &curr_stoc, addr).await;
+                base = curr_stoc;
+                info!("Updated sidekick base connection");
+            }
             let bytes = bincode::serialize(&quack).unwrap();
             info!("quack {}", quack.count());
             if socket.send_to(&bytes, addr).await.is_err() {
