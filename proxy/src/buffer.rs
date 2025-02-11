@@ -7,6 +7,9 @@ use crate::{identifier::{Identifier, IdentifierFunc}, BUFFER_SIZE};
 pub const ID_OFFSET: usize = 63;
 const UDP_PAYLOAD_OFFSET: usize = 42;
 
+/// src_ip, src_port, dst_ip, dst_port (UDP)
+pub type AddrKey = [u8; 12];
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Direction {
     Incoming,
@@ -79,10 +82,17 @@ impl UdpParser {
     }
 
     /// src_ip, src_port, dst_ip, dst_port
-    pub fn parse_addr_key(x: &[u8; BUFFER_SIZE]) -> [u8; 12] {
+    pub fn parse_addr_key(x: &[u8; BUFFER_SIZE]) -> AddrKey {
         [
             x[26], x[27], x[28], x[29], x[34], x[35], x[30], x[31], x[32], x[33], x[36], x[37],
         ]
+    }
+
+    /// Flip AddrKey to be dst_ip, dst_port, src_ip, src_port
+    pub fn flip_addr_key(mut x: AddrKey) -> AddrKey {
+        let (src, dst) = x.split_at_mut(6);
+        src.swap_with_slice(dst);
+        x
     }
 
     /// Returns the dst_port assuming the buffer represents a UDP packet.
