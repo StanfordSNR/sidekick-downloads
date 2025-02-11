@@ -466,4 +466,20 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn test_add_capacity() {
+        let mut cache = new_cache();
+        for i in 0..DEFAULT_CAPACITY as u8 {
+            cache.add(test_packet(&[i]));
+        }
+
+        assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.view().len(), DEFAULT_CAPACITY);
+
+        // Adding the extra packet should have no impact
+        cache.add(test_packet(&[DEFAULT_CAPACITY as _]));
+        assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.view().len(), DEFAULT_CAPACITY);
+    }
 }
