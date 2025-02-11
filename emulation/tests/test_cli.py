@@ -189,6 +189,9 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_benchmark_with_quacker_and_sidekick(self):
         self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick', '--quacker'])
 
+    def test_picoquic_benchmark_with_ack_delay(self):
+        self._test_file_download_benchmark('picoquic', protocol_options=['--ack-delay', '50'])
+
     def test_quacker_prints_quacks(self):
         _, stderr = self.execute_command(
             'picoquic',

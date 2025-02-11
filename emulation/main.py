@@ -79,6 +79,7 @@ def benchmark_picoquic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
+        ack_delay=args.ack_delay,
         proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
@@ -264,6 +265,8 @@ def parse_args(argv=None):
     picoquic.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/3 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
+    picoquic.add_argument('--ack-delay', type=int, default=0, metavar='MS',
+        help='Delay (ms) of sidekick ACK signal to reduce spurious retx')
     picoquic.add_argument('-cca', '--congestion-control',
         choices=['newreno', 'cubic', 'dcubic', 'fast', 'bbr', 'prague', 'bbr1'], default='cubic',
         help='Congestion control algorithm at endpoints')

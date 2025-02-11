@@ -261,6 +261,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         certfile: str,
         keyfile: str,
         logdir: str,
+        ack_delay: int=0,
         port: int=4433,
         proxy_type: Optional[ProxyType]=None,
     ):
@@ -275,9 +276,11 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
+        - ack_delay: Delay (ms) of sidekick ACK signal to reduce spurious retx
         - port: The port to start the HTTP server on.
         - proxy: The type of network proxy.
         """
+        self.ack_delay = ack_delay
         self.port = port
         super().__init__(
             protocol=Protocol.PICOQUIC,
@@ -345,6 +348,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{self.port} '\
               f'/tmp '\
               f'{self.cca} '\
+              f'{self.ack_delay} '\
               f'{self.data_size}.html '
 
         result = []

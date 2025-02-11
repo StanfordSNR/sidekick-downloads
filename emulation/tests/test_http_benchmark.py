@@ -85,11 +85,12 @@ class HTTPDownloadTestCase(unittest.TestCase):
 
     # def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
     def setUpPicoQUICBenchmark(
-        self, port: int=4433, proxy_type=None,
+        self, ack_delay: int=0, port: int=4433, proxy_type=None,
     ) -> PicoQUICBenchmark:
         bm = PicoQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, port=port, proxy_type=proxy_type,
+            self.keyfile, self.logdir, ack_delay=ack_delay, port=port,
+            proxy_type=proxy_type,
         )
         return bm
 
