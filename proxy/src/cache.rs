@@ -1,5 +1,6 @@
 use crate::identifier::{Identifier, IdentifierFunc};
 use crate::stream::Packet;
+use log::info;
 use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
 use std::error::Error;
 use std::fmt;
@@ -74,22 +75,27 @@ pub struct QuackCache {
 
     quack: PowerSumQuackU32,
     last_decode_result: DecodeResult,
+
+    /// Cache capacity. Incoming packets >= this capacity will be dropped.
+    capacity: usize,
 }
 
 impl QuackCache {
     /// Initialize a new cache.
-    pub fn new(id_func: IdentifierFunc, quack_threshold: usize) -> Self {
+    pub fn new(id_func: IdentifierFunc, quack_threshold: usize, capacity: usize) -> Self {
         Self {
             packet_cache: vec![],
             id_cache: vec![],
             id_func,
             quack: PowerSumQuackU32::new(quack_threshold),
             last_decode_result: DecodeResult::default(),
+            capacity
         }
     }
 
     /// The number of packets in the cache.
     pub fn len(&self) -> usize {
+        debug_assert!(self.packet_cache.len() <= self.capacity);
         self.packet_cache.len()
     }
 
@@ -101,6 +107,10 @@ impl QuackCache {
 
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) {
+        if self.len() >= self.capacity {
+            info!("At capacity {}; dropping packet", self.capacity);
+            return;
+        }
         self.id_cache.push(self.id_func.to_id(&packet.data));
         self.packet_cache.push(packet);
     }
@@ -240,9 +250,11 @@ mod tests {
     use super::*;
 
     const DEFAULT_THRESHOLD: usize = 4;
+    const DEFAULT_CAPACITY: usize = 30;
 
     fn new_cache() -> QuackCache {
-        QuackCache::new(IdentifierFunc::FirstByte, DEFAULT_THRESHOLD)
+        QuackCache::new(IdentifierFunc::FirstByte, DEFAULT_THRESHOLD,
+                        DEFAULT_CAPACITY)
     }
 
     fn test_packet(data: &[u8]) -> Packet {
@@ -453,5 +465,21 @@ mod tests {
                 threshold: DEFAULT_THRESHOLD,
             }
         );
+    }
+
+    #[test]
+    fn test_add_capacity() {
+        let mut cache = new_cache();
+        for i in 0..DEFAULT_CAPACITY as u8 {
+            cache.add(test_packet(&[i]));
+        }
+
+        assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.view().len(), DEFAULT_CAPACITY);
+
+        // Adding the extra packet should have no impact
+        cache.add(test_packet(&[DEFAULT_CAPACITY as _]));
+        assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.view().len(), DEFAULT_CAPACITY);
     }
 }
