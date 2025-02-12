@@ -344,6 +344,7 @@ def main(args):
         if args.ty == 'cli':
             CLI(net.net)
         else:
+            time.sleep(1)
             args.benchmark(net, args)
     finally:
         net.stop()
