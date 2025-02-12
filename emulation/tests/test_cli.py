@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from network import EmulatedNetwork
 from main import parse_args, main
+from common import ROUTER_LOGFILE
 
 
 class CLITestCase(unittest.TestCase):
@@ -167,6 +168,10 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_tcp_benchmark_with_pepsal(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'pepsal'])
+        proxy_logfile = f'{self.logdir}/{ROUTER_LOGFILE}'
+        with open(proxy_logfile, 'r') as f:
+            output = f.read()
+        self.assertIn('Saving new SYN', output, output)
 
     def test_tcp_benchmark_with_bridge(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'bridge'])

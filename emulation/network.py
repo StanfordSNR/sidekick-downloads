@@ -431,7 +431,18 @@ e2 also handles L3 routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
-                 qdisc, pacing, bridge_proxy=True):
+                 qdisc, pacing, bridge_proxy=True, router_proxy=False):
+        """
+        Note that bridge_proxy and router_proxy cannot both be True. If both
+        are False, it means that the proxy that runs on the proxy node must
+        take care of bridging. The e2 node is the router by default.
+
+        Parameters:
+        - pacing: Whether Linux should be configured to use pacing (for BBR).
+        - bridge_proxy: Whether the proxy node should act as a transparent bridge.
+        - router_proxy: Whether the proxy node should act as a router.
+        """
+        assert not (bridge_proxy and router_proxy)
         super().__init__()
 
         # Add hosts, switches, and network emulation nodes
@@ -465,41 +476,37 @@ class OneHopNetwork(EmulatedNetwork):
         self.reset_statistics()
 
         # Setup routing and forwarding (e2 acts as router)
-        self.popen(self.e2, "ifconfig e2-eth0 0")
-        self.popen(self.e2, "ifconfig e2-eth1 0")
-        self.popen(self.e2, "ifconfig e2-eth0 hw ether 00:00:00:00:01:01")
-        self.popen(self.e2, "ifconfig e2-eth1 hw ether 00:00:00:00:01:02")
-        self.popen(self.e2, "ip addr add 172.16.1.1/24 brd + dev e2-eth0")
-        self.popen(self.e2, "ip addr add 172.16.2.1/24 brd + dev e2-eth1")
-        self.e2.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
+        if router_proxy:
+            self.setup_router_node(self.p1)
+        else:
+            self.setup_router_node(self.e2)
         self.popen(self.h1, "ip route add 172.16.2.0/24 via 172.16.1.1")
         self.popen(self.h2, "ip route add 172.16.1.0/24 via 172.16.2.1")
 
         # Set up transparent bridging
-        self.popen(self.e1, "brctl addbr br0")
-        self.popen(self.e1, "brctl addif br0 e1-eth0")
-        self.popen(self.e1, "brctl addif br0 e1-eth1")
-        self.popen(self.e1, "ip link set dev br0 up")
-        self.popen(self.p1, "ifconfig p1-eth0 0")
-        self.popen(self.p1, "ifconfig p1-eth1 0")
-        if bridge_proxy:
-            self.popen(self.p1, "ifconfig p1-eth0 0")
-            self.popen(self.p1, "ifconfig p1-eth1 0")
-            self.popen(self.p1, "brctl addbr br0")
-            self.popen(self.p1, "brctl addif br0 p1-eth0")
-            self.popen(self.p1, "brctl addif br0 p1-eth1")
-            self.popen(self.p1, "ip link set dev br0 up")
-            # IP needs to be assigned to bridge; put on same subnet as h1
-            self.p1.cmd(f"ip addr add {self._ip(1).replace('10', '11')} dev br0")
-            # Don't forward packets destined for the proxy
-            self.p1.cmd(f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
-            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
+        if router_proxy:
+            self.setup_bridging_node(self.e1)
+            self.setup_bridging_node(self.e2)
+        elif bridge_proxy:
+            self.setup_bridging_node(self.e1)
+            self.setup_bridging_node(self.p1)
         else:
+            self.setup_bridging_node(self.e1)
+
+        # Configure IP addresses
+        if not router_proxy:
             self.popen(self.p1, "ifconfig p1-eth0 0")
             self.popen(self.p1, "ifconfig p1-eth1 0")
-            self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '11')} dev p1-eth0")
-            self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '12')} dev p1-eth1")
-            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
+            if bridge_proxy:
+                # IP needs to be assigned to bridge; put on same subnet as h1
+                self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '11')} dev br0")
+                # Don't forward packets destined for the proxy
+                self.popen(self.p1, f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
+                self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
+            else:
+                self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '11')} dev p1-eth0")
+                self.popen(self.p1, f"ip addr add {self._ip(1).replace('10', '12')} dev p1-eth1")
+                self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
 
         # Configure link latency, delay, bandwidth, and queue size
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
@@ -516,6 +523,21 @@ class OneHopNetwork(EmulatedNetwork):
 
         # Save the cwnd
         self.cwnd = self._calculate_cwnd(bdp)
+
+    def setup_router_node(self, node):
+        self.popen(node, f"ifconfig {node.name}-eth0 0")
+        self.popen(node, f"ifconfig {node.name}-eth1 0")
+        self.popen(node, f"ifconfig {node.name}-eth0 hw ether 00:00:00:00:01:01")
+        self.popen(node, f"ifconfig {node.name}-eth1 hw ether 00:00:00:00:01:02")
+        self.popen(node, f"ip addr add 172.16.1.1/24 brd + dev {node.name}-eth0")
+        self.popen(node, f"ip addr add 172.16.2.1/24 brd + dev {node.name}-eth1")
+        node.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
+
+    def setup_bridging_node(self, node):
+        self.popen(node, "brctl addbr br0")
+        self.popen(node, f"brctl addif br0 {node.name}-eth0")
+        self.popen(node, f"brctl addif br0 {node.name}-eth1")
+        self.popen(node, "ip link set dev br0 up")
 
 
 """
