@@ -660,6 +660,26 @@ class TestPopen(NetworkTestCase):
         self._test_appends_output_to_logfile(background=False)
         self._test_appends_output_to_logfile(background=True)
 
+    def test_perf_report(self):
+        host = self.net.h1
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Non-background process
+            logfile = os.path.join(tempdir, 'p1.log')
+            self.assertFalse(self.net.perf)
+            self.net.popen(host, 'ls', background=False, logfile=logfile)
+            self.net.perf = True
+            self.assertFalse(os.path.exists(f'{logfile}.perf'), 'perf file not created')
+            self.net.popen(host, 'ls', background=False, logfile=logfile)
+            self.assertTrue(os.path.exists(f'{logfile}.perf'), 'perf file created')
+
+            # Background process
+            logfile = os.path.join(tempdir, 'p2.log')
+            p = self.net.popen(host, 'yes', background=True, logfile=logfile)
+            time.sleep(0.1)
+            self.stopNetwork()
+            self.assertTrue(os.path.exists(f'{logfile}.perf'),
+                'perf file created for background process')
+
 
 class TestProxyFunctions(NetworkTestCase):
     def setUp(self):

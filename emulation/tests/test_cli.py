@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from network import EmulatedNetwork
 from main import parse_args, main
-from common import ROUTER_LOGFILE
+from common import *
 
 
 class CLITestCase(unittest.TestCase):
@@ -232,3 +232,16 @@ class TestFileDownloadBenchmarks(CLITestCase):
         for host in hosts:
             file_size = os.path.getsize(f'{self.logdir}/{host}.pcap')
             self.assertGreater(file_size, 0, host)
+
+    def test_perf(self):
+        self.assertEqual(len(os.listdir(self.logdir)), 0)
+        network_options = ['--perf', '--proxy', 'pepsal']
+        self.execute_command('tcp', network_options)
+        entries = os.listdir(self.logdir)
+        self.assertGreater(len(entries), 0, entries)
+        logfiles = [CLIENT_LOGFILE, SERVER_LOGFILE, ROUTER_LOGFILE]
+        for logfile in logfiles:
+            self.assertIn(f'{logfile}.perf', entries, logfile)
+        for logfile in logfiles:
+            file_size = os.path.getsize(f'{self.logdir}/{logfile}.perf')
+            self.assertGreater(file_size, 0, logfile)

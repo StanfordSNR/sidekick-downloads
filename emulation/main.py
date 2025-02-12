@@ -147,6 +147,8 @@ def parse_args(argv=None):
         help='Include measured network statistics in experiment output')
     exp_config.add_argument('--tcpdump', action='store_true',
         help='Collect packet traces at each interface of each host in --logdir')
+    exp_config.add_argument('--perf', action='store_true',
+        help='Collect perf reports at the proxy and server')
     exp_config.add_argument('--debug', action='store_true',
         help='More verbose debug logging')
     exp_config.add_argument('--topology',
@@ -308,12 +310,13 @@ def main(args):
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
+            perf=args.perf,
             bridge_proxy=args.proxy is None,
             router_proxy=args.proxy == ProxyType.PEPSAL)
     elif args.topology == 'direct':
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
-            args.qdisc, pacing)
+            args.qdisc, pacing, perf=args.perf)
     else:
         raise NotImplementedError(args.topology)
 

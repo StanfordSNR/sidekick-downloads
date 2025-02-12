@@ -13,8 +13,9 @@ Defines a basic network in Mininet with two hosts, h1 and h2.
 class EmulatedNetwork:
     METRICS = ['tx_packets', 'tx_bytes', 'rx_packets', 'rx_bytes']
 
-    def __init__(self):
+    def __init__(self, perf: bool):
         self.net = Mininet(controller=None, link=TCLink)
+        self.perf = perf
         self.primary_ifaces = []
         self.iface_to_host = {}
 
@@ -238,7 +239,8 @@ class EmulatedNetwork:
         - stderr: Whether to log stderr to the console logger.
         - logfile: The name of the logfile to append full output (both stdout
           and stderr). Independent of the stdout and stderr options. Only on
-          mininet hosts.
+          mininet hosts. If the network collects perf reports, the report will
+          be written to "<logfile>.perf".
         - raise_error: Whether to raise an error on a non-zero exitcode or to
           fail silently with only a log message. Only on synchronous processes
           as we don't wait for background processes to terminate to check the
@@ -255,6 +257,10 @@ class EmulatedNetwork:
         AssertionError on a valid configuration i.e., timeouts are enabled for
         a process that is not executed on a mininet host.
         """
+        if self.perf and logfile is not None:
+            cmd = f'perf record -g -o {logfile}.perf '\
+                  f'-e L1-dcache-load-misses,LLC-load-misses,cache-misses '\
+                  f'{cmd}'
 
         # Log the command to be executed
         host_str = '' if host is None else f'{host.name} '
@@ -431,7 +437,7 @@ e2 also handles L3 routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
-                 qdisc, pacing, bridge_proxy=True, router_proxy=False):
+                 qdisc, pacing, bridge_proxy=True, router_proxy=False, perf=False):
         """
         Note that bridge_proxy and router_proxy cannot both be True. If both
         are False, it means that the proxy that runs on the proxy node must
@@ -441,9 +447,11 @@ class OneHopNetwork(EmulatedNetwork):
         - pacing: Whether Linux should be configured to use pacing (for BBR).
         - bridge_proxy: Whether the proxy node should act as a transparent bridge.
         - router_proxy: Whether the proxy node should act as a router.
+        - perf: Whether to collect perf reports when a process with a logfile is
+          started.
         """
         assert not (bridge_proxy and router_proxy)
-        super().__init__()
+        super().__init__(perf=perf)
 
         # Add hosts, switches, and network emulation nodes
         self.h1 = self.net.addHost('h1', ip=self._ip(1),
@@ -547,8 +555,8 @@ The link has a node (e1) that emulates link properties (e.g., delay, loss,
 bandwidth, jitter). Pacing is configured on each host interface.
 """
 class DirectNetwork(EmulatedNetwork):
-    def __init__(self, delay, loss, bw, jitter, qdisc, pacing):
-        super().__init__()
+    def __init__(self, delay, loss, bw, jitter, qdisc, pacing, perf=False):
+        super().__init__(perf=perf)
 
         # Add hosts and switches
         self.h1 = self.net.addHost('h1', ip=self._ip(1),
