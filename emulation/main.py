@@ -317,6 +317,8 @@ def main(args):
         raise NotImplementedError(args.topology)
 
     try:
+        init_logdir(args.logdir)
+
         # Start the network proxy if configured
         proxy_logfile = f'{args.logdir}/{ROUTER_LOGFILE}'
         if args.proxy == ProxyType.PEPSAL:
@@ -338,7 +340,6 @@ def main(args):
         if args.ty == 'cli':
             CLI(net.net)
         else:
-            init_logdir(args.logdir)
             args.benchmark(net, args)
     finally:
         net.stop()

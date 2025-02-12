@@ -17,6 +17,11 @@ struct Cli {
     /// Threshold number of missing packets in the quACK.
     #[arg(long, short = 't', default_value_t = 20)]
     quack_threshold: usize,
+    /// Capacity of the QUACK cache. This implements a basic congestion control
+    /// heuristic by dropping packets from the sender above a certain threshold.
+    /// This can be set to approx. BDP / MSS.
+    #[arg(long, short = 'c', default_value_t = 45)]
+    cache_capacity: usize,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -53,6 +58,7 @@ async fn main() {
         &args.server_interface,
         args.quack_port,
         args.quack_threshold,
+        args.cache_capacity
     );
     sidekick.start().await;
 }

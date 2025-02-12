@@ -1,7 +1,9 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
-use crate::identifier::IdentifierFunc;
-use crate::buffer::{ID_OFFSET, UdpParser};
+
+use sidekick_utils::ID_OFFSET;
+use sidekick_utils::identifier::IdentifierFunc;
+use sidekick_utils::buffer::{UdpParser, AddrKey};
 
 use log::{trace, debug};
 use quack::{PowerSumQuack, PowerSumQuackU32};
@@ -14,9 +16,8 @@ pub struct Sidekick {
     stream: PacketStream,
     cache: QuackCache,
     quack_port: u16,
-    base_connection_ctos: Option<[u8; 12]>,
-    base_connection_stoc: Option<[u8; 12]>,
-    sidekick_connection: Option<[u8; 12]>,
+    base_connection_stoc: Option<AddrKey>,
+    sidekick_connection: Option<AddrKey>,
     num_retx: usize,
     num_tx: usize,
 }
@@ -45,17 +46,18 @@ impl Sidekick {
         server_interface: &str,
         quack_port: u16,
         quack_threshold: usize,
+        cache_capacity: usize,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
         let cache = QuackCache::new(
             IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
-            quack_threshold
+            quack_threshold,
+            cache_capacity
         );
         Self {
             stream,
             cache,
             quack_port,
-            base_connection_ctos: None,
             base_connection_stoc: None,
             sidekick_connection: None,
             num_retx: 0,
@@ -123,11 +125,11 @@ impl Sidekick {
                 self.handle_base_packet_from_client(packet);
             }
             ConnectionType::BaseStoc => {
-                trace!("Received base packet from client");
+                trace!("Received base packet from server");
                 self.handle_base_packet_from_server(packet);
             }
             ConnectionType::Sidekick => {
-                trace!("Received base packet from client");
+                trace!("Received sidekick packet from client");
                 self.handle_sidekick_packet_from_client(packet);
             }
             ConnectionType::None => {
@@ -151,21 +153,53 @@ impl Sidekick {
                     }
                 }
             } else {
-                match self.base_connection_ctos {
-                    Some(key) if key == addr_key => return ConnectionType::BaseCtos,
-                    Some(_) => return ConnectionType::None,
+                // Convert ctos 4-tuple to stoc 4-tuple
+                let flipped_key = UdpParser::flip_addr_key(addr_key);
+                match self.base_connection_stoc {
+                    Some(stored_key) if stored_key == flipped_key => {
+                        return ConnectionType::BaseCtos;
+                    },
+                    Some(stored_key) => {
+                        trace!("Unknown CTOS AddrKey (flipped): {} (expected: {})",
+                               flipped_key.iter()
+                                          .map(|b| format!("{:02x}", b))
+                                          .collect::<String>(),
+                               stored_key.iter()
+                                         .map(|b| format!("{:02x}", b))
+                                         .collect::<String>());
+                        return ConnectionType::None;
+                    }
                     None => {
-                        self.base_connection_ctos = Some(addr_key);
+                        self.base_connection_stoc = Some(flipped_key);
+                        trace!("Set AddrKey from CTOS stream (flipped): {}",
+                               flipped_key.iter()
+                                          .map(|b| format!("{:02x}", b))
+                                          .collect::<String>());
                         return ConnectionType::BaseCtos;
                     }
                 }
             }
         } else if packet.iface == self.stream.server_iface() {
             match self.base_connection_stoc {
-                Some(key) if key == addr_key => return ConnectionType::BaseStoc,
-                Some(_) => return ConnectionType::None,
+                Some(stored_key) if stored_key == addr_key => {
+                    return ConnectionType::BaseStoc;
+                }
+                Some(stored_key) => {
+                    trace!("Unknown STOC AddrKey: {} (expected: {})",
+                           addr_key.iter()
+                                   .map(|b| format!("{:02x}", b))
+                                   .collect::<String>(),
+                           stored_key.iter()
+                                     .map(|b| format!("{:02x}", b))
+                                     .collect::<String>());
+                    return ConnectionType::None;
+                }
                 None => {
                     self.base_connection_stoc = Some(addr_key);
+                    trace!("Set AddrKey from STOC stream: {}",
+                           addr_key.iter()
+                                   .map(|b| format!("{:02x}", b))
+                                   .collect::<String>());
                     return ConnectionType::BaseStoc;
                 }
             }
