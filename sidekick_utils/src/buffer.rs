@@ -2,6 +2,20 @@ use libc::c_uchar;
 use crate::BUFFER_SIZE;
 use crate::identifier::{IdentifierFunc, Identifier};
 
+use pnet::packet::ethernet::{MutableEthernetPacket, EtherTypes};
+use pnet::packet::ip::IpNextHeaderProtocols;
+use pnet::packet::ipv4::MutableIpv4Packet;
+use pnet::packet::ipv4;
+use pnet::packet::udp::MutableUdpPacket;
+use pnet::datalink::MacAddr;
+use std::net::Ipv4Addr;
+
+// Ethernet (14), IP (20), TCP/UDP (8) headers
+const ETH_HDR_LEN: usize = 14;
+const IPV4_HDR_LEN: usize = 20;
+const UDP_HDR_LEN: usize = 8;
+const UDP_PAYLOAD_OFFSET: usize = 42;
+
 /// UDP four-tuple: src_ip, src_port, dst_ip, dst_port (UDP)
 /// Fields expected to be read from packets; should be in NBO
 pub type AddrKey = [u8; 12];
@@ -105,5 +119,71 @@ impl UdpParser {
     /// represents a QUIC UDP packet.
     pub fn parse_identifier(x: &[u8; BUFFER_SIZE], identifier: IdentifierFunc) -> Identifier {
         identifier.to_id(x)
+    }
+
+}
+
+// All fields should be in NBO
+pub struct UdpHeaders {
+    pub src_mac: [u8; 6],
+    pub dst_mac: [u8; 6],
+    pub src_ip: [u8; 4],
+    pub dst_ip: [u8; 4],
+    pub src_port: [u8; 2],
+    pub dst_port: [u8; 2],
+}
+
+impl UdpHeaders {
+    /// Parse from raw packet
+    pub fn _parse(x: &[u8; BUFFER_SIZE]) -> Option<Self> {
+        let ip_protocol = x[23];
+        if i32::from(ip_protocol) != libc::IPPROTO_UDP {
+            return None;
+        }
+
+        Some(UdpHeaders {
+            src_mac: x[6..12].try_into().unwrap(),
+            dst_mac: x[0..6].try_into().unwrap(),
+            src_ip: x[26..30].try_into().unwrap(),
+            dst_ip: x[30..34].try_into().unwrap(),
+            src_port: x[34..36].try_into().unwrap(),
+            dst_port: x[36..38].try_into().unwrap(),
+        })
+    }
+
+    /// Builds a raw UDP packet, placing it in `buf`. Returns
+    /// the length of the packet, or an error if the payload is too large.
+    /// All fields must be in NBO.
+    pub fn to_udp_packet(&self, buf: &mut [u8; BUFFER_SIZE], payload: Vec<u8>) -> Result<usize, std::io::Error> {
+        let len = UDP_PAYLOAD_OFFSET + payload.len();
+        if  len > BUFFER_SIZE {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
+                                format!("Payload ({} bytes) must be <= {} bytes",
+                                                payload.len(), BUFFER_SIZE - UDP_PAYLOAD_OFFSET)));
+        }
+        assert!(payload.len() <= u16::MAX as usize - 8); // Must fit in UDP payload
+
+        // Headers
+        let mut eth = MutableEthernetPacket::new(&mut buf[..ETH_HDR_LEN]).unwrap();
+        eth.set_destination(MacAddr::from(self.dst_mac));
+        eth.set_source(MacAddr::from(self.src_mac));
+        eth.set_ethertype(EtherTypes::Ipv4);
+        let mut ip = MutableIpv4Packet::new(&mut buf[ETH_HDR_LEN..ETH_HDR_LEN + IPV4_HDR_LEN]).unwrap();
+        ip.set_version(4);
+        ip.set_header_length(5);
+        ip.set_total_length((IPV4_HDR_LEN + UDP_HDR_LEN + payload.len()) as u16);
+        ip.set_next_level_protocol(IpNextHeaderProtocols::Udp);
+        ip.set_source(Ipv4Addr::from(self.src_ip));
+        ip.set_destination(Ipv4Addr::from(self.dst_ip));
+        ip.set_ttl(64);
+        ip.set_checksum(ipv4::checksum(&ip.to_immutable()));
+        let mut udp = MutableUdpPacket::new(&mut buf[ETH_HDR_LEN + IPV4_HDR_LEN..len]).unwrap();
+        udp.set_source(u16::from_be_bytes(self.src_port));
+        udp.set_destination(u16::from_be_bytes(self.dst_port));
+        udp.set_length((UDP_HDR_LEN + payload.len()) as u16);
+        udp.set_checksum(0); // offloaded or optional
+        udp.set_payload(&payload);
+
+        return Ok(len);
     }
 }

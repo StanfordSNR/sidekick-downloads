@@ -6,7 +6,7 @@ use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::discovery::DiscoveryPayload;
 
-use log::{trace, debug};
+use log::{trace, debug, info};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 /// The sidekick provides in-network assistance to a single base connection
