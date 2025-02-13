@@ -19,6 +19,7 @@ signal-hook = "0.3.15"
 pcap = "1.1.0"
 rand = "0.8.5"
 serde = { version = "1.0", features = ["derive"] }
+pnet = "0.35.0"
 
 [features]
 default = []
