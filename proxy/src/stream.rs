@@ -79,6 +79,15 @@ impl PacketStream {
                iface.interface());
         iface.send(&packet.data, nbytes).unwrap();
     }
+
+    /// Send `buf` to the specified interface
+    pub fn send(&self, buf: &[u8; BUFFER_SIZE], nbytes: usize, iface: u16) {
+        let iface = &self.sockets[iface as usize];
+        trace!("Sending {} bytes to {}",
+               nbytes,
+               iface.interface());
+        iface.send(buf, nbytes).unwrap();
+    }
 }
 
 /// Poll packets from `socket` and transfer them to the mpsc channel.

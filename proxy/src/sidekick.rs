@@ -1,12 +1,12 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
 
-use sidekick_utils::ID_OFFSET;
+use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
-use sidekick_utils::discovery::DiscoveryPayload;
+use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
 
-use log::{trace, debug, info};
+use log::{trace, debug, info, error};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 /// The sidekick provides in-network assistance to a single base connection
@@ -152,6 +152,7 @@ impl Sidekick {
                 // Check for discovery packet first
                 if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
                     let base = disc.base_connection_stoc;
+                    assert!(disc.op == DiscoveryOp::Discover);
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
                           addr_key.iter()
                                   .map(|b| format!("{:02x}", b))
@@ -162,6 +163,13 @@ impl Sidekick {
                           self.sidekick_connection.is_some());
                     self.sidekick_connection = Some(addr_key);
                     self.base_connection_stoc = Some(base);
+
+                    // Acknowledge the discovery packet
+                    let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+                    match disc.build_ack_packet(&mut buf, &packet.data) {
+                        Ok(len) => self.stream.send(&buf, len, packet.iface),
+                        Err(e) => error!("Failed to build ack packet: {}", e),
+                    }
                     return ConnectionType::Discovery;
                 }
                 // Match against sidekick connection
