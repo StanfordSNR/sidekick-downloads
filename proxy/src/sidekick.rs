@@ -5,7 +5,7 @@ use sidekick_utils::ID_OFFSET;
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 
-use log::{trace, debug, info};
+use log::{trace, debug};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 /// The sidekick provides in-network assistance to a single base connection
@@ -18,6 +18,8 @@ pub struct Sidekick {
     quack_port: u16,
     base_connection_stoc: Option<AddrKey>,
     sidekick_connection: Option<AddrKey>,
+    num_retx: usize,
+    num_tx: usize,
 }
 
 /// Identifies the connection as base or sidekick
@@ -58,6 +60,8 @@ impl Sidekick {
             quack_port,
             base_connection_stoc: None,
             sidekick_connection: None,
+            num_retx: 0,
+            num_tx: 0,
         }
     }
 
@@ -77,7 +81,8 @@ impl Sidekick {
                     result.last_index, result.missing_indexes);
                 for index in result.missing_indexes {
                     let retx = self.cache.get(index).unwrap();
-                    info!("retransmit");
+                    self.num_retx += 1;
+                    debug!("retransmit {}/{}", self.num_retx, self.num_tx);
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
                     self.cache.add(retx.clone()); // TODO: avoid clone
                 }
@@ -103,6 +108,7 @@ impl Sidekick {
     fn handle_base_packet_from_server(&mut self, packet: Packet) {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
         self.cache.add(packet);
+        self.num_tx += 1;
     }
 
     /// Filter for packets that belong to the base connection or the sidekick

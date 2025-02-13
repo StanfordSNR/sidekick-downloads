@@ -30,7 +30,7 @@ class ProxyType(Enum):
 class HTTPClientOutput:
     status_code: int
     time_s: int
-    num_spurious: Optional[int] = None
+    additional_data: Optional[dict] = None
 
 
 class HTTPDownloadBenchmark(ABC):
@@ -244,10 +244,8 @@ class HTTPDownloadBenchmark(ABC):
             result.set_success(output.status_code == HTTP_OK_STATUSCODE)
             result.set_timeout(output.status_code == HTTP_TIMEOUT_STATUSCODE)
             result.set_time_s(output.time_s)
-            if output.num_spurious is not None:
-                result.set_additional_data({
-                    'num_spurious': output.num_spurious,
-                })
+            if output.additional_data is not None:
+                result.set_additional_data(output.additional_data)
 
         # Return the result
         return result
@@ -263,6 +261,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         certfile: str,
         keyfile: str,
         logdir: str,
+        ack_delay: int=0,
         port: int=4433,
         proxy_type: Optional[ProxyType]=None,
     ):
@@ -277,9 +276,11 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
+        - ack_delay: Delay (ms) of sidekick ACK signal to reduce spurious retx
         - port: The port to start the HTTP server on.
         - proxy: The type of network proxy.
         """
+        self.ack_delay = ack_delay
         self.port = port
         super().__init__(
             protocol=Protocol.PICOQUIC,
@@ -290,7 +291,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
 
         # Fields for the server to notify the client of certain statistics
         self.condition = threading.Condition()
-        self.num_spurious = None
+        self.additional_data = {}
 
     def restart_server(self, timeout: int=SETUP_TIMEOUT):
         WARN('Restarting picoquic-server')
@@ -322,7 +323,8 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             match = re.search(pattern, line)
             if match is not None:
                 with self.condition:
-                    self.num_spurious = int(match.group(1))
+                    num_spurious = int(match.group(1))
+                    self.additional_data['num_spurious_sender'] = num_spurious
                     self.condition.notify()
 
         # The start_server() function blocks until the server is ready to
@@ -346,16 +348,18 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{self.port} '\
               f'/tmp '\
               f'{self.cca} '\
+              f'{self.ack_delay} '\
               f'{self.data_size}.html '
 
         result = []
         def parse_result(line):
-            pattern = r'complete.*in ([\d.]+) seconds'
+            pattern = r'complete.*in ([\d.]+) seconds, (\d+) spurious'
             match = re.search(pattern, line)
             if match is None:
                 return
             time_s = float(match.group(1))
             result.append(time_s)
+            self.additional_data['num_spurious_receiver'] = int(match.group(2))
 
         with self.condition:
             logfile = self.logfile(self.client)
@@ -374,7 +378,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             # Wait for the server to log the number of spurious retransmissions.
             if not self.condition.wait(timeout=5):
                 raise TimeoutError(f'timeout waiting for server stats')
-            return HTTPClientOutput(HTTP_OK_STATUSCODE, result[0], self.num_spurious)
+            return HTTPClientOutput(HTTP_OK_STATUSCODE, result[0], self.additional_data)
 
 
 class CloudflareQUICBenchmark(HTTPDownloadBenchmark):

@@ -339,28 +339,33 @@ class EmulatedNetwork:
 
     def start_client_quacker(
         self, threshold: int, frequency_ms: int, quackee_port: int,
-        logfile=None,
+        logfile=None, debug=False,
     ):
         cmd = f'./quacker/target/release/quacker '\
               f'--interface h1-eth0 '\
               f'--threshold {threshold} --frequency-ms {frequency_ms} '\
               f'--target-addr {self.h2.IP()}:{quackee_port}'
 
-        os.environ['RUST_LOG'] = 'info'
+        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         def quacker_log(line):
-            # Temporary: log debug output from the background process
-            print('[quack]', line.strip(), file=sys.stderr)
+            if debug:
+                # Temporary: log debug output from the background process
+                print('[quack]', line.strip(), file=sys.stderr)
 
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile, func=quacker_log)
 
-    def start_bridge(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/bridge'):
+    def start_bridge(
+        self, logfile, timeout=SETUP_TIMEOUT,
+        executable='./proxy/target/release/bridge', debug=False,
+    ):
         condition = threading.Condition()
         def notify_when_ready(line):
             if 'Ready' in line:
                 with condition:
                     condition.notify()
 
+        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
@@ -368,16 +373,20 @@ class EmulatedNetwork:
         with condition:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
             if not notified:
-                raise TimeoutError(f'start_sidekick_pep timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
-    def start_sidekick(self, logfile, timeout=SETUP_TIMEOUT, executable='./proxy/target/release/sidekick'):
+    def start_sidekick(
+        self, logfile, timeout=SETUP_TIMEOUT,
+        executable='./proxy/target/release/sidekick', debug=False,
+    ):
         condition = threading.Condition()
         def notify_when_ready(line):
+            # print(line.strip())
             if 'Ready' in line:
                 with condition:
                     condition.notify()
 
-        os.environ['RUST_LOG'] = 'debug'
+        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1 --cache-capacity {self.cwnd}',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
@@ -385,7 +394,7 @@ class EmulatedNetwork:
         with condition:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
             if not notified:
-                raise TimeoutError(f'start_sidekick_pep timeout {SETUP_TIMEOUT}s')
+                raise TimeoutError(f'start_sidekick timeout {SETUP_TIMEOUT}s')
 
     def start_tcp_pep(self, logfile, timeout=SETUP_TIMEOUT):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')

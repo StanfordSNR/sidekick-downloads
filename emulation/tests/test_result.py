@@ -104,3 +104,31 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         self.assertEqual(outputs[0].get('additional_data'), 'x')
         self.assertEqual(outputs[1].get('additional_data'), 'y')
         self.assertEqual(outputs[2].get('additional_data'), 'z')
+
+    def test_additional_data(self):
+        def data(res):
+            outputs = json.loads(res.json())['outputs']
+            return outputs[-1].get('additional_data')
+
+        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
+                                  self.cca, self.proxy_type)
+
+        # without merge
+        res.append_new_output()
+        self.assertIsNone(data(res))
+        res.set_additional_data({'a': 1}, merge=False)
+        self.assertEqual(data(res), {'a': 1})
+        res.set_additional_data({'b': 2}, merge=False)
+        self.assertEqual(data(res), {'b': 2})
+
+        # with merge
+        res.append_new_output()
+        self.assertIsNone(data(res))
+        res.set_additional_data({'a': 1}, merge=True)
+        self.assertEqual(data(res), {'a': 1})
+        res.set_additional_data({'b': 2}, merge=True)
+        self.assertEqual(data(res), {'a': 1, 'b': 2})
+        res.set_additional_data({'a': 3}, merge=True)
+        self.assertEqual(data(res), {'a': 3, 'b': 2}, 'merge with conflict')
+        res.set_additional_data({'c': 3})
+        self.assertEqual(data(res), {'c': 3}, 'default is to not merge')

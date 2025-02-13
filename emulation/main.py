@@ -79,6 +79,7 @@ def benchmark_picoquic(net, args):
         certfile=args.certfile,
         keyfile=args.keyfile,
         logdir=args.logdir,
+        ack_delay=args.ack_delay,
         proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
@@ -146,6 +147,8 @@ def parse_args(argv=None):
         help='Include measured network statistics in experiment output')
     exp_config.add_argument('--tcpdump', action='store_true',
         help='Collect packet traces at each interface of each host in --logdir')
+    exp_config.add_argument('--debug', action='store_true',
+        help='More verbose debug logging')
     exp_config.add_argument('--topology',
         choices=['one_hop', 'direct'], default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
@@ -262,6 +265,8 @@ def parse_args(argv=None):
     picoquic.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/3 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
+    picoquic.add_argument('--ack-delay', type=int, default=0, metavar='MS',
+        help='Delay (ms) of sidekick ACK signal to reduce spurious retx')
     picoquic.add_argument('-cca', '--congestion-control',
         choices=['newreno', 'cubic', 'dcubic', 'fast', 'bbr', 'prague', 'bbr1'], default='cubic',
         help='Congestion control algorithm at endpoints')
@@ -319,9 +324,9 @@ def main(args):
         if args.proxy == ProxyType.PEPSAL:
             net.start_tcp_pep(proxy_logfile)
         elif args.proxy == ProxyType.BRIDGE:
-            net.start_bridge(proxy_logfile)
+            net.start_bridge(proxy_logfile, debug=args.debug)
         elif args.proxy == ProxyType.SIDEKICK:
-            net.start_sidekick(proxy_logfile)
+            net.start_sidekick(proxy_logfile, debug=args.debug)
 
         # Start the packet trace collector
         if args.tcpdump:
@@ -330,7 +335,7 @@ def main(args):
         # Start the client quacker if using a sniffing version
         if args.quacker:
             net.start_client_quacker(args.threshold, args.frequency,
-                args.quackee_port)
+                args.quackee_port, debug=args.debug)
 
         if args.ty == 'cli':
             CLI(net.net)

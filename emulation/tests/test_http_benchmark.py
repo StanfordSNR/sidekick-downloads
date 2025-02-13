@@ -85,11 +85,12 @@ class HTTPDownloadTestCase(unittest.TestCase):
 
     # def setUpPicoQUICBenchmark(self, port: int=4433) -> PicoQUICBenchmark:
     def setUpPicoQUICBenchmark(
-        self, port: int=4433, proxy_type=None,
+        self, ack_delay: int=0, port: int=4433, proxy_type=None,
     ) -> PicoQUICBenchmark:
         bm = PicoQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, port=port, proxy_type=proxy_type,
+            self.keyfile, self.logdir, ack_delay=ack_delay, port=port,
+            proxy_type=proxy_type,
         )
         return bm
 
@@ -293,9 +294,17 @@ class TestRunBenchmark(HTTPDownloadTestCase):
     def test_picoquic_run_benchmark_one_trial(self):
         self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
-        self._test_run_benchmark(bm, 1, additional_data={'num_spurious': 0})
+        additional_data = {
+            'num_spurious_sender': 0,
+            'num_spurious_receiver': 0,
+        }
+        self._test_run_benchmark(bm, 1, additional_data=additional_data)
 
     def test_picoquic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpPicoQUICBenchmark()
-        self._test_run_benchmark(bm, 5, additional_data={'num_spurious': 0})
+        additional_data = {
+            'num_spurious_sender': 0,
+            'num_spurious_receiver': 0,
+        }
+        self._test_run_benchmark(bm, 5, additional_data=additional_data)
