@@ -8,7 +8,7 @@ use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
 use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction, AddrKey};
 use sidekick_utils::identifier::IdentifierFunc;
-use sidekick_utils::discovery::DiscoveryPayload;
+use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
 #[derive(Clone)]
@@ -135,7 +135,9 @@ impl Sidekick {
     /// `base` is assumed to be the AddrKey of the base connection
     /// `socket` and `addr` are assumed to be the sidekick connection.
     pub async fn send_discovery(socket: &UdpSocket, base: &AddrKey, addr: SocketAddr) {
-        let bytes = bincode::serialize(&DiscoveryPayload::new(*base)).unwrap();
+        let bytes = bincode::serialize(
+            &DiscoveryPayload::new(*base,
+                DiscoveryOp::Discover)).unwrap();
         if socket.send_to(&bytes, addr).await.is_err() {
             info!("Failed to send discovery packet");
             return;
