@@ -251,6 +251,19 @@ class TestFileDownloadBenchmarks(CLITestCase):
         # self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
+    def test_discovery(self):
+        _, stderr = self.execute_command(
+            'picoquic',
+            network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
+        )
+        pattern = 'Received discovery packet from client'
+        found = False
+        for line in stderr.split('\n'):
+            if pattern in line:
+                found = True
+
+        self.assertEqual(found, True)
+
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
         network_options = ['--tcpdump']
