@@ -344,13 +344,15 @@ class EmulatedNetwork:
             self.popen(host, cmd, background=True, console_logger=DEBUG)
 
     def start_client_quacker(
-        self, threshold: int, frequency_ms: int, quackee_port: int,
-        logfile=None, debug=False,
+        self, threshold: int, frequency_ms: int, frequency_packets: int,
+        quackee_port: int, logfile=None, debug=False,
     ):
         cmd = f'./quacker/target/release/quacker '\
               f'--interface h1-eth0 '\
-              f'--threshold {threshold} --frequency-ms {frequency_ms} '\
-              f'--target-addr {self.h2.IP()}:{quackee_port}'
+              f'--threshold {threshold} '\
+              f'--frequency-ms {frequency_ms} '\
+              f'--frequency-pkts {frequency_packets} '\
+              f'--target-addr {self.p1.IP()}:{quackee_port}'
 
         os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         def quacker_log(line):
