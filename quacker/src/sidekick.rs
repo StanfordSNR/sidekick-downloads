@@ -1,5 +1,5 @@
-use log::{debug, info, trace};
-use std::net::SocketAddr;
+use log::{debug, info, trace, error};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
@@ -19,11 +19,14 @@ pub struct Sidekick {
     pub base_stoc: Option<AddrKey>, // base conn 4-tuple
     quack: PowerSumQuackU32,
     log: Vec<u32>,
+    quack_addr: Option<SocketAddr>, // sidekick proxy's address
+    pub awaiting_disc_ack: bool, // requested discovery, awaiting ack
 }
 
 impl Sidekick {
     /// Create a new sidekick.
-    pub fn new(interface: &str, threshold: usize, bits: usize) -> Self {
+    pub fn new(interface: &str, threshold: usize, bits: usize,
+               quack_addr: Option<SocketAddr>) -> Self {
         assert_eq!(bits, 32, "ERROR: <num_bits_id> must be 32");
         Self {
             interface: interface.to_string(),
@@ -32,6 +35,8 @@ impl Sidekick {
             base_stoc: None,
             quack: PowerSumQuackU32::new(threshold),
             log: vec![],
+            quack_addr,
+            awaiting_disc_ack: false,
         }
     }
 
@@ -90,16 +95,30 @@ impl Sidekick {
                     continue;
                 }
 
+                // If this is an incoming discovery packet from the proxy, handle it.
+                {
+                    let quack_addr = { sc.lock().unwrap().quack_addr };
+                    // Note the quack_addr is assumed to never change
+                    if let Some(quack_addr) = quack_addr {
+                        if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
+                           u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
+                            Sidekick::handle_discover(&sc, &buf);
+                        }
+                    }
+                }
+
                 // Update base connection identifier for sending discovery
                 // to proxy. Identify by first UDP connection.
                 {
                     let addr_key = UdpParser::parse_addr_key(&buf);
                     let mut sc = sc.lock().unwrap();
-                    if sc.base_stoc != Some(addr_key){
+                    if sc.base_stoc != Some(addr_key) {
                         // Direction is incoming, so this packet is from the server.
                         sc.base_stoc = Some(UdpParser::parse_addr_key(&buf));
                         // Reset the sidekick -- could be an update.
                         sc.reset();
+                        // Discovery packet should be sent at next quack interval.
+                        sc.awaiting_disc_ack = true;
                     }
                 }
 
@@ -131,6 +150,35 @@ impl Sidekick {
         Ok((sendsock, rx))
     }
 
+    /// Handle discovery packets from the proxy.
+    /// Assumes that this packet is known to be a UDP packet from the proxy
+    /// by source port and IP address.
+    fn handle_discover(sc: &Arc<Mutex<Sidekick>>, buf: &[u8; BUFFER_SIZE]) {
+        if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&buf)) {
+            if disc.op == DiscoveryOp::DiscoverAck {
+                let mut sc = sc.lock().unwrap();
+                if Some(disc.base_connection_stoc) == sc.base_stoc {
+                    sc.awaiting_disc_ack = false;
+                    trace!("Received DiscoverACK from proxy");
+                } else if sc.base_stoc.is_some() {
+                    trace!("Received DiscoverACK from proxy for old data: {} (expected: {})",
+                            disc.base_connection_stoc.iter()
+                                                     .map(|b| format!("{:02x}", b))
+                                                     .collect::<String>(),
+                            sc.base_stoc.unwrap().iter()
+                                                 .map(|b| format!("{:02x}", b))
+                                                 .collect::<String>());
+                } else {
+                    panic!("Received DiscoverACK from proxy before sending discovery");
+                }
+            } else {
+                trace!("Received packet from proxy with op {:?}", disc.op);
+            }
+        } else {
+            error!("Received non-discovery packet from proxy");
+        }
+    }
+
     /// Send a discovery packet through `socket` to `addr`
     /// `base` is assumed to be the AddrKey of the base connection
     /// `socket` and `addr` are assumed to be the sidekick connection.
@@ -141,6 +189,11 @@ impl Sidekick {
         if socket.send_to(&bytes, addr).await.is_err() {
             info!("Failed to send discovery packet");
             return;
+        } else {
+            info!("Sent discovery for sidekick base connection {}",
+                  base.iter()
+                      .map(|b| format!("{:02x}", b))
+                      .collect::<String>());
         }
     }
 
