@@ -135,7 +135,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         network_options: List[str]=[],
         protocol_options: List[str]=[],
     ):
-        stdout, _ = self.execute_command(
+        stdout, stderr = self.execute_command(
             protocol, network_options, protocol_options)
         self.assertNotEqual(stdout, '', 'results are logged to stdout')
         lines = self.parse_json_lines(stdout)
@@ -146,6 +146,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         outputs = line['outputs']
         self.assertEqual(len(outputs), 1)
         self.assertTrue(outputs[0].get('success'))
+        return (stdout, stderr)
 
     @unittest.skip('skip chromium tests')
     def test_google_quic_benchmark_default(self):
@@ -188,9 +189,6 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_benchmark_with_sidekick(self):
         self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick'])
 
-    def test_picoquic_benchmark_with_quacker(self):
-        self._test_file_download_benchmark('picoquic', ['--quacker'])
-
     def test_picoquic_benchmark_with_ack_delay(self):
         self._test_file_download_benchmark('picoquic', protocol_options=['--ack-delay', '50'])
 
@@ -206,7 +204,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_quacker_prints_quacks(self):
         def _test_frequency(freq_ms, freq_pkts):
-            _, stderr = self.execute_command(
+            _, stderr = self._test_file_download_benchmark(
                 'picoquic',
                 network_options=[
                     '--quacker', '--debug',
