@@ -99,7 +99,7 @@ impl Sidekick {
                 }
                 let id = UdpParser::parse_identifier(&buf,
                                                           identifier_func.clone());
-                debug!("insert {} ({:#10x})", id, id);
+                trace!("insert {} ({:#10x})", id, id);
                 // TODO: filter by QUIC connection?
                 {
                     let mut sc = sc.lock().unwrap();

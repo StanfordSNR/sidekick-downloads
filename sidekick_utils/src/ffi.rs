@@ -1,0 +1,15 @@
+use crate::identifier::IdentifierFunc;
+
+#[no_mangle]
+pub static ID_OFFSET: usize = crate::ID_OFFSET;
+
+#[no_mangle]
+pub static UDP_PAYLOAD_OFFSET: usize = crate::UDP_PAYLOAD_OFFSET;
+
+#[no_mangle]
+pub extern "C" fn sidekick_fixed_offset_to_id(
+    bytes: *const u8, packet_length: usize, offset: usize,
+) -> u32 {
+    let slice = unsafe { std::slice::from_raw_parts(bytes, packet_length) };
+    IdentifierFunc::FixedOffset(offset).to_id(slice)
+}

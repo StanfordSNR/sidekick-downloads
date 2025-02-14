@@ -193,8 +193,14 @@ def parse_args(argv=None):
     proxy_config.add_argument('--threshold', type=int, default=20,
         help='If --quacker is enabled, the threshold number of missing '\
              'packets that the quack can detect')
-    proxy_config.add_argument('--frequency', metavar='MS', type=int, default=50,
-        help='If --quacker is enabled, the frequency at which to send quacks')
+    proxy_config.add_argument('--freq-ms', metavar='MS', type=int, default=50,
+        help='The quacker quacks on the first insertion, AND if --freq-pkts '\
+             'have been inserted or at least --freq-ms have elapsed since '\
+             'the last quack.')
+    proxy_config.add_argument('--freq-pkts', metavar='PKTS', type=int, default=0,
+        help='The quacker quacks on the first insertion, AND if --freq-pkts '\
+             'have been inserted or at least --freq-ms have elapsed since '\
+             'the last quack.')
     proxy_config.add_argument('--quackee-port', type=int, default=5252,
         help='If --quacker is enabled, the UDP port that the quackee on the '\
              'proxy is listening on for quacks')
@@ -338,8 +344,8 @@ def main(args):
 
         # Start the client quacker if using a sniffing version
         if args.quacker:
-            net.start_client_quacker(args.threshold, args.frequency,
-                args.quackee_port, debug=args.debug)
+            net.start_client_quacker(args.threshold, args.freq_ms,
+                args.freq_pkts, args.quackee_port, debug=args.debug)
 
         if args.ty == 'cli':
             CLI(net.net)

@@ -135,7 +135,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         network_options: List[str]=[],
         protocol_options: List[str]=[],
     ):
-        stdout, _ = self.execute_command(
+        stdout, stderr = self.execute_command(
             protocol, network_options, protocol_options)
         self.assertNotEqual(stdout, '', 'results are logged to stdout')
         lines = self.parse_json_lines(stdout)
@@ -146,6 +146,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         outputs = line['outputs']
         self.assertEqual(len(outputs), 1)
         self.assertTrue(outputs[0].get('success'))
+        return (stdout, stderr)
 
     @unittest.skip('skip chromium tests')
     def test_google_quic_benchmark_default(self):
@@ -188,37 +189,67 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_benchmark_with_sidekick(self):
         self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick'])
 
-    def test_picoquic_benchmark_with_quacker(self):
-        self._test_file_download_benchmark('picoquic', ['--quacker'])
-
-    def test_picoquic_benchmark_with_quacker_and_sidekick(self):
-        self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick', '--quacker'])
-
     def test_picoquic_benchmark_with_ack_delay(self):
         self._test_file_download_benchmark('picoquic', protocol_options=['--ack-delay', '50'])
 
-    def test_quacker_prints_quacks(self):
-        _, stderr = self.execute_command(
-            'picoquic',
-            network_options=['--quacker', '--frequency', '100', '--debug'],
-        )
-
-        # Parse debug output related to the quacker for lines that describe the
-        # number of packets in the sent quacks
-        pattern = r'\[quack\] .* quack (\d+)'
+    def parse_quacks(self, lines: List[str], pattern: str) -> List[int]:
         quacks = []
-        for line in stderr.split('\n'):
+        for line in lines:
             match = re.search(pattern, line)
             if not match:
                 continue
             num_packets = int(match.group(1))
             quacks.append(num_packets)
+        return quacks
 
-        # The number of packets in each sent quack is increasing
-        self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
-        self.assertGreaterEqual(len(quacks), 2, 'should send more at this freq')
+    def test_quacker_prints_quacks(self):
+        def _test_frequency(freq_ms, freq_pkts):
+            _, stderr = self._test_file_download_benchmark(
+                'picoquic',
+                network_options=[
+                    '--quacker', '--debug',
+                    '--freq-ms', str(freq_ms),
+                    '--freq-pkts', str(freq_pkts),
+                ],
+            )
+
+            # Parse debug output related to the quacker for lines that describe
+            # the number of packets in the sent quacks
+            lines = stderr.split('\n')
+            quacks = self.parse_quacks(lines, r'\[quack\] .* quack (\d+)')
+
+            # The number of packets in each sent quack is increasing
+            self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
+            self.assertGreaterEqual(len(quacks), 2, 'should send more at this freq')
+            for i in range(len(quacks) - 1):
+                self.assertLessEqual(quacks[i], quacks[i+1], quacks)
+
+        _test_frequency(100, 0)
+        # _test_frequency(0, 8)
+        _test_frequency(50, 20)
+
+    def _test_sidekick_receives_quacks(self, protocol, add_network_options, protocol_options):
+        self._test_file_download_benchmark(
+            protocol,
+            network_options=['--debug', '--proxy', 'sidekick'] + add_network_options,
+            protocol_options=protocol_options,
+        )
+
+        # Parse router logfile for number of packets in the received quACKs
+        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
+            lines = f.readlines()
+        quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
+
+        # The number of packets in each received quack is increasing
+        self.assertGreater(len(quacks), 0, 'received at least 1 quack')
+        self.assertGreaterEqual(len(quacks), 2, 'should receive more at this freq')
         for i in range(len(quacks) - 1):
             self.assertLessEqual(quacks[i], quacks[i+1], quacks)
+
+    def test_sidekick_receives_sniffer_quacks(self):
+        self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '100', '--freq-pkts', '0'], [])
+        # self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
+        self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
