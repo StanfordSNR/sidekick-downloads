@@ -395,7 +395,10 @@ class EmulatedNetwork:
                     condition.notify()
 
         os.environ['RUST_LOG'] = 'debug' if debug else 'info'
-        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1 --cache-capacity {self.cwnd}',
+        # The cache capacity is currently set arbitrarily larger to 4*cwnd
+        # to avoid unnecessary dropping in tests, until we figure out the
+        # right value to set it at.
+        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1 --cache-capacity {4 * self.cwnd}',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
 
