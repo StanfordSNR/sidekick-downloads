@@ -5,6 +5,7 @@ help() {
 	echo "2 = chromium"
 	echo "3 = quiche"
 	echo "4 = picoquic"
+	echo "5 = sidekick"
 	exit 1
 }
 
@@ -45,12 +46,21 @@ build_picoquic () {
 	cmake --build .
 }
 
+build_sidekick() {
+	cd $SIDEKICK_HOME/proxy
+	cargo build --release --bin bridge
+	cargo build --release --bin sidekick
+	cd $SIDEKICK_HOME/quacker
+	cargo build --release
+}
+
 if [ $1 == "all" ]; then
 	build_pepsal
 	build_sidekick
 	build_chromium
 	build_quiche
 	build_picoquic
+	build_sidekick
 elif [ $1 -eq 1 ]; then
 	build_pepsal
 elif [ $1 -eq 2 ]; then
@@ -59,6 +69,8 @@ elif [ $1 -eq 3 ]; then
 	build_quiche
 elif [ $1 -eq 4 ]; then
 	build_picoquic
+elif [ $1 -eq 5 ]; then
+	build_sidekick
 else
 	help
 fi
