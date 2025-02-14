@@ -91,6 +91,16 @@ impl UdpParser {
         i32::from(ip_protocol) == libc::IPPROTO_UDP
     }
 
+    /// Returns src IP (IPv4) in NBO
+    pub fn parse_src_ip(x: &[u8; BUFFER_SIZE]) -> [u8; 4] {
+        [x[26], x[27], x[28], x[29]]
+    }
+
+    /// Returns src UDP port in NBO
+    pub fn parse_src_port(x: &[u8; BUFFER_SIZE]) -> [u8; 2] {
+        [x[34], x[35]]
+    }
+
     /// src_ip, src_port, dst_ip, dst_port
     pub fn parse_addr_key(x: &[u8; BUFFER_SIZE]) -> AddrKey {
         [

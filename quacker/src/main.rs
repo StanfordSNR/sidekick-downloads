@@ -57,19 +57,19 @@ async fn send_quacks(
         interval.tick().await;
         loop {
             let quack;
-            let curr_stoc;
+            let disc;
             interval.tick().await;
             {
                 let sc = sc.lock().unwrap();
                 quack = sc.quack();
-                curr_stoc = sc.base_stoc.expect("No base connection");
+                base = sc.base_stoc.expect("No base connection");
+                disc = sc.awaiting_disc_ack;
             }
             // Update discovery if needed
-            if curr_stoc != base {
-                Sidekick::send_discovery(&socket, &curr_stoc, addr).await;
-                base = curr_stoc;
-                info!("Updated sidekick base connection");
+            if disc {
+                Sidekick::send_discovery(&socket, &base, addr).await;
             }
+            // Send quack
             let bytes = bincode::serialize(&quack).unwrap();
             info!("quack {}", quack.count());
             if socket.send_to(&bytes, addr).await.is_err() {
@@ -109,7 +109,8 @@ async fn main() -> Result<(), String> {
     );
 
     // Start the sidekick.
-    let mut sc = Sidekick::new(&args.interface, args.threshold, args.num_bits_id);
+    let mut sc = Sidekick::new(&args.interface, args.threshold,
+                               args.num_bits_id, args.target_addr.clone());
 
     // Handle a snapshotted quACK at the specified frequency.
     if let Some(frequency_ms) = args.frequency_ms {
