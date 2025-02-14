@@ -71,6 +71,14 @@ impl DiscoveryPayload {
         self.op = DiscoveryOp::DiscoverAck;
         let payload = self.to_payload();
         let headers = UdpHeaders::_parse(packet).ok_or(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid packet"))?;
+        let headers = UdpHeaders {
+            src_mac: headers.dst_mac,
+            dst_mac: headers.src_mac,
+            src_ip: headers.dst_ip,
+            dst_ip: headers.src_ip,
+            src_port: headers.dst_port,
+            dst_port: headers.src_port,
+        };
         headers.to_udp_packet(
             buf,
             payload,

@@ -167,7 +167,13 @@ impl Sidekick {
                     // Acknowledge the discovery packet
                     let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
                     match disc.build_ack_packet(&mut buf, &packet.data) {
-                        Ok(len) => self.stream.send(&buf, len, packet.iface),
+                        Ok(len) => {
+                            trace!("Sending ACK packet for discovery {}",
+                                   self.base_connection_stoc.unwrap().iter()
+                                                            .map(|b| format!("{:02x}", b))
+                                                            .collect::<String>());
+                            self.stream.send(&buf, len, packet.iface);
+                        }
                         Err(e) => error!("Failed to build ack packet: {}", e),
                     }
                     return ConnectionType::Discovery;
