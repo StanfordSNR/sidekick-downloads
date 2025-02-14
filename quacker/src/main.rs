@@ -47,11 +47,12 @@ async fn send_quacks(
         let mut interval = time::interval(Duration::from_millis(frequency_ms));
 
         // For the first packet, send a discovery
+        // Send 2 dups to account for random loss
         let mut base = sc.lock()
                          .unwrap()
                          .base_stoc
                          .expect("First packet received but no base connection");
-        Sidekick::send_discovery(&socket, &base, addr).await;
+        Sidekick::send_discovery(&socket, &base, addr, 3).await;
 
         // The first tick completes immediately
         interval.tick().await;
@@ -65,9 +66,11 @@ async fn send_quacks(
                 base = sc.base_stoc.expect("No base connection");
                 disc = sc.awaiting_disc_ack;
             }
-            // Update discovery if needed
+            // Send discovery if waiting for ACK. Could indicate an
+            // update to the base connection or a lost Discover/DiscoverAck.
             if disc {
-                Sidekick::send_discovery(&socket, &base, addr).await;
+                // Send 2 dups to account for random loss
+                Sidekick::send_discovery(&socket, &base, addr, 3).await;
             }
             // Send quack
             let bytes = bincode::serialize(&quack).unwrap();
