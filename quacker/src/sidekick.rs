@@ -194,21 +194,28 @@ impl Sidekick {
         }
     }
 
-    /// Send a discovery packet through `socket` to `addr`
+    /// Send discovery through `socket` to `addr`
     /// `base` is assumed to be the AddrKey of the base connection
     /// `socket` and `addr` are assumed to be the sidekick connection.
-    pub async fn send_discovery(socket: &UdpSocket, base: &AddrKey, addr: SocketAddr) {
+    ///
+    /// Note: this will send `n` identical discovery packets. For n > 1, this increases
+    /// the chance that a discovery reaches the proxy in the presence of random loss
+    /// (duplicate discovery packets are no-ops).
+    pub async fn send_discovery(socket: &UdpSocket, base: &AddrKey, addr: SocketAddr,
+                                n: usize) {
         let bytes = bincode::serialize(
             &DiscoveryPayload::new(*base,
                 DiscoveryOp::Discover)).unwrap();
-        if socket.send_to(&bytes, addr).await.is_err() {
-            info!("Failed to send discovery packet");
-            return;
-        } else {
-            info!("Sent discovery for sidekick base connection {}",
-                  base.iter()
-                      .map(|b| format!("{:02x}", b))
-                      .collect::<String>());
+        for i in 0..n {
+            if socket.send_to(&bytes, addr).await.is_err() {
+                error!("Failed to send {}th discovery packet", i);
+                return;
+            } else {
+                info!("Sent discovery for sidekick base connection {}",
+                      base.iter()
+                          .map(|b| format!("{:02x}", b))
+                          .collect::<String>());
+            }
         }
     }
 
