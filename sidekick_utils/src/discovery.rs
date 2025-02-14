@@ -1,3 +1,38 @@
+//! Structures for a very basic Sidekick discovery protocol.
+//!
+//! Client (receiver) opens a sidekick connection and uses it to send the
+//! proxy a Discovery packet with DiscoveryOp = 0 (Discover).
+//! The discovery packet contains the four-tuple of the base connection.
+//!
+//! The base connection four-tuple should be from the perspective of
+//! the server (sender). I.e., the client should "flip" the four-tuple
+//! of the base connection it is requesting assistance on, such that
+//! its source IP/port become the destination IP/port and vice verse.
+//!
+//! The proxy responds with a Discovery packet with DiscoveryOp = 1
+//! (DiscoverAck). The client should continue retransmitting Discovery
+//! packets at a regular interval until the DiscoverAck is received.
+//!
+//! The client can update its base or sidekick connection at any time
+//! by sending a new Discovery packet with DiscoveryOp = 0. This will
+//! reset state on the proxy.
+//!
+//! The client can tear down a sidekick connection by sending a
+//! Discovery packet with DiscoveryOp = 2 (Teardown). The proxy will
+//! reply with a Discovery packet with DiscoveryOp = 3 (TeardownAck),
+//! and the client should continue retransmitting the teardown until
+//! the TeardownAck is received. The Teardown must be transmitted on the
+//! sidekick connection (four-tuple) and must contain the base connection
+//! four-tuple.
+//!
+//! After a teardown and before a discovery, the proxy will not
+//! retransmit packets and interpret quACKs.
+//!
+//! Each Discovery packet is prefixed by a constant MAGIC.
+//!
+//! Note that, as of now, each sidekick connection is tied to a single
+//! base connection.
+
 use crate::{buffer::{AddrKey, UdpHeaders}, BUFFER_SIZE};
 use serde::{Deserialize, Serialize};
 use log::trace;
