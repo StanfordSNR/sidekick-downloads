@@ -3,6 +3,7 @@ pub mod identifier;
 pub mod buffer;
 
 pub const ID_OFFSET: usize = 63;
+pub const UDP_PAYLOAD_OFFSET: usize = 42;
 pub const DEFAULT_MTU: usize = 1500;
 
 // Ethernet (14), IP (20), TCP/UDP (8) headers
@@ -15,3 +16,5 @@ pub const BUFFER_SIZE: usize = ID_OFFSET + 4;
 // Proxy must be able to receive and forward complete packets
 #[cfg(not(feature = "client"))]
 pub const BUFFER_SIZE: usize = (DEFAULT_MTU + 14 + 8).next_power_of_two();
+
+mod ffi;

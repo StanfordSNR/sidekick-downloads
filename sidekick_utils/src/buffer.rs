@@ -2,9 +2,6 @@ use libc::c_uchar;
 use crate::BUFFER_SIZE;
 use crate::identifier::{IdentifierFunc, Identifier};
 
-// Ethernet (14), IP (20), TCP/UDP (8) headers
-const UDP_PAYLOAD_OFFSET: usize = 42;
-
 /// src_ip, src_port, dst_ip, dst_port (UDP)
 pub type AddrKey = [u8; 12];
 
@@ -100,7 +97,7 @@ impl UdpParser {
 
     /// Returns the UDP payload.
     pub fn payload(x: &[u8; BUFFER_SIZE]) -> &[u8] {
-        &x[UDP_PAYLOAD_OFFSET..]
+        &x[crate::UDP_PAYLOAD_OFFSET..]
     }
 
     /// Returns the sidekick identifier assuming the buffer
