@@ -9,6 +9,7 @@ use pnet::packet::ipv4;
 use pnet::packet::udp::MutableUdpPacket;
 use pnet::datalink::MacAddr;
 use std::net::Ipv4Addr;
+use log::trace;
 
 // Ethernet (14), IP (20), TCP/UDP (8) headers
 const ETH_HDR_LEN: usize = 14;
@@ -172,6 +173,18 @@ impl UdpHeaders {
                                                 payload.len(), BUFFER_SIZE - UDP_PAYLOAD_OFFSET)));
         }
         assert!(payload.len() <= u16::MAX as usize - 8); // Must fit in UDP payload
+
+        trace!("Building UDP packet with payload length {} \
+                Eth (NBO): {} -> {} \
+                IP (NBO): {} -> {} \
+                UDP (HBO): {} -> {}",
+               payload.len(),
+               self.src_mac.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+               self.dst_mac.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+               self.src_ip.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+               self.dst_ip.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+               u16::from_be_bytes(self.src_port),
+               u16::from_be_bytes(self.dst_port));
 
         // Headers
         let mut eth = MutableEthernetPacket::new(&mut buf[..ETH_HDR_LEN]).unwrap();

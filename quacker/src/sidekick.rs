@@ -103,6 +103,7 @@ impl Sidekick {
                         if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
                            u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
                             Sidekick::handle_discover(&sc, &buf);
+                            continue; // skip packets from proxy
                         }
                     }
                 }
@@ -113,6 +114,20 @@ impl Sidekick {
                     let addr_key = UdpParser::parse_addr_key(&buf);
                     let mut sc = sc.lock().unwrap();
                     if sc.base_stoc != Some(addr_key) {
+                        if sc.base_stoc.is_some() {
+                            info!("Received new base connection: {} (old: {})",
+                                  addr_key.iter()
+                                          .map(|b| format!("{:02x}", b))
+                                          .collect::<String>(),
+                                  sc.base_stoc.unwrap().iter()
+                                                       .map(|b| format!("{:02x}", b))
+                                                       .collect::<String>());
+                        } else {
+                            info!("Received base connection: {}",
+                                  addr_key.iter()
+                                          .map(|b| format!("{:02x}", b))
+                                          .collect::<String>());
+                        }
                         // Direction is incoming, so this packet is from the server.
                         sc.base_stoc = Some(UdpParser::parse_addr_key(&buf));
                         // Reset the sidekick -- could be an update.
@@ -159,9 +174,9 @@ impl Sidekick {
                 let mut sc = sc.lock().unwrap();
                 if Some(disc.base_connection_stoc) == sc.base_stoc {
                     sc.awaiting_disc_ack = false;
-                    trace!("Received DiscoverACK from proxy");
+                    info!("Received DiscoverACK from proxy");
                 } else if sc.base_stoc.is_some() {
-                    trace!("Received DiscoverACK from proxy for old data: {} (expected: {})",
+                    info!("Received DiscoverACK from proxy for old data: {} (expected: {})",
                             disc.base_connection_stoc.iter()
                                                      .map(|b| format!("{:02x}", b))
                                                      .collect::<String>(),
