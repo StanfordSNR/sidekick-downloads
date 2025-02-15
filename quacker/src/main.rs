@@ -26,12 +26,12 @@ struct Cli {
     /// The threshold number of missing packets.
     #[arg(long, short = 't', default_value_t = 20)]
     threshold: usize,
-    /// Frequency at which to quack, in ms. If frequency is 0, does not quack.
-    #[arg(long = "frequency-ms")]
-    frequency_ms: Option<u64>,
+    /// Frequency at which to quack, in ms.
+    #[arg(long = "frequency-ms", default_value_t = 0)]
+    frequency_ms: u64,
     /// Frequency at which to quack, in packets.
-    #[arg(long = "frequency-pkts")]
-    frequency_pkts: Option<usize>,
+    #[arg(long = "frequency-pkts", default_value_t = 0)]
+    frequency_pkts: usize,
     /// Address of the UDP socket to quack to e.g., <IP:PORT>. If missing,
     /// goes to stdout.
     #[arg(long = "target-addr")]
@@ -45,43 +45,42 @@ async fn send_quacks(
     addr: SocketAddr,
     frequency_ms: u64,
 ) {
-    if frequency_ms > 0 {
-        rx.await
-            .expect("couldn't receive notice that 1st packet was sniffed");
-        let mut interval = time::interval(Duration::from_millis(frequency_ms));
+    assert!(frequency_ms > 0);
+    rx.await
+        .expect("couldn't receive notice that 1st packet was sniffed");
+    let mut interval = time::interval(Duration::from_millis(frequency_ms));
 
-        // For the first packet, send a discovery
-        // Send 2 dups to account for random loss
-        let mut base = sc.lock()
-                         .unwrap()
-                         .base_stoc
-                         .expect("First packet received but no base connection");
-        Sidekick::send_discovery(&socket, &base, addr, 3).await;
+    // For the first packet, send a discovery
+    // Send 2 dups to account for random loss
+    let mut base = sc.lock()
+                     .unwrap()
+                     .base_stoc
+                     .expect("First packet received but no base connection");
+    Sidekick::send_discovery(&socket, &base, addr, 3).await;
 
-        // The first tick completes immediately
+    // The first tick completes immediately
+    interval.tick().await;
+    loop {
+        let quack;
+        let disc;
         interval.tick().await;
-        loop {
-            let quack;
-            let disc;
-            interval.tick().await;
-            {
-                let sc = sc.lock().unwrap();
-                quack = sc.quack();
-                base = sc.base_stoc.expect("No base connection");
-                disc = sc.awaiting_disc_ack;
-            }
-            // Send discovery if waiting for ACK. Could indicate an
-            // update to the base connection or a lost Discover/DiscoverAck.
-            if disc {
-                // Send 2 dups to account for random loss
-                Sidekick::send_discovery(&socket, &base, addr, 3).await;
-            }
-            // Send quack
-            let bytes = bincode::serialize(&quack).unwrap();
-            info!("quack {}", quack.count());
-            if socket.send_to(&bytes, addr).await.is_err() {
-                break;
-            }
+        {
+            let sc = sc.lock().unwrap();
+            quack = sc.quack();
+            base = sc.base_stoc.expect("No base connection");
+            disc = sc.awaiting_disc_ack;
+        }
+        // Send discovery if waiting for ACK. Could indicate an
+        // update to the base connection or a lost Discover/DiscoverAck.
+        if disc {
+            // Send 2 dups to account for random loss
+            Sidekick::send_discovery(&socket, &base, addr, 3).await;
+        }
+        // Send quack
+        let bytes = bincode::serialize(&quack).unwrap();
+        info!("quack {}", quack.count());
+        if socket.send_to(&bytes, addr).await.is_err() {
+            break;
         }
     }
 }
@@ -117,19 +116,19 @@ async fn main() -> Result<(), String> {
                                args.target_addr.clone());
 
     // Handle a snapshotted quACK at the specified frequency.
-    if let Some(frequency_ms) = args.frequency_ms {
+    if args.frequency_ms > 0 {
         let sc = Arc::new(Mutex::new(sc));
         let (sendsock, rx) = Sidekick::start(sc.clone()).await?;
         if let Some(addr) = args.target_addr {
             info!("quACKing to {:?}", addr);
-            send_quacks(sc, rx, sendsock, addr, frequency_ms).await;
+            send_quacks(sc, rx, sendsock, addr, args.frequency_ms).await;
         } else {
             info!("printing quACKs");
-            print_quacks(sc, rx, frequency_ms).await;
+            print_quacks(sc, rx, args.frequency_ms).await;
         }
-    } else if let Some(frequency_pkts) = args.frequency_pkts {
+    } else if args.frequency_pkts > 0 {
         let addr = args.target_addr.expect("Address must be set");
-        sc.start_frequency_pkts(frequency_pkts, addr)
+        sc.start_frequency_pkts(args.frequency_pkts, addr)
             .await
             .unwrap();
     }
