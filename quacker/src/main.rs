@@ -35,7 +35,7 @@ struct Cli {
     /// Address of the UDP socket to quack to e.g., <IP:PORT>. If missing,
     /// goes to stdout.
     #[arg(long = "target-addr")]
-    target_addr: Option<SocketAddr>,
+    target_addr: SocketAddr,
 }
 
 async fn send_quacks(
@@ -85,21 +85,6 @@ async fn send_quacks(
     }
 }
 
-async fn print_quacks(sc: Arc<Mutex<Sidekick>>, rx: oneshot::Receiver<()>, frequency_ms: u64) {
-    if frequency_ms > 0 {
-        rx.await
-            .expect("couldn't receive notice that 1st packet was sniffed");
-        let mut interval = time::interval(Duration::from_millis(frequency_ms));
-        // The first tick completes immediately
-        interval.tick().await;
-        loop {
-            interval.tick().await;
-            let quack = sc.lock().unwrap().quack();
-            info!("quack {}", quack.count());
-        }
-    }
-}
-
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), String> {
     env_logger::init();
@@ -119,16 +104,10 @@ async fn main() -> Result<(), String> {
     if args.frequency_ms > 0 {
         let sc = Arc::new(Mutex::new(sc));
         let (sendsock, rx) = Sidekick::start(sc.clone()).await?;
-        if let Some(addr) = args.target_addr {
-            info!("quACKing to {:?}", addr);
-            send_quacks(sc, rx, sendsock, addr, args.frequency_ms).await;
-        } else {
-            info!("printing quACKs");
-            print_quacks(sc, rx, args.frequency_ms).await;
-        }
+        info!("quACKing to {:?}", args.target_addr);
+        send_quacks(sc, rx, sendsock, args.target_addr, args.frequency_ms).await;
     } else if args.frequency_pkts > 0 {
-        let addr = args.target_addr.expect("Address must be set");
-        sc.start_frequency_pkts(args.frequency_pkts, addr)
+        sc.start_frequency_pkts(args.frequency_pkts, args.target_addr)
             .await
             .unwrap();
     }

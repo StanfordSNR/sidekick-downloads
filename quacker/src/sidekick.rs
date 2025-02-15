@@ -18,14 +18,13 @@ pub struct Sidekick {
     pub base_stoc: Option<AddrKey>, // base conn 4-tuple
     quack: PowerSumQuackU32,
     log: Vec<u32>,
-    quack_addr: Option<SocketAddr>, // sidekick proxy's address
+    quack_addr: SocketAddr, // sidekick proxy's address
     pub awaiting_disc_ack: bool, // requested discovery, awaiting ack
 }
 
 impl Sidekick {
     /// Create a new sidekick.
-    pub fn new(interface: &str, threshold: usize,
-               quack_addr: Option<SocketAddr>) -> Self {
+    pub fn new(interface: &str, threshold: usize, quack_addr: SocketAddr) -> Self {
         Self {
             interface: interface.to_string(),
             threshold,
@@ -96,12 +95,10 @@ impl Sidekick {
                 {
                     let quack_addr = { sc.lock().unwrap().quack_addr };
                     // Note the quack_addr is assumed to never change
-                    if let Some(quack_addr) = quack_addr {
-                        if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
-                           u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
-                            Sidekick::handle_discover(&sc, &buf);
-                            continue; // skip packets from proxy
-                        }
+                    if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
+                       u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
+                        Sidekick::handle_discover(&sc, &buf);
+                        continue; // skip packets from proxy
                     }
                 }
 
