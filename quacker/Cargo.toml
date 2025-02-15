@@ -10,7 +10,7 @@ quack = { path = "../deps/quack", features = ["strawmen"] }
 sidekick-utils = { path = "../sidekick_utils/", features = ["client"] }
 clap = { version = "4.0.26", features = ["derive"] }
 bincode = "1.3.3"
-tokio = { version = "1", features = ["net", "sync", "rt", "time", "macros", "io-util"] }
+tokio = { version = "1", features = ["net", "sync", "rt", "time", "rt-multi-thread", "macros", "io-util"] }
 log = "0.4.17"
 env_logger = "0.9.3"
 libc = "0.2.137"

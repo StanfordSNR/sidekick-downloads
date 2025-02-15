@@ -100,7 +100,7 @@ async fn print_quacks(sc: Arc<Mutex<Sidekick>>, rx: oneshot::Receiver<()>, frequ
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), String> {
     env_logger::init();
 
