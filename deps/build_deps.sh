@@ -43,7 +43,7 @@ ninja -C out/Default quic_server quic_client
 build_picoquic () {
 	cd $SIDEKICK_HOME/deps/picoquic
 	cmake -DPICOQUIC_FETCH_PTLS=Y .
-	cmake --build .
+	cmake --build . -t picoquic_sample
 }
 
 build_sidekick() {
