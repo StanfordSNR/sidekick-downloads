@@ -275,6 +275,18 @@ class TestFileDownloadBenchmarks(CLITestCase):
             if re.search(r'\[quack\] .* quack (\d+)', line):
                 self.fail('Client quacked before receiving a discover ACK')
 
+    def test_sidekick_receives_picoquic_client_quacks(self):
+        self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '100', '--freq-pkts', '0'], ['--client-quacker'])
+        self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '0', '--freq-pkts', '8'], ['--client-quacker'])
+        self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '50', '--freq-pkts', '20'], ['--client-quacker'])
+
+    def test_picoquic_client_does_not_quack_by_default(self):
+        self._test_file_download_benchmark('picoquic', ['--debug', '--proxy', 'sidekick'])
+        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
+            lines = f.readlines()
+        quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
+        self.assertEqual(quacks, [], 'no quacks are received')
+
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
         network_options = ['--tcpdump']

@@ -261,6 +261,11 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         certfile: str,
         keyfile: str,
         logdir: str,
+        quacker: bool,
+        threshold: int=20,
+        freq_ms: int=0,
+        freq_pkts: int=0,
+        quackee_port: int=5252,
         ack_delay: int=0,
         port: int=4433,
         proxy_type: Optional[ProxyType]=None,
@@ -276,9 +281,24 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         - certfile: Path to the TLS/SSL certificate file.
         - keyfile: Path to the TLS/SSL key file.
         - logdir: Path to a log directory (that already exists).
+        - quacker: Whether to enable the quacker in the picoquic client.
+
+        Quacker parameters:
+        - threshold: The threshold number of missing packets the quACK can find.
+        - freq_ms: The quacker quacks on the first insertion, AND if
+          <freq_pkts> have been inserted or at least <freq_ms> have elapsed
+          since the last quack.
+        - freq_pkts: The quacker quacks on the first insertion, AND if
+          <freq_pkts> have been inserted or at least <freq_ms> have elapsed
+          since the last quack.
+        - quackee_port: The UDP port that the quackee on the proxy is listening
+          to for quACKs.
+
+        Optional parameters:
         - ack_delay: Delay (ms) of sidekick ACK signal to reduce spurious retx
-        - port: The port to start the HTTP server on.
-        - proxy: The type of network proxy.
+          (default: 0).
+        - port: The port to start the HTTP server on (default: 5252).
+        - proxy: The type of network proxy (default: None).
         """
         self.ack_delay = ack_delay
         self.port = port
@@ -288,6 +308,13 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             certfile=certfile, keyfile=keyfile, logdir=logdir,
             proxy_type=proxy_type
         )
+
+        self.quacker = quacker
+        if quacker:
+            self.threshold = threshold
+            self.freq_ms = freq_ms
+            self.freq_pkts = freq_pkts
+            self.target_addr = f'{self.proxy.IP()}:{quackee_port}'
 
         # Fields for the server to notify the client of certain statistics
         self.condition = threading.Condition()
@@ -348,8 +375,14 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{self.port} '\
               f'/tmp '\
               f'{self.cca} '\
-              f'{self.ack_delay} '\
-              f'{self.data_size}.html '
+              f'{self.ack_delay} '
+
+        # Add parameters to configure the client quacker
+        if self.quacker:
+            cmd += f'{self.threshold} {self.freq_pkts} {self.freq_ms} {self.target_addr} '
+
+        # Add the data size parameter
+        cmd += f'{self.data_size}.html '
 
         result = []
         def parse_result(line):
