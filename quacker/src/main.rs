@@ -1,7 +1,9 @@
 mod sidekick;
 mod quacker;
+mod print_quacker;
 
 pub use quacker::{Quacker, BaseQuacker};
+pub use print_quacker::PrintQuacker;
 
 use clap::Parser;
 use log::{debug, info};
