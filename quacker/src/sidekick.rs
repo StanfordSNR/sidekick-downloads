@@ -15,7 +15,6 @@ use quack::{PowerSumQuack, PowerSumQuackU32};
 pub struct Sidekick {
     pub interface: String,
     pub threshold: usize,
-    pub bits: usize,
     pub base_stoc: Option<AddrKey>, // base conn 4-tuple
     quack: PowerSumQuackU32,
     log: Vec<u32>,
@@ -25,13 +24,11 @@ pub struct Sidekick {
 
 impl Sidekick {
     /// Create a new sidekick.
-    pub fn new(interface: &str, threshold: usize, bits: usize,
+    pub fn new(interface: &str, threshold: usize,
                quack_addr: Option<SocketAddr>) -> Self {
-        assert_eq!(bits, 32, "ERROR: <num_bits_id> must be 32");
         Self {
             interface: interface.to_string(),
             threshold,
-            bits,
             base_stoc: None,
             quack: PowerSumQuackU32::new(threshold),
             log: vec![],

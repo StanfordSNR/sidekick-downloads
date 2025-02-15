@@ -26,9 +26,6 @@ struct Cli {
     /// The threshold number of missing packets.
     #[arg(long, short = 't', default_value_t = 20)]
     threshold: usize,
-    /// Number of identifier bits.
-    #[arg(long = "bits", short = 'b', default_value_t = 32)]
-    num_bits_id: usize,
     /// Frequency at which to quack, in ms. If frequency is 0, does not quack.
     #[arg(long = "frequency-ms")]
     frequency_ms: Option<u64>,
@@ -109,10 +106,7 @@ async fn main() -> Result<(), String> {
     env_logger::init();
 
     let args = Cli::parse();
-    debug!(
-        "interface={} threshold={} bits={}",
-        args.interface, args.threshold, args.num_bits_id
-    );
+    debug!("interface={} threshold={}", args.interface, args.threshold);
     debug!(
         "frequency_ms={:?} frequency_pkts={:?} target_addr={:?}",
         args.frequency_ms, args.frequency_pkts, args.target_addr
@@ -120,7 +114,7 @@ async fn main() -> Result<(), String> {
 
     // Start the sidekick.
     let mut sc = Sidekick::new(&args.interface, args.threshold,
-                               args.num_bits_id, args.target_addr.clone());
+                               args.target_addr.clone());
 
     // Handle a snapshotted quACK at the specified frequency.
     if let Some(frequency_ms) = args.frequency_ms {
