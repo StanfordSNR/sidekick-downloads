@@ -5,6 +5,10 @@ edition = "2021"
 description = ""
 readme = "README.md"
 
+[lib]
+name = "quacker"
+crate-type = ["rlib", "cdylib"]
+
 [dependencies]
 quack = { path = "../deps/quack", features = ["strawmen"] }
 sidekick-utils = { path = "../sidekick_utils/", features = ["client"] }
