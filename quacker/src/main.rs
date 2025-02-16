@@ -1,4 +1,3 @@
-mod sidekick;
 mod quacker;
 mod print_quacker;
 mod udp_quacker;
@@ -13,12 +12,9 @@ pub fn current_time_ms() -> u64 {
 
 use clap::Parser;
 use log::{trace, debug, info, warn};
-use sidekick::Sidekick;
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::net::UdpSocket;
-use tokio::sync::oneshot;
 use tokio::time::{self, Duration};
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
@@ -50,48 +46,20 @@ struct Cli {
 }
 
 async fn send_quacks(
-    sc: Arc<Mutex<Sidekick>>,
-    rx: oneshot::Receiver<()>,
-    socket: UdpSocket,
-    addr: SocketAddr,
+    quacker: Arc<Mutex<UdpQuacker>>,
     frequency_ms: u64,
 ) {
     assert!(frequency_ms > 0);
-    rx.await
-        .expect("couldn't receive notice that 1st packet was sniffed");
     let mut interval = time::interval(Duration::from_millis(frequency_ms));
-
-    // For the first packet, send a discovery
-    // Send 2 dups to account for random loss
-    let mut base = sc.lock()
-                     .unwrap()
-                     .base_stoc
-                     .expect("First packet received but no base connection");
-    Sidekick::send_discovery(&socket, &base, addr, 3).await;
-
-    // The first tick completes immediately
-    interval.tick().await;
     loop {
-        let quack;
-        let disc;
         interval.tick().await;
+        // Not exactly the algorithm but close enough.
         {
-            let sc = sc.lock().unwrap();
-            quack = sc.quack();
-            base = sc.base_stoc.expect("No base connection");
-            disc = sc.awaiting_disc_ack;
-        }
-        // Send discovery if waiting for ACK. Could indicate an
-        // update to the base connection or a lost Discover/DiscoverAck.
-        if disc {
-            // Send 2 dups to account for random loss
-            Sidekick::send_discovery(&socket, &base, addr, 3).await;
-        }
-        // Send quack
-        let bytes = bincode::serialize(&quack).unwrap();
-        info!("quack {}", quack.count());
-        if socket.send_to(&bytes, addr).await.is_err() {
-            break;
+            let mut q = quacker.lock().unwrap();
+            let time_ms = current_time_ms();
+            if q.update_time(time_ms) {
+                debug!("quack {}", q.get_quack().count());
+            }
         }
     }
 }
@@ -184,20 +152,14 @@ async fn main() -> Result<(), String> {
         "frequency_ms={:?} frequency_pkts={:?} target_addr={:?}",
         args.frequency_ms, args.frequency_pkts, args.target_addr
     );
-
-    // Start the sidekick.
-    let sc = Sidekick::new(&args.interface, args.threshold, args.target_addr.clone());
-
-    // Handle a snapshotted quACK at the specified frequency.
+    let quacker = Arc::new(Mutex::new(UdpQuacker::new(
+        args.threshold, args.frequency_pkts, args.frequency_ms, args.target_addr)));
     if args.frequency_ms > 0 {
-        let sc = Arc::new(Mutex::new(sc));
-        let (sendsock, rx) = Sidekick::start(sc.clone()).await?;
-        info!("quACKing to {:?}", args.target_addr);
-        send_quacks(sc, rx, sendsock, args.target_addr, args.frequency_ms).await;
-    } else if args.frequency_pkts > 0 {
-        let quacker = Arc::new(Mutex::new(UdpQuacker::new(
-            args.threshold, args.frequency_pkts, args.frequency_ms, args.target_addr)));
-        start_sniffer(quacker, &args.interface).await.unwrap();
+        let quacker = quacker.clone();
+        tokio::task::spawn(async move {
+            send_quacks(quacker, args.frequency_ms).await;
+        });
     }
+    start_sniffer(quacker, &args.interface).await.unwrap();
     Ok(())
 }
