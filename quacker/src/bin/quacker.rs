@@ -1,20 +1,7 @@
-mod quacker;
-mod print_quacker;
-mod udp_quacker;
-
-pub use quacker::{Quacker, BaseQuacker};
-pub use print_quacker::PrintQuacker;
-pub use udp_quacker::UdpQuacker;
-
-pub fn current_time_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
-}
-
 use clap::Parser;
 use log::{trace, debug, info, warn};
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{self, Duration};
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
@@ -23,6 +10,7 @@ use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
 use quack::PowerSumQuack;
+use quacker::{Quacker, UdpQuacker, current_time_ms};
 
 /// Sends quACKs in the sidekick protocol, receives data in the base protocol.
 #[derive(Parser)]
