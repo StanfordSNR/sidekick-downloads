@@ -43,25 +43,12 @@ git clone git@github.com:ygina/quack.git
 rustup default nightly-2024-01-26
 ```
 
-### Build the proxy
-
-See [instructions](https://github.com/ygina/sidekick-downloads/blob/main/proxy/).
-
-```
-export SIDEKICK_HOME=$HOME/sidekick-downloads
-cd $SIDEKICK_HOME/proxy
-cargo build --bin bridge --release
-cargo build --bin sidekick --release
-```
-
-### Build the client-side sniffer
-
+### Build the proxy and sniffing quacker
 
 ```
 export SIDEKICK_HOME=$HOME/sidekick-downloads
 cd $SIDEKICK_HOME/deps
-cd $SIDEKICK_HOME/quacker
-cargo build --release
+./build_deps.sh 5
 ```
 
 ## TCP Benchmarks
