@@ -1,14 +1,22 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use bincode;
+use log::{trace, info, error};
 use quack::PowerSumQuackU32;
 use crate::{Quacker, BaseQuacker};
+
+use sidekick_utils::BUFFER_SIZE;
+use sidekick_utils::buffer::{UdpParser, AddrKey};
+use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
+
 
 #[derive(Clone)]
 pub struct UdpQuacker {
     quacker: BaseQuacker,
     src_sock: Arc<UdpSocket>,
     dst_addr: SocketAddr,
+    pub base_stoc: Option<AddrKey>, // base conn 4-tuple
+    pub awaiting_disc_ack: bool, // requested discovery, awaiting ack
 }
 
 impl UdpQuacker {
@@ -19,6 +27,66 @@ impl UdpQuacker {
             quacker: BaseQuacker::new(threshold, freq_pkts, freq_ms),
             src_sock: Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap()),
             dst_addr: addr,
+            base_stoc: None,
+            awaiting_disc_ack: false,
+        }
+    }
+
+    /// Handle discovery packets from the proxy.
+    /// Assumes that this packet is known to be a UDP packet from the proxy
+    /// by source port and IP address.
+    pub fn handle_discover(&mut self, buf: &[u8; BUFFER_SIZE]) {
+        if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&buf)) {
+            if disc.op == DiscoveryOp::DiscoverAck {
+                if Some(disc.base_connection_stoc) == self.base_stoc {
+                    // Start aggregating quacks only after proxy is ready.
+                    // May receive dup discovery ACKs; only initialize (reset)
+                    // on first one.
+                    if self.awaiting_disc_ack {
+                        self.reset();
+                        self.awaiting_disc_ack = false;
+                        info!("Received DiscoverACK from proxy");
+                    }
+                } else if self.base_stoc.is_some() {
+                    info!("Received DiscoverACK from proxy for old data: {} (expected: {})",
+                            disc.base_connection_stoc.iter()
+                                                     .map(|b| format!("{:02x}", b))
+                                                     .collect::<String>(),
+                            self.base_stoc.unwrap().iter()
+                                                 .map(|b| format!("{:02x}", b))
+                                                 .collect::<String>());
+                } else {
+                    panic!("Received DiscoverACK from proxy before sending discovery");
+                }
+            } else {
+                trace!("Received packet from proxy with op {:?}", disc.op);
+            }
+        } else {
+            error!("Received non-discovery packet from proxy");
+        }
+    }
+
+    /// Send discovery through `socket` to `addr`
+    /// `base` is assumed to be the AddrKey of the base connection
+    /// `socket` and `addr` are assumed to be the sidekick connection.
+    ///
+    /// Note: this will send `n` identical discovery packets. For n > 1, this increases
+    /// the chance that a discovery reaches the proxy in the presence of random loss
+    /// (duplicate discovery packets are no-ops).
+    pub async fn send_discovery(&self, base: &AddrKey, n: usize) {
+        let bytes = bincode::serialize(
+            &DiscoveryPayload::new(*base,
+                DiscoveryOp::Discover)).unwrap();
+        for i in 0..n {
+            if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {
+                error!("Failed to send {}th discovery packet", i);
+                return;
+            } else {
+                info!("Sent discovery for sidekick base connection {}",
+                      base.iter()
+                          .map(|b| format!("{:02x}", b))
+                          .collect::<String>());
+            }
         }
     }
 
@@ -32,6 +100,11 @@ impl UdpQuacker {
     /// to serialize them with base connection packets.
     pub fn src_addr(&self) -> SocketAddr {
         self.src_sock.local_addr().unwrap()
+    }
+
+    /// The socket address to which we send quACKs on the sidekick connection.
+    pub fn dst_addr(&self) -> SocketAddr {
+        self.dst_addr.clone()
     }
 }
 

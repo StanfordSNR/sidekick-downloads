@@ -225,7 +225,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
                 self.assertLessEqual(quacks[i], quacks[i+1], quacks)
 
         _test_frequency(100, 0)
-        # _test_frequency(0, 8)
+        _test_frequency(0, 8)
         _test_frequency(50, 20)
 
     def _test_sidekick_receives_quacks(self, protocol, add_network_options, protocol_options):
@@ -248,7 +248,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_sidekick_receives_sniffer_quacks(self):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '100', '--freq-pkts', '0'], [])
-        # self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
+        self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_discovery(self):

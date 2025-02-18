@@ -14,7 +14,7 @@ pub fn current_time_ms() -> u64 {
 use clap::Parser;
 use log::{trace, debug, info};
 use sidekick::Sidekick;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::UdpSocket;
@@ -121,6 +121,49 @@ async fn start_sniffer(
         if !UdpParser::is_udp(&buf) {
             trace!("not UDP packet");
             continue;
+        }
+
+        // If this is an incoming discovery packet from the proxy, handle it.
+        {
+            let quack_addr = { quacker.lock().unwrap().dst_addr() };
+            // Note the quack_addr is assumed to never change
+            if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
+               u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
+                quacker.lock().unwrap().handle_discover(&buf);
+                continue; // skip packets from proxy
+            }
+        }
+
+        // Update base connection identifier for sending discovery
+        // to proxy. Identify by first UDP connection.
+        {
+            let addr_key = UdpParser::parse_addr_key(&buf);
+            let mut quacker = quacker.lock().unwrap();
+            if quacker.base_stoc != Some(addr_key) {
+                if quacker.base_stoc.is_some() {
+                    info!("Received new base connection: {} (old: {})",
+                          addr_key.iter()
+                                  .map(|b| format!("{:02x}", b))
+                                  .collect::<String>(),
+                          quacker.base_stoc.unwrap().iter()
+                                               .map(|b| format!("{:02x}", b))
+                                               .collect::<String>());
+                } else {
+                    info!("Received base connection: {}",
+                          addr_key.iter()
+                                  .map(|b| format!("{:02x}", b))
+                                  .collect::<String>());
+                }
+                // Direction is incoming, so this packet is from the server.
+                quacker.base_stoc = Some(addr_key);
+                // Reset the sidekick -- could be an update.
+                quacker.reset();
+                // Discovery packet should be sent at next quack interval.
+                quacker.awaiting_disc_ack = true;
+                // For the first packet, send a discovery
+                // Send 2 dups to account for random loss
+                quacker.send_discovery(&addr_key, 3).await;
+            }
         }
 
         // Reset the quack if the dst port is the one we are sending on.
