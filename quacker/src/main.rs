@@ -143,28 +143,15 @@ async fn start_sniffer(
         {
             let addr_key = UdpParser::parse_addr_key(&buf);
             let mut quacker = quacker.lock().unwrap();
-            if quacker.base_stoc != Some(addr_key) {
-                if quacker.base_stoc.is_some() {
-                    info!("Received new base connection: {} (old: {})",
-                          addr_key.iter()
-                                  .map(|b| format!("{:02x}", b))
-                                  .collect::<String>(),
-                          quacker.base_stoc.unwrap().iter()
-                                               .map(|b| format!("{:02x}", b))
-                                               .collect::<String>());
-                } else {
-                    info!("Received base connection: {}",
-                          addr_key.iter()
-                                  .map(|b| format!("{:02x}", b))
-                                  .collect::<String>());
-                }
-                // Direction is incoming, so this packet is from the server.
-                quacker.base_stoc = Some(addr_key);
-                // Discovery packet should be sent at next quack interval.
-                quacker.awaiting_disc_ack = true;
+            if quacker.base_stoc.is_none() {
+                info!("Received base connection: {}",
+                      addr_key.iter()
+                              .map(|b| format!("{:02x}", b))
+                              .collect::<String>());
                 // For the first packet, send a discovery
                 // Send 2 dups to account for random loss
-                quacker.send_discovery(&addr_key, 3).await;
+                quacker.send_discovery(addr_key, 3).await;
+                continue;
             }
         }
 

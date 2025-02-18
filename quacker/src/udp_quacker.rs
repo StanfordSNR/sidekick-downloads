@@ -51,7 +51,7 @@ impl UdpQuacker {
                     info!("Received DiscoverACK from proxy");
                 }
             } else if self.base_stoc.is_some() {
-                info!("Received DiscoverACK from proxy for old data: {} (expected: {})",
+                error!("Received DiscoverACK from proxy for old data: {} (expected: {})",
                         disc.base_connection_stoc.iter()
                                                  .map(|b| format!("{:02x}", b))
                                                  .collect::<String>(),
@@ -73,10 +73,11 @@ impl UdpQuacker {
     /// Note: this will send `n` identical discovery packets. For n > 1, this increases
     /// the chance that a discovery reaches the proxy in the presence of random loss
     /// (duplicate discovery packets are no-ops).
-    pub async fn send_discovery(&self, base: &AddrKey, n: usize) {
+    pub async fn send_discovery(&mut self, base: AddrKey, n: usize) {
+        self.base_stoc = Some(base);
+        self.awaiting_disc_ack = true;
         let bytes = bincode::serialize(
-            &DiscoveryPayload::new(*base,
-                DiscoveryOp::Discover)).unwrap();
+            &DiscoveryPayload::new(base, DiscoveryOp::Discover)).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {
                 error!("Failed to send {}th discovery packet", i);
