@@ -160,8 +160,6 @@ async fn start_sniffer(
                 }
                 // Direction is incoming, so this packet is from the server.
                 quacker.base_stoc = Some(addr_key);
-                // Reset the sidekick -- could be an update.
-                quacker.reset();
                 // Discovery packet should be sent at next quack interval.
                 quacker.awaiting_disc_ack = true;
                 // For the first packet, send a discovery
