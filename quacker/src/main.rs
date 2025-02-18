@@ -12,7 +12,7 @@ pub fn current_time_ms() -> u64 {
 }
 
 use clap::Parser;
-use log::{trace, debug, info};
+use log::{trace, debug, info, warn};
 use sidekick::Sidekick;
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
@@ -22,6 +22,7 @@ use tokio::sync::oneshot;
 use tokio::time::{self, Duration};
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
+use sidekick_utils::discovery::DiscoveryPayload;
 use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
@@ -101,8 +102,10 @@ async fn start_sniffer(
 ) -> Result<(), String> {
     let identifier_func = IdentifierFunc::FixedOffset(ID_OFFSET);
     let recvsock = Socket::new(interface.to_string())?;
-    let my_port = quacker.lock().unwrap().src_addr().port();
     recvsock.set_promiscuous()?;
+
+    // Note the quack_addr is assumed to never change
+    let quack_addr = quacker.lock().unwrap().dst_addr();
 
     // Loop over received packets
     let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
@@ -123,15 +126,16 @@ async fn start_sniffer(
             continue;
         }
 
-        // If this is an incoming discovery packet from the proxy, handle it.
-        {
-            let quack_addr = { quacker.lock().unwrap().dst_addr() };
-            // Note the quack_addr is assumed to never change
-            if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
-               u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
-                quacker.lock().unwrap().handle_discover(&buf);
-                continue; // skip packets from proxy
+        // If this is an incoming sidekick packet from the proxy, handle it.
+        if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
+           u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
+            if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&buf)) {
+                quacker.lock().unwrap().handle_discover_ack(disc);
+            } else {
+                warn!("Received non-discovery packet from proxy");
+                quacker.lock().unwrap().handle_reset();
             }
+            continue; // skip packets from proxy
         }
 
         // Update base connection identifier for sending discovery
@@ -164,12 +168,6 @@ async fn start_sniffer(
                 // Send 2 dups to account for random loss
                 quacker.send_discovery(&addr_key, 3).await;
             }
-        }
-
-        // Reset the quack if the dst port is the one we are sending on.
-        if UdpParser::parse_dst_port(&buf) == my_port {
-            quacker.lock().unwrap().reset();
-            continue;
         }
 
         // Otherwise parse the identifier and insert it into the quack.

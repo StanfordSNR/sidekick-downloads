@@ -5,8 +5,7 @@ use log::{trace, info, error};
 use quack::PowerSumQuackU32;
 use crate::{Quacker, BaseQuacker};
 
-use sidekick_utils::BUFFER_SIZE;
-use sidekick_utils::buffer::{UdpParser, AddrKey};
+use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
 
 
@@ -32,37 +31,38 @@ impl UdpQuacker {
         }
     }
 
+    /// Handle a reset packet from the proxy.
+    pub fn handle_reset(&mut self) {
+        self.reset();
+    }
+
     /// Handle discovery packets from the proxy.
     /// Assumes that this packet is known to be a UDP packet from the proxy
     /// by source port and IP address.
-    pub fn handle_discover(&mut self, buf: &[u8; BUFFER_SIZE]) {
-        if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&buf)) {
-            if disc.op == DiscoveryOp::DiscoverAck {
-                if Some(disc.base_connection_stoc) == self.base_stoc {
-                    // Start aggregating quacks only after proxy is ready.
-                    // May receive dup discovery ACKs; only initialize (reset)
-                    // on first one.
-                    if self.awaiting_disc_ack {
-                        self.reset();
-                        self.awaiting_disc_ack = false;
-                        info!("Received DiscoverACK from proxy");
-                    }
-                } else if self.base_stoc.is_some() {
-                    info!("Received DiscoverACK from proxy for old data: {} (expected: {})",
-                            disc.base_connection_stoc.iter()
-                                                     .map(|b| format!("{:02x}", b))
-                                                     .collect::<String>(),
-                            self.base_stoc.unwrap().iter()
-                                                 .map(|b| format!("{:02x}", b))
-                                                 .collect::<String>());
-                } else {
-                    panic!("Received DiscoverACK from proxy before sending discovery");
+    pub fn handle_discover_ack(&mut self, disc: DiscoveryPayload) {
+        if disc.op == DiscoveryOp::DiscoverAck {
+            if Some(disc.base_connection_stoc) == self.base_stoc {
+                // Start aggregating quacks only after proxy is ready.
+                // May receive dup discovery ACKs; only initialize (reset)
+                // on first one.
+                if self.awaiting_disc_ack {
+                    self.reset();
+                    self.awaiting_disc_ack = false;
+                    info!("Received DiscoverACK from proxy");
                 }
+            } else if self.base_stoc.is_some() {
+                info!("Received DiscoverACK from proxy for old data: {} (expected: {})",
+                        disc.base_connection_stoc.iter()
+                                                 .map(|b| format!("{:02x}", b))
+                                                 .collect::<String>(),
+                        self.base_stoc.unwrap().iter()
+                                             .map(|b| format!("{:02x}", b))
+                                             .collect::<String>());
             } else {
-                trace!("Received packet from proxy with op {:?}", disc.op);
+                panic!("Received DiscoverACK from proxy before sending discovery");
             }
         } else {
-            error!("Received non-discovery packet from proxy");
+            trace!("Received packet from proxy with op {:?}", disc.op);
         }
     }
 
@@ -88,10 +88,6 @@ impl UdpQuacker {
                           .collect::<String>());
             }
         }
-    }
-
-    pub fn src_sock(&self) -> Arc<UdpSocket> {
-        self.src_sock.clone()
     }
 
     /// The socket address on which we expect to receive resets.
