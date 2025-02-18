@@ -1,4 +1,4 @@
-use log::{debug, info, trace, error};
+use log::{info, trace, error};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
@@ -217,71 +217,6 @@ impl Sidekick {
                           .collect::<String>());
             }
         }
-    }
-
-    /// Start the raw socket that listens to the specified interface and
-    /// accumulates those packets in a quACK. If the sidekick is a quACK sender,
-    /// only listens for incoming packets. If the sidekick is a quACK receiver,
-    /// only listens for outgoing packets, and additionally logs the packet
-    /// identifiers.
-    /// Returns a channel that indicates when the first packet is sniffed.
-    pub async fn start_frequency_pkts(
-        &mut self,
-        frequency_pkts: usize,
-        sendaddr: std::net::SocketAddr,
-    ) -> Result<(), String> {
-        let identifier_func = IdentifierFunc::FixedOffset(ID_OFFSET);
-        let recvsock = Socket::new(self.interface.clone())?;
-        let sendsock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-        let my_port = sendsock.local_addr().unwrap().port();
-        recvsock.set_promiscuous()?;
-
-        // Loop over received packets
-        let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-        info!(
-            "tapping socket on fd={} interface={}",
-            recvsock.fd, self.interface
-        );
-        let mut addr = SockAddr::new_sockaddr_ll();
-        let ip_protocol = (libc::ETH_P_IP as u16).to_be();
-        let mut mod_count = 0;
-        while let Ok(n) = recvsock.recvfrom(&mut addr, &mut buf) {
-            trace!("received {} bytes: {:?}", n, buf);
-            if Direction::Incoming != addr.sll_pkttype.into() {
-                continue;
-            }
-            if addr.sll_protocol != ip_protocol {
-                trace!("not IP packet: {}", addr.sll_protocol);
-                continue;
-            }
-            if !UdpParser::is_udp(&buf) {
-                trace!("not UDP packet");
-                continue;
-            }
-
-            // Reset the quack if the dst port is the one we are sending on.
-            if UdpParser::parse_dst_port(&buf) == my_port {
-                self.reset();
-                continue;
-            }
-
-            // Otherwise parse the identifier and insert it into the quack.
-            if n != (BUFFER_SIZE as _) {
-                trace!("underfilled buffer: {} < {}", n, BUFFER_SIZE);
-                continue;
-            }
-            let id = UdpParser::parse_identifier(&buf, identifier_func.clone());
-            debug!("insert {} ({:#10x})", id, id);
-            // TODO: filter by QUIC connection?
-            self.insert_packet(id);
-            mod_count = (mod_count + 1) % frequency_pkts;
-            if mod_count == 0 {
-                let bytes = bincode::serialize(&self.quack).unwrap();
-                trace!("quack {}", self.quack.count());
-                sendsock.send_to(&bytes, sendaddr).await.unwrap();
-            }
-        }
-        Ok(())
     }
 
     /// Snapshot the quACK.

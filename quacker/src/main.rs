@@ -7,15 +7,25 @@ pub use quacker::{Quacker, BaseQuacker};
 pub use print_quacker::PrintQuacker;
 pub use udp_quacker::UdpQuacker;
 
+pub fn current_time_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
 use clap::Parser;
-use log::{debug, info};
-use quack::PowerSumQuack;
+use log::{trace, debug, info};
 use sidekick::Sidekick;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
 use tokio::time::{self, Duration};
+
+use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
+use sidekick_utils::socket::{SockAddr, Socket};
+use sidekick_utils::buffer::{UdpParser, Direction};
+use sidekick_utils::identifier::IdentifierFunc;
+use quack::PowerSumQuack;
 
 /// Sends quACKs in the sidekick protocol, receives data in the base protocol.
 #[derive(Parser)]
@@ -31,7 +41,7 @@ struct Cli {
     frequency_ms: u64,
     /// Frequency at which to quack, in packets.
     #[arg(long = "frequency-pkts", default_value_t = 0)]
-    frequency_pkts: usize,
+    frequency_pkts: u32,
     /// Address of the UDP socket to quack to e.g., <IP:PORT>. If missing,
     /// goes to stdout.
     #[arg(long = "target-addr")]
@@ -85,6 +95,59 @@ async fn send_quacks(
     }
 }
 
+async fn start_sniffer(
+    quacker: Arc<Mutex<UdpQuacker>>,
+    interface: &str,
+) -> Result<(), String> {
+    let identifier_func = IdentifierFunc::FixedOffset(ID_OFFSET);
+    let recvsock = Socket::new(interface.to_string())?;
+    let my_port = quacker.lock().unwrap().src_addr().port();
+    recvsock.set_promiscuous()?;
+
+    // Loop over received packets
+    let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+    info!("tapping socket on fd={} interface={}", recvsock.fd, interface);
+    let mut addr = SockAddr::new_sockaddr_ll();
+    let ip_protocol = (libc::ETH_P_IP as u16).to_be();
+    while let Ok(n) = recvsock.recvfrom(&mut addr, &mut buf) {
+        trace!("received {} bytes: {:?}", n, buf);
+        if Direction::Incoming != addr.sll_pkttype.into() {
+            continue;
+        }
+        if addr.sll_protocol != ip_protocol {
+            trace!("not IP packet: {}", addr.sll_protocol);
+            continue;
+        }
+        if !UdpParser::is_udp(&buf) {
+            trace!("not UDP packet");
+            continue;
+        }
+
+        // Reset the quack if the dst port is the one we are sending on.
+        if UdpParser::parse_dst_port(&buf) == my_port {
+            quacker.lock().unwrap().reset();
+            continue;
+        }
+
+        // Otherwise parse the identifier and insert it into the quack.
+        if n != (BUFFER_SIZE as _) {
+            trace!("underfilled buffer: {} < {}", n, BUFFER_SIZE);
+            continue;
+        }
+        let id = UdpParser::parse_identifier(&buf, identifier_func.clone());
+        trace!("insert {} ({:#10x})", id, id);
+        {
+            let mut q = quacker.lock().unwrap();
+            let time_ms = current_time_ms();
+            if q.insert(time_ms, id) {
+                debug!("quack {}", q.get_quack().count());
+            }
+            drop(q);
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), String> {
     env_logger::init();
@@ -97,8 +160,7 @@ async fn main() -> Result<(), String> {
     );
 
     // Start the sidekick.
-    let mut sc = Sidekick::new(&args.interface, args.threshold,
-                               args.target_addr.clone());
+    let sc = Sidekick::new(&args.interface, args.threshold, args.target_addr.clone());
 
     // Handle a snapshotted quACK at the specified frequency.
     if args.frequency_ms > 0 {
@@ -107,9 +169,9 @@ async fn main() -> Result<(), String> {
         info!("quACKing to {:?}", args.target_addr);
         send_quacks(sc, rx, sendsock, args.target_addr, args.frequency_ms).await;
     } else if args.frequency_pkts > 0 {
-        sc.start_frequency_pkts(args.frequency_pkts, args.target_addr)
-            .await
-            .unwrap();
+        let quacker = Arc::new(Mutex::new(UdpQuacker::new(
+            args.threshold, args.frequency_pkts, args.frequency_ms, args.target_addr)));
+        start_sniffer(quacker, &args.interface).await.unwrap();
     }
     Ok(())
 }
