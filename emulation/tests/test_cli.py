@@ -254,14 +254,15 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_discovery(self):
         _, stderr = self.execute_command(
             'picoquic',
-            network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
+            network_options=['--quacker', '--proxy', 'sidekick'],
         )
         pattern = 'Received discovery packet from client'
         found = False
-        for line in stderr.split('\n'):
-            if pattern in line:
-                found = True
-
+        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
+            for line in f.readlines():
+                if pattern in line:
+                    found = True
+                    break
         self.assertEqual(found, True)
 
     def test_tcpdump(self):
