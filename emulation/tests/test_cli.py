@@ -207,7 +207,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
             _, stderr = self._test_file_download_benchmark(
                 'picoquic',
                 network_options=[
-                    '--quacker', '--debug',
+                    '--quacker', '--debug', '--proxy', 'sidekick',
                     '--freq-ms', str(freq_ms),
                     '--freq-pkts', str(freq_pkts),
                 ],
