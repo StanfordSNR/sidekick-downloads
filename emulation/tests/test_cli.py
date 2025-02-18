@@ -252,7 +252,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_discovery(self):
-        _, stderr = self.execute_command(
+        self.execute_command(
             'picoquic',
             network_options=['--quacker', '--proxy', 'sidekick'],
         )
