@@ -91,7 +91,8 @@ impl Sidekick {
                 }
                 self.cache.evict(result.last_index).unwrap();
             }
-            Err(_) => {
+            Err(e) => {
+                error!("Failed to decode quACK: {:?}", e);
                 // TODO: send any packet to the UDP src of the quacks to reset
                 // self.cache.reset();
             }
