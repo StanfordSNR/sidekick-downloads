@@ -173,8 +173,14 @@ impl Sidekick {
             if disc.op == DiscoveryOp::DiscoverAck {
                 let mut sc = sc.lock().unwrap();
                 if Some(disc.base_connection_stoc) == sc.base_stoc {
-                    sc.awaiting_disc_ack = false;
-                    info!("Received DiscoverACK from proxy");
+                    // Start aggregating quacks only after proxy is ready.
+                    // May receive dup discovery ACKs; only initialize (reset)
+                    // on first one.
+                    if sc.awaiting_disc_ack {
+                        sc.reset();
+                        sc.awaiting_disc_ack = false;
+                        info!("Received DiscoverACK from proxy");
+                    }
                 } else if sc.base_stoc.is_some() {
                     info!("Received DiscoverACK from proxy for old data: {} (expected: {})",
                             disc.base_connection_stoc.iter()
