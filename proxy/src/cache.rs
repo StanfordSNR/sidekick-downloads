@@ -1,6 +1,6 @@
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
 use crate::stream::Packet;
-use log::info;
+use log::trace;
 use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
 use std::error::Error;
 use std::fmt;
@@ -108,7 +108,7 @@ impl QuackCache {
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) {
         if self.len() >= self.capacity {
-            info!("At capacity {}; dropping packet", self.capacity);
+            trace!("At capacity {}; dropping packet", self.capacity);
             return;
         }
         self.id_cache.push(self.id_func.to_id(&packet.data));
