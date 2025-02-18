@@ -252,10 +252,12 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_discovery(self):
-        self.execute_command(
+        _, stderr = self.execute_command(
             'picoquic',
-            network_options=['--quacker', '--proxy', 'sidekick'],
+            network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
         )
+
+        # Proxy receives discovery packet from client
         pattern = 'Received discovery packet from client'
         found = False
         with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
@@ -264,6 +266,14 @@ class TestFileDownloadBenchmarks(CLITestCase):
                     found = True
                     break
         self.assertEqual(found, True)
+
+        # Client quacks only after receiving discover ack
+        received_discover_ack = False
+        for line in stderr.split('\n'):
+            if 'Received DiscoverACK from proxy' in line:
+                break
+            if re.search(r'\[quack\] .* quack (\d+)', line):
+                self.fail('Client quacked before receiving a discover ACK')
 
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)

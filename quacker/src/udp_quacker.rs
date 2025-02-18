@@ -123,11 +123,15 @@ impl Quacker for UdpQuacker {
     }
 
     fn insert(&mut self, time_ms: u64, id: u32) -> bool {
-        let should_quack = self.quacker.insert(time_ms, id);
-        if should_quack {
-            self.send_quack(time_ms);
+        if self.base_stoc.is_some() && !self.awaiting_disc_ack {
+            let should_quack = self.quacker.insert(time_ms, id);
+            if should_quack {
+                self.send_quack(time_ms);
+            }
+            should_quack
+        } else {
+            false
         }
-        should_quack
     }
 
     fn update_time(&mut self, time_ms: u64) -> bool {
