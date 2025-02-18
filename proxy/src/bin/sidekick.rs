@@ -1,7 +1,7 @@
 use clap::Parser;
 use flexi_logger::{Logger, WriteMode, FileSpec};
 use std::{fs::File, path::Path};
-use proxy::Sidekick;
+use proxy::SidekickTable;
 
 #[derive(Parser)]
 struct Cli {
@@ -53,7 +53,7 @@ async fn main() {
         "Ready to start Sidekick with client {}; expecting server {}",
         args.client_interface, args.server_interface
     );
-    let mut sidekick = Sidekick::new(
+    let mut sidekick = SidekickTable::new(
         &args.client_interface,
         &args.server_interface,
         args.quack_port,

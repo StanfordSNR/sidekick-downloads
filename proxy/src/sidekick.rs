@@ -7,18 +7,160 @@ use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
 
 use log::{trace, debug, info, error};
+use hashbrown::HashMap;
+
 use quack::{PowerSumQuack, PowerSumQuackU32};
+
+/// A table tracking all sidekick connections.
+/// As quacks are not marked with a specific base connection,
+/// each base connection must have a distinct sidekick connection.
+pub struct SidekickTable {
+    stream: PacketStream,
+    base_stoc: HashMap<AddrKey, Sidekick>,
+    sc_to_base: HashMap<AddrKey, AddrKey>,
+    quack_port: u16,
+    quack_threshold: usize,
+    cache_capacity: usize,
+}
+impl SidekickTable {
+    /// Create a new sidekick table.
+    pub fn new(
+        client_interface: &str,
+        server_interface: &str,
+        quack_port: u16,
+        quack_threshold: usize,
+        cache_capacity: usize
+    ) -> Self {
+        let stream = PacketStream::new(client_interface.into(), server_interface.into());
+        Self {
+            stream,
+            base_stoc: HashMap::new(),
+            sc_to_base: HashMap::new(),
+            quack_port,
+            quack_threshold,
+            cache_capacity,
+        }
+    }
+    /// Start the sidekick handler on the packet stream.
+    pub async fn start(&mut self) {
+        while let Some(packet) = self.stream.receiver.recv().await {
+            trace!("Received packet on mpsc: {}", packet.iface);
+            self.handle_packet(packet);
+        }
+    }
+    /// Handle an incoming packet
+    ///
+    /// Forward all non-UDP packets.
+    /// If the packet's AddrKey is in the sidekick table, process it.
+    /// If not, check if it's a discovery packet; if so, create a new sidekick.
+    /// If neither, forward the packet.
+    fn handle_packet(&mut self, packet: Packet) {
+        let mut sc = None;
+        let conn_type = self.connection_type(&packet);
+        match conn_type {
+            ConnectionType::BaseCtos => {
+                sc = self.base_stoc.get_mut(&UdpParser::flip_addr_key(UdpParser::parse_addr_key(&packet.data)));
+            },
+            ConnectionType::BaseStoc => {
+                sc = self.base_stoc.get_mut(&UdpParser::parse_addr_key(&packet.data));
+            },
+            ConnectionType::Sidekick => {
+                let base_key = self.sc_to_base.get(&UdpParser::parse_addr_key(&packet.data));
+                if let Some(k) = base_key {
+                    sc = self.base_stoc.get_mut(k);
+                }
+            },
+            ConnectionType::None => { }
+            ConnectionType::Discovery => {
+                self.handle_discovery(packet);
+                return; // don't forward
+            },
+        }
+        match sc {
+            Some(sidekick) => {
+                sidekick.handle_packet(packet, &self.stream, conn_type);
+            },
+            None => {
+                trace!("Forwarding packet from unknown four-tuple");
+                self.stream.forward_packet(&packet, packet.nbytes as usize);
+            }
+        }
+    }
+    /// Returns whether this is a base or sidekick connection.
+    fn connection_type(&self, packet: &Packet) -> ConnectionType {
+        if packet.iface == self.stream.client_iface() {
+            // We expect this to be a quACK
+            if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
+                // Check for discovery packet first; ACK it if so.
+                // This indicates either a new connection or that a previous DiscoveryAck got lost.
+                if let Some(_) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
+                    return ConnectionType::Discovery;
+                } else {
+                    return ConnectionType::Sidekick;
+                }
+            } else {
+                return ConnectionType::BaseCtos;
+            }
+        } else if packet.iface == self.stream.server_iface() {
+            return ConnectionType::BaseStoc;
+        }
+        trace!("Packet received on unknown interface: {}", packet.iface);
+        ConnectionType::None
+    }
+    /// ACK the discovery.
+    /// If the Sidekick does not exist in the table, insert it.
+    /// Method assumes that the packet is known to be a Discovery packet.
+    fn handle_discovery(&mut self, packet: Packet) {
+        let disc = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)).unwrap();
+        if disc.op != DiscoveryOp::Discover { return; }
+        let addr_key = UdpParser::parse_addr_key(&packet.data);
+        let base = disc.base_connection_stoc;
+        info!("Received discovery packet from client. Sidekick: {}, Base: {}",
+              addr_key.iter()
+                      .map(|b| format!("{:02x}", b))
+                      .collect::<String>(),
+              base.iter()
+                  .map(|b| format!("{:02x}", b))
+                  .collect::<String>());
+        // Send ACK
+        let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        match disc.build_ack_packet(&mut buf, &packet.data) {
+            Ok(len) => {
+                trace!("Sending ACK packet for discovery packet");
+                self.stream.send(&buf, len, packet.iface);
+            }
+            Err(e) => error!("Failed to build ack packet: {}", e),
+        }
+        // Check for an update (new sc for base connection)
+        if self.sc_to_base.get(&addr_key).is_none() || self.base_stoc.get(&base).is_none() {
+            self.insert_sidekick(addr_key, base);
+        }
+    }
+    /// Add a new sidekick to the table.
+    /// Sidekick connection identifier -> base connection identifier
+    /// Base connection identifier -> sidekick struct
+    fn insert_sidekick(&mut self, sc: AddrKey, base: AddrKey) {
+        info!("Inserting new sidekick connection: {} -> {}",
+              sc.iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>(),
+              base.iter()
+                  .map(|b| format!("{:02x}", b))
+                  .collect::<String>());
+        self.sc_to_base.insert(sc, base);
+        self.base_stoc.insert(base, Sidekick::new(
+            self.quack_threshold,
+            self.cache_capacity,
+        ));
+    }
+}
 
 /// The sidekick provides in-network assistance to a single base connection
 /// identified by a UDP 4-tuple. It also participates in a separate sidekick
 /// connection between the client and proxy, identified by a different UDP
 /// 4-tuple.
 pub struct Sidekick {
-    stream: PacketStream,
     cache: QuackCache,
-    quack_port: u16,
-    base_connection_stoc: Option<AddrKey>,
-    sidekick_connection: Option<AddrKey>,
     num_retx: usize,
     num_tx: usize,
 }
@@ -45,24 +187,16 @@ impl Sidekick {
     /// determined by the first UDP packet it receives destined to its own IP
     /// address and the given quACK port.
     pub fn new(
-        client_interface: &str,
-        server_interface: &str,
-        quack_port: u16,
         quack_threshold: usize,
         cache_capacity: usize,
     ) -> Self {
-        let stream = PacketStream::new(client_interface.into(), server_interface.into());
         let cache = QuackCache::new(
             IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
             quack_threshold,
             cache_capacity
         );
         Self {
-            stream,
             cache,
-            quack_port,
-            base_connection_stoc: None,
-            sidekick_connection: None,
             num_retx: 0,
             num_tx: 0,
         }
@@ -74,7 +208,7 @@ impl Sidekick {
     /// then to retransmit missing packets and delete acknowledged packets
     /// from the cache. If the quACK can't be decoded, reset the quACK by
     /// sending any message back to the client on the sidekick connection.
-    fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
+    fn handle_sidekick_packet_from_client(&mut self, packet: Packet, stream: &PacketStream) {
         let payload = UdpParser::payload(&packet.data);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
         match self.cache.decode(&quack) {
@@ -86,7 +220,7 @@ impl Sidekick {
                     let retx = self.cache.get(index).unwrap();
                     self.num_retx += 1;
                     debug!("retransmit {}/{}", self.num_retx, self.num_tx);
-                    self.stream.forward_packet(&retx, retx.nbytes as usize);
+                    stream.forward_packet(&retx, retx.nbytes as usize);
                     self.cache.add(retx.clone()); // TODO: avoid clone
                 }
                 self.cache.evict(result.last_index).unwrap();
@@ -102,161 +236,43 @@ impl Sidekick {
     /// Handle a packet from the client in the base connection.
     ///
     /// Forward it normally.
-    fn handle_base_packet_from_client(&mut self, packet: Packet) {
-        self.stream.forward_packet(&packet, packet.nbytes as usize);
+    fn handle_base_packet_from_client(&mut self, packet: Packet, stream: &PacketStream) {
+        stream.forward_packet(&packet, packet.nbytes as usize);
     }
 
     /// Handle a packet from the server in the base connection.
     ///
     /// Add it to the cache and forward normally.
-    fn handle_base_packet_from_server(&mut self, packet: Packet) {
-        self.stream.forward_packet(&packet, packet.nbytes as usize);
+    fn handle_base_packet_from_server(&mut self, packet: Packet, stream: &PacketStream) {
+        stream.forward_packet(&packet, packet.nbytes as usize);
         self.cache.add(packet);
         self.num_tx += 1;
     }
 
     /// Filter for packets that belong to the base connection or the sidekick
     /// connection and handle them appropriately. Forward all other packets.
-    fn handle_packet(&mut self, packet: Packet) {
-        if !UdpParser::is_udp(&packet.data) {
-            trace!("Forward non-UDP packet");
-            self.stream.forward_packet(&packet, packet.nbytes as usize);
-            return;
-        }
-        match self.connection_type(&packet) {
+    fn handle_packet(&mut self, packet: Packet, stream: &PacketStream,
+                     connection_type: ConnectionType) {
+        match connection_type {
             ConnectionType::BaseCtos => {
                 trace!("Received base packet from client");
-                self.handle_base_packet_from_client(packet);
+                self.handle_base_packet_from_client(packet, stream);
             }
             ConnectionType::BaseStoc => {
                 trace!("Received base packet from server");
-                self.handle_base_packet_from_server(packet);
+                self.handle_base_packet_from_server(packet, stream);
             }
             ConnectionType::Sidekick => {
                 trace!("Received sidekick packet from client");
-                self.handle_sidekick_packet_from_client(packet);
+                self.handle_sidekick_packet_from_client(packet, stream);
             }
             ConnectionType::None => {
-                trace!("Forwarding packet from unknown four-tuple");
-                self.stream.forward_packet(&packet, packet.nbytes as usize);
+                panic!("Packet from unknown four-tuple should have been forwarded by SidekickTable");
             }
-            _ => {}
+            ConnectionType::Discovery => {
+                panic!("Discovery packet should have been handled by SidekickTable");
+            }
         }
     }
 
-    /// Returns whether this is a base or sidekick connection.
-    fn connection_type(&mut self, packet: &Packet) -> ConnectionType {
-        let addr_key = UdpParser::parse_addr_key(&packet.data);
-        if packet.iface == self.stream.client_iface() {
-            // We expect this to be a quACK
-            if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
-                // Check for discovery packet first
-                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
-                    let base = disc.base_connection_stoc;
-                    assert!(disc.op == DiscoveryOp::Discover);
-                    info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
-                          addr_key.iter()
-                                  .map(|b| format!("{:02x}", b))
-                                  .collect::<String>(),
-                          base.iter()
-                              .map(|b| format!("{:02x}", b))
-                              .collect::<String>(),
-                          self.sidekick_connection.is_some());
-                    self.sidekick_connection = Some(addr_key);
-                    self.base_connection_stoc = Some(base);
-
-                    // Acknowledge the discovery packet
-                    let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-                    match disc.build_ack_packet(&mut buf, &packet.data) {
-                        Ok(len) => {
-                            trace!("Sending ACK packet for discovery {}",
-                                   self.base_connection_stoc.unwrap().iter()
-                                                            .map(|b| format!("{:02x}", b))
-                                                            .collect::<String>());
-                            self.stream.send(&buf, len, packet.iface);
-                        }
-                        Err(e) => error!("Failed to build ack packet: {}", e),
-                    }
-                    return ConnectionType::Discovery;
-                }
-                // Match against sidekick connection
-                match self.sidekick_connection {
-                    Some(stored_key) if stored_key == addr_key => {
-                        return ConnectionType::Sidekick;
-                    }
-                    Some(stored_key) => {
-                        trace!("Unknown sidekick AddrKey: {} (expected: {})",
-                               addr_key.iter()
-                                       .map(|b| format!("{:02x}", b))
-                                       .collect::<String>(),
-                               stored_key.iter()
-                                         .map(|b| format!("{:02x}", b))
-                                         .collect::<String>());
-                        return ConnectionType::None;
-                    }
-                    None => {
-                        trace!("ctos packet received before discovery packet");
-                        return ConnectionType::None;
-                    }
-                }
-            } else {
-                // Convert ctos 4-tuple to stoc 4-tuple
-                let flipped_key = UdpParser::flip_addr_key(addr_key);
-                match self.base_connection_stoc {
-                    Some(stored_key) if stored_key == flipped_key => {
-                        return ConnectionType::BaseCtos;
-                    },
-                    Some(stored_key) => {
-                        trace!("Unknown CTOS AddrKey (flipped): {} (expected: {})",
-                               flipped_key.iter()
-                                          .map(|b| format!("{:02x}", b))
-                                          .collect::<String>(),
-                               stored_key.iter()
-                                         .map(|b| format!("{:02x}", b))
-                                         .collect::<String>());
-                        return ConnectionType::None;
-                    }
-                    None => {
-                        trace!("Received from ctos stream before discovery (flipped AddrKey: {})",
-                               flipped_key.iter()
-                                          .map(|b| format!("{:02x}", b))
-                                          .collect::<String>());
-                        return ConnectionType::None;
-                    }
-                }
-            }
-        } else if packet.iface == self.stream.server_iface() {
-            match self.base_connection_stoc {
-                Some(stored_key) if stored_key == addr_key => {
-                    return ConnectionType::BaseStoc;
-                }
-                Some(stored_key) => {
-                    trace!("Unknown STOC AddrKey: {} (expected: {})",
-                           addr_key.iter()
-                                   .map(|b| format!("{:02x}", b))
-                                   .collect::<String>(),
-                           stored_key.iter()
-                                     .map(|b| format!("{:02x}", b))
-                                     .collect::<String>());
-                    return ConnectionType::None;
-                }
-                None => {
-                    trace!("Received from stoc stream before discovery (AddrKey: {})",
-                           addr_key.iter()
-                                   .map(|b| format!("{:02x}", b))
-                                   .collect::<String>());
-                    return ConnectionType::None;
-                }
-            }
-        }
-        ConnectionType::None
-    }
-
-    /// Start the sidekick on the packet stream.
-    pub async fn start(&mut self) {
-        while let Some(packet) = self.stream.receiver.recv().await {
-            trace!("Received packet on mpsc: {}", packet.iface);
-            self.handle_packet(packet);
-        }
-    }
 }
