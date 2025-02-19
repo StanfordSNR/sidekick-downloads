@@ -169,10 +169,8 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_tcp_benchmark_with_pepsal(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'pepsal'])
-        proxy_logfile = f'{self.logdir}/{ROUTER_LOGFILE}'
-        with open(proxy_logfile, 'r') as f:
-            output = f.read()
-        self.assertIn('Saving new SYN', output, output)
+        output = self.read_logfile(ROUTER_LOGFILE, lines=False)
+        self.assertIn('Saving new SYN', output)
 
     def test_tcp_benchmark_with_bridge(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'bridge'])
@@ -202,6 +200,13 @@ class TestFileDownloadBenchmarks(CLITestCase):
             quacks.append(num_packets)
         return quacks
 
+    def read_logfile(self, filename: str, lines: bool=True):
+        with open(f'{self.logdir}/{filename}', 'r') as f:
+            if lines:
+                return f.readlines()
+            else:
+                return f.read()
+
     def test_quacker_prints_quacks(self):
         def _test_frequency(freq_ms, freq_pkts):
             _, stderr = self._test_file_download_benchmark(
@@ -215,8 +220,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
             # Parse debug output related to the quacker for lines that describe
             # the number of packets in the sent quacks
-            with open(f'{self.logdir}/{CLIENT_LOGFILE}', 'r') as f:
-                lines = f.readlines()
+            lines = self.read_logfile(CLIENT_LOGFILE)
             quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
 
             # The number of packets in each sent quack is increasing
@@ -237,8 +241,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         )
 
         # Parse router logfile for number of packets in the received quACKs
-        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
-            lines = f.readlines()
+        lines = self.read_logfile(ROUTER_LOGFILE)
         quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
 
         # The number of packets in each received quack is increasing
@@ -260,19 +263,11 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
         # Proxy receives discovery packet from client
         pattern = 'Received discovery packet from client'
-        found = False
-        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
-            for line in f.readlines():
-                if pattern in line:
-                    found = True
-                    break
-        self.assertEqual(found, True)
+        self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
 
         # Client quacks only after receiving discover ack
         received_discover_ack = False
-        with open(f'{self.logdir}/{CLIENT_LOGFILE}', 'r') as f:
-            lines = f.readlines()
-        for line in lines:
+        for line in self.read_logfile(CLIENT_LOGFILE):
             if 'Received DiscoverACK from proxy' in line:
                 break
             if re.search(r'DEBUG .* quack (\d+)', line):
@@ -285,8 +280,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_picoquic_client_does_not_quack_by_default(self):
         self._test_file_download_benchmark('picoquic', ['--debug', '--proxy', 'sidekick'])
-        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
-            lines = f.readlines()
+        lines = self.read_logfile(ROUTER_LOGFILE)
         quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
         self.assertEqual(quacks, [], 'no quacks are received')
 
