@@ -169,10 +169,8 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_tcp_benchmark_with_pepsal(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'pepsal'])
-        proxy_logfile = f'{self.logdir}/{ROUTER_LOGFILE}'
-        with open(proxy_logfile, 'r') as f:
-            output = f.read()
-        self.assertIn('Saving new SYN', output, output)
+        output = self.read_logfile(ROUTER_LOGFILE, lines=False)
+        self.assertIn('Saving new SYN', output)
 
     def test_tcp_benchmark_with_bridge(self):
         self._test_file_download_benchmark('tcp', ['--proxy', 'bridge'])
@@ -192,8 +190,9 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_benchmark_with_ack_delay(self):
         self._test_file_download_benchmark('picoquic', protocol_options=['--ack-delay', '50'])
 
-    def parse_quacks(self, lines: List[str], pattern: str) -> List[int]:
+    def parse_quacks(self, lines: List[str]) -> List[int]:
         quacks = []
+        pattern = r'DEBUG .* quack (\d+)'
         for line in lines:
             match = re.search(pattern, line)
             if not match:
@@ -201,6 +200,13 @@ class TestFileDownloadBenchmarks(CLITestCase):
             num_packets = int(match.group(1))
             quacks.append(num_packets)
         return quacks
+
+    def read_logfile(self, filename: str, lines: bool=True):
+        with open(f'{self.logdir}/{filename}', 'r') as f:
+            if lines:
+                return f.readlines()
+            else:
+                return f.read()
 
     def test_quacker_prints_quacks(self):
         def _test_frequency(freq_ms, freq_pkts):
@@ -215,8 +221,8 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
             # Parse debug output related to the quacker for lines that describe
             # the number of packets in the sent quacks
-            lines = stderr.split('\n')
-            quacks = self.parse_quacks(lines, r'\[quack\] .* quack (\d+)')
+            lines = self.read_logfile(CLIENT_LOGFILE)
+            quacks = self.parse_quacks(lines)
 
             # The number of packets in each sent quack is increasing
             self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
@@ -236,9 +242,8 @@ class TestFileDownloadBenchmarks(CLITestCase):
         )
 
         # Parse router logfile for number of packets in the received quACKs
-        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
-            lines = f.readlines()
-        quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
+        lines = self.read_logfile(ROUTER_LOGFILE)
+        quacks = self.parse_quacks(lines)
 
         # The number of packets in each received quack is increasing
         self.assertGreater(len(quacks), 0, 'received at least 1 quack')
@@ -252,28 +257,27 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_discovery(self):
-        _, stderr = self.execute_command(
+        self.execute_command(
             'picoquic',
             network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
         )
 
         # Proxy receives discovery packet from client
         pattern = 'Received discovery packet from client'
-        found = False
-        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
-            for line in f.readlines():
-                if pattern in line:
-                    found = True
-                    break
-        self.assertEqual(found, True)
+        self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
 
         # Client quacks only after receiving discover ack
         received_discover_ack = False
-        for line in stderr.split('\n'):
+        quacked_after_discover_ack = False
+        for line in self.read_logfile(CLIENT_LOGFILE):
             if 'Received DiscoverACK from proxy' in line:
+                received_discover_ack = True
+            if re.search(r'DEBUG .* quack (\d+)', line):
+                self.assertTrue(received_discover_ack, 'client quacked before receiving a discover ACK')
+                quacked_after_discover_ack = True
                 break
-            if re.search(r'\[quack\] .* quack (\d+)', line):
-                self.fail('Client quacked before receiving a discover ACK')
+        self.assertTrue(received_discover_ack, 'received discover ACK')
+        self.assertTrue(quacked_after_discover_ack, 'quacked after discover ACK')
 
     def test_sidekick_receives_picoquic_client_quacks(self):
         self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '100', '--freq-pkts', '0'], ['--client-quacker'])
@@ -282,9 +286,8 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_picoquic_client_does_not_quack_by_default(self):
         self._test_file_download_benchmark('picoquic', ['--debug', '--proxy', 'sidekick'])
-        with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
-            lines = f.readlines()
-        quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
+        lines = self.read_logfile(ROUTER_LOGFILE)
+        quacks = self.parse_quacks(lines)
         self.assertEqual(quacks, [], 'no quacks are received')
 
     def test_tcpdump(self):

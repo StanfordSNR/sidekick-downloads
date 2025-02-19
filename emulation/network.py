@@ -13,9 +13,10 @@ Defines a basic network in Mininet with two hosts, h1 and h2.
 class EmulatedNetwork:
     METRICS = ['tx_packets', 'tx_bytes', 'rx_packets', 'rx_bytes']
 
-    def __init__(self, perf: bool):
+    def __init__(self, perf: bool, debug: bool):
         self.net = Mininet(controller=None, link=TCLink)
         self.perf = perf
+        self.debug = debug
         self.primary_ifaces = []
         self.iface_to_host = {}
 
@@ -267,13 +268,21 @@ class EmulatedNetwork:
         background_str = ' &' if background else ''
         console_logger(f'{host_str}{cmd}{background_str}')
 
+        # Set debug environment variables.
+        env = os.environ.copy()
+        env['RUST_BACKTRACE'] = '1'
+        if self.debug:
+            env['RUST_LOG'] = 'debug'
+        else:
+            env['RUST_LOG'] = 'info'
+
         # Execute the command on the local host
         if host is None:
             assert not background
             assert timeout is None
             assert logfile is None
             assert func is None
-            p = subprocess.run(cmd, shell=True, text=True,
+            p = subprocess.run(cmd, shell=True, text=True, env=env,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if p.stdout and stdout:
                 console_logger(p.stdout.strip())
@@ -289,7 +298,7 @@ class EmulatedNetwork:
         if background:
             assert timeout is None
             p = host.popen(cmd.split(), stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE, text=True)
+                           stderr=subprocess.PIPE, text=True, env=env)
             thread = threading.Thread(
                 target=handle_background_process,
                 args=(p, logfile, func),
@@ -304,7 +313,7 @@ class EmulatedNetwork:
         if timeout is not None:
             cmd_input = ['timeout', f'{timeout}s'] + cmd_input
         p = host.popen(cmd_input, stdout=subprocess.PIPE,
-                       stderr=subprocess.PIPE, text=True)
+                       stderr=subprocess.PIPE, text=True, env=env)
         for line, stream in read_subprocess_pipe(p):
             if stream == p.stdout and stdout:
                 console_logger(line.strip())
@@ -345,7 +354,7 @@ class EmulatedNetwork:
 
     def start_client_quacker(
         self, threshold: int, frequency_ms: int, frequency_packets: int,
-        quackee_port: int, logfile=None, debug=False,
+        quackee_port: int, logfile=None,
     ):
         cmd = f'./quacker/target/release/quacker '\
               f'--interface h1-eth0 '\
@@ -354,18 +363,12 @@ class EmulatedNetwork:
               f'--frequency-pkts {frequency_packets} '\
               f'--target-addr {self.p1.IP()}:{quackee_port}'
 
-        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
-        def quacker_log(line):
-            if debug:
-                # Temporary: log debug output from the background process
-                print('[quack]', line.strip(), file=sys.stderr)
-
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
-            logfile=logfile, func=quacker_log)
+            logfile=logfile)
 
     def start_bridge(
         self, logfile, timeout=SETUP_TIMEOUT,
-        executable='./proxy/target/release/bridge', debug=False,
+        executable='./proxy/target/release/bridge',
     ):
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -373,7 +376,6 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
-        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
@@ -385,7 +387,7 @@ class EmulatedNetwork:
 
     def start_sidekick(
         self, logfile, timeout=SETUP_TIMEOUT,
-        executable='./proxy/target/release/sidekick', debug=False,
+        executable='./proxy/target/release/sidekick',
     ):
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -394,7 +396,6 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
-        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         # The cache capacity is currently set arbitrarily larger to 4*cwnd
         # to avoid unnecessary dropping in tests, until we figure out the
         # right value to set it at.
@@ -442,7 +443,8 @@ e2 also handles L3 routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
-                 qdisc, pacing, bridge_proxy=True, router_proxy=False, perf=False):
+                 qdisc, pacing, bridge_proxy=True, router_proxy=False,
+                 perf=False, debug=False):
         """
         Note that bridge_proxy and router_proxy cannot both be True. If both
         are False, it means that the proxy that runs on the proxy node must
@@ -454,9 +456,11 @@ class OneHopNetwork(EmulatedNetwork):
         - router_proxy: Whether the proxy node should act as a router.
         - perf: Whether to collect perf reports when a process with a logfile is
           started.
+        - debug: Whether to set the debug environment variable RUST_LOG=debug
+          for Rust processes when running popen.
         """
         assert not (bridge_proxy and router_proxy)
-        super().__init__(perf=perf)
+        super().__init__(perf=perf, debug=debug)
 
         # Add hosts, switches, and network emulation nodes
         self.h1 = self.net.addHost('h1', ip=self._ip(1),
@@ -560,8 +564,8 @@ The link has a node (e1) that emulates link properties (e.g., delay, loss,
 bandwidth, jitter). Pacing is configured on each host interface.
 """
 class DirectNetwork(EmulatedNetwork):
-    def __init__(self, delay, loss, bw, jitter, qdisc, pacing, perf=False):
-        super().__init__(perf=perf)
+    def __init__(self, delay, loss, bw, jitter, qdisc, pacing, perf=False, debug=False):
+        super().__init__(perf=perf, debug=debug)
 
         # Add hosts and switches
         self.h1 = self.net.addHost('h1', ip=self._ip(1),

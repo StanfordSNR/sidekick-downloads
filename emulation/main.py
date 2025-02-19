@@ -323,13 +323,13 @@ def main(args):
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
-            perf=args.perf,
+            perf=args.perf, debug=args.debug,
             bridge_proxy=args.proxy is None,
             router_proxy=args.proxy == ProxyType.PEPSAL)
     elif args.topology == 'direct':
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
-            args.qdisc, pacing, perf=args.perf)
+            args.qdisc, pacing, perf=args.perf, debug=args.debug)
     else:
         raise NotImplementedError(args.topology)
 
@@ -341,9 +341,9 @@ def main(args):
         if args.proxy == ProxyType.PEPSAL:
             net.start_tcp_pep(proxy_logfile)
         elif args.proxy == ProxyType.BRIDGE:
-            net.start_bridge(proxy_logfile, debug=args.debug)
+            net.start_bridge(proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
-            net.start_sidekick(proxy_logfile, debug=args.debug)
+            net.start_sidekick(proxy_logfile)
 
         # Start the packet trace collector
         if args.tcpdump:
@@ -351,8 +351,9 @@ def main(args):
 
         # Start the client quacker if using a sniffing version
         if args.quacker:
+            client_logfile = f'{args.logdir}/{CLIENT_LOGFILE}'
             net.start_client_quacker(args.threshold, args.freq_ms,
-                args.freq_pkts, args.quackee_port, debug=args.debug)
+                args.freq_pkts, args.quackee_port, logfile=client_logfile)
 
         if args.ty == 'cli':
             CLI(net.net)
