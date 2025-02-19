@@ -1,7 +1,8 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use bincode;
-use log::{trace, info, error};
+use log::{trace, info, error, warn};
+
 use quack::PowerSumQuackU32;
 use crate::{Quacker, BaseQuacker};
 
@@ -31,15 +32,20 @@ impl UdpQuacker {
         }
     }
 
-    /// Handle a reset packet from the proxy.
-    pub fn handle_reset(&mut self) {
-        self.reset();
+    /// Handle an incoming sidekick packet from the proxy.
+    pub fn handle_sidekick_payload(&mut self, udp_payload: &[u8]) {
+        if let Some(disc) = DiscoveryPayload::from_payload(udp_payload) {
+            self.handle_discover_ack(disc);
+        } else {
+            warn!("Received non-discovery packet from proxy");
+            self.reset();
+        }
     }
 
     /// Handle discovery packets from the proxy.
     /// Assumes that this packet is known to be a UDP packet from the proxy
     /// by source port and IP address.
-    pub fn handle_discover_ack(&mut self, disc: DiscoveryPayload) {
+    fn handle_discover_ack(&mut self, disc: DiscoveryPayload) {
         if disc.op == DiscoveryOp::DiscoverAck {
             if Some(disc.base_connection_stoc) == self.base_stoc {
                 // Start aggregating quacks only after proxy is ready.
