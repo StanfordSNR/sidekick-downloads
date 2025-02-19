@@ -2,6 +2,7 @@ use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use bincode;
 use log::{info, error, warn};
+use socket2::{Socket, Domain, Type, SockAddr};
 
 use quack::PowerSumQuackU32;
 use crate::{Quacker, BaseQuacker};
@@ -23,9 +24,13 @@ impl UdpQuacker {
     pub fn new(
         threshold: usize, freq_pkts: u32, freq_ms: u64, addr: SocketAddr,
     ) -> Self {
+        let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
+        socket.set_reuse_address(true).unwrap();
+        socket.bind(&SockAddr::from(
+            "0.0.0.0:0".parse::<SocketAddr>().unwrap())).unwrap();
         Self {
             quacker: BaseQuacker::new(threshold, freq_pkts, freq_ms),
-            src_sock: Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap()),
+            src_sock: Arc::new(socket.into()),
             dst_addr: addr,
             base_stoc: None,
             awaiting_disc_ack: false,
