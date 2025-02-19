@@ -190,8 +190,9 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_benchmark_with_ack_delay(self):
         self._test_file_download_benchmark('picoquic', protocol_options=['--ack-delay', '50'])
 
-    def parse_quacks(self, lines: List[str], pattern: str) -> List[int]:
+    def parse_quacks(self, lines: List[str]) -> List[int]:
         quacks = []
+        pattern = r'DEBUG .* quack (\d+)'
         for line in lines:
             match = re.search(pattern, line)
             if not match:
@@ -221,7 +222,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
             # Parse debug output related to the quacker for lines that describe
             # the number of packets in the sent quacks
             lines = self.read_logfile(CLIENT_LOGFILE)
-            quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
+            quacks = self.parse_quacks(lines)
 
             # The number of packets in each sent quack is increasing
             self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
@@ -242,7 +243,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
         # Parse router logfile for number of packets in the received quACKs
         lines = self.read_logfile(ROUTER_LOGFILE)
-        quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
+        quacks = self.parse_quacks(lines)
 
         # The number of packets in each received quack is increasing
         self.assertGreater(len(quacks), 0, 'received at least 1 quack')
@@ -281,7 +282,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_client_does_not_quack_by_default(self):
         self._test_file_download_benchmark('picoquic', ['--debug', '--proxy', 'sidekick'])
         lines = self.read_logfile(ROUTER_LOGFILE)
-        quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
+        quacks = self.parse_quacks(lines)
         self.assertEqual(quacks, [], 'no quacks are received')
 
     def test_tcpdump(self):
