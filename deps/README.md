@@ -17,6 +17,7 @@ sudo apt-get install -y python3-virtualenv  # plotting
 sudo apt-get install -y cmake  # cloudflare quiche
 sudo apt-get install -y libssl-dev  # picoquic
 sudo apt-get install -y bridge-utils # emulation topology config
+sudo apt-get install -y linux-tools-common linux-tools-generic linux-tools-`uname -r`  # perf
 ```
 
 ## Build the sidekick protocol binaries.
