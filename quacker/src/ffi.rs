@@ -1,7 +1,8 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 
+use libc::sockaddr_in;
 use sidekick_utils::buffer::AddrKey;
 use crate::{Quacker, UdpQuacker};
 
@@ -50,6 +51,34 @@ pub extern "C" fn udp_quacker_awaiting_disc_ack(quacker: *const UdpQuacker) -> b
     debug_assert!(!quacker.is_null());
     let quacker = unsafe { &*quacker };
     quacker.awaiting_disc_ack
+}
+
+fn to_sockaddr_in(addr: SocketAddr) -> sockaddr_in {
+    let s_addr = match addr.ip() {
+        IpAddr::V4(ip) => ip.octets(),
+        IpAddr::V6(_) => panic!("expected ipv4 address"),
+    };
+    sockaddr_in {
+        sin_family: libc::AF_INET as u16,
+        sin_port: addr.port().to_be(),
+        sin_addr: libc::in_addr { s_addr: u32::from_be_bytes(s_addr) },
+        sin_zero: [0; 8],
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn udp_quacker_src_addr(quacker: *const UdpQuacker) -> sockaddr_in {
+    debug_assert!(!quacker.is_null());
+    let quacker = unsafe { &*quacker };
+    let result = to_sockaddr_in(quacker.src_addr());
+    result
+}
+
+#[no_mangle]
+pub extern "C" fn udp_quacker_dst_addr(quacker: *const UdpQuacker) -> sockaddr_in {
+    debug_assert!(!quacker.is_null());
+    let quacker = unsafe { &*quacker };
+    to_sockaddr_in(quacker.dst_addr())
 }
 
 #[no_mangle]

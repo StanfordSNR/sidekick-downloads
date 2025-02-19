@@ -14,6 +14,8 @@ void udp_quacker_handle_sidekick_payload(UdpQuacker* quacker, const uint8_t* udp
 void udp_quacker_send_discovery(UdpQuacker* quacker, const uint8_t (*base)[ADDR_KEY_LEN], size_t n);
 int udp_quacker_base_stoc_is_none(const UdpQuacker* quacker);
 int udp_quacker_awaiting_disc_ack(const UdpQuacker* quacker);
+struct sockaddr_in udp_quacker_src_addr(const UdpQuacker* quacker);
+struct sockaddr_in udp_quacker_dst_addr(const UdpQuacker* quacker);
 uint32_t udp_quacker_freq_pkts(const UdpQuacker* quacker);
 uint64_t udp_quacker_freq_ms(const UdpQuacker* quacker);
 void udp_quacker_reset(UdpQuacker* quacker);
