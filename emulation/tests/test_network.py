@@ -681,6 +681,25 @@ class TestPopen(NetworkTestCase):
             self.assertTrue(os.path.exists(f'{logfile}.perf'),
                 'perf file created for background process')
 
+    def test_rust_debug_log_level(self):
+        host = self.net.h1
+        cmd = f'../quacker/target/release/quacker '\
+              f'--interface h1-eth0 --target-addr {self.net.h2.IP()}:5252'
+
+        with tempfile.NamedTemporaryFile() as logfile:
+            self.net.debug = False
+            self.net.popen(host, cmd, timeout=0.1, logfile=logfile.name)
+            lines = logfile.read()
+            self.assertIn(b'INFO', lines, lines)
+            self.assertNotIn(b'DEBUG', lines, lines)
+
+        with tempfile.NamedTemporaryFile() as logfile:
+            self.net.debug = True
+            self.net.popen(host, cmd, timeout=0.1, logfile=logfile.name)
+            lines = logfile.read()
+            self.assertIn(b'INFO', lines, lines)
+            self.assertIn(b'DEBUG', lines, lines)
+
 
 class TestProxyFunctions(NetworkTestCase):
     def setUp(self):

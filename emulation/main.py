@@ -323,13 +323,13 @@ def main(args):
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
-            perf=args.perf,
+            perf=args.perf, debug=args.debug,
             bridge_proxy=args.proxy is None,
             router_proxy=args.proxy == ProxyType.PEPSAL)
     elif args.topology == 'direct':
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
-            args.qdisc, pacing, perf=args.perf)
+            args.qdisc, pacing, perf=args.perf, debug=args.debug)
     else:
         raise NotImplementedError(args.topology)
 
