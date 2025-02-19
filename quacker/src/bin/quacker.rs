@@ -1,7 +1,8 @@
 use clap::Parser;
 use log::{trace, debug, info, warn};
 use std::net::{SocketAddr, Ipv4Addr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::time::{self, Duration};
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
@@ -43,7 +44,7 @@ async fn send_quacks(
         interval.tick().await;
         // Not exactly the algorithm but close enough.
         {
-            let mut q = quacker.lock().unwrap();
+            let mut q = quacker.lock().await;
             let time_ms = current_time_ms();
             if q.update_time(time_ms) {
                 debug!("quack {}", q.get_quack().count());
@@ -61,7 +62,7 @@ async fn start_sniffer(
     recvsock.set_promiscuous()?;
 
     // Note the quack_addr is assumed to never change
-    let quack_addr = quacker.lock().unwrap().dst_addr();
+    let quack_addr = quacker.lock().await.dst_addr();
 
     // Loop over received packets
     let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
@@ -86,10 +87,10 @@ async fn start_sniffer(
         if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
            u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
             if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&buf)) {
-                quacker.lock().unwrap().handle_discover_ack(disc);
+                quacker.lock().await.handle_discover_ack(disc);
             } else {
                 warn!("Received non-discovery packet from proxy");
-                quacker.lock().unwrap().handle_reset();
+                quacker.lock().await.handle_reset();
             }
             continue; // skip packets from proxy
         }
@@ -98,7 +99,7 @@ async fn start_sniffer(
         // to proxy. Identify by first UDP connection.
         {
             let addr_key = UdpParser::parse_addr_key(&buf);
-            let mut quacker = quacker.lock().unwrap();
+            let mut quacker = quacker.lock().await;
             if quacker.base_stoc.is_none() {
                 info!("Received base connection: {}",
                       addr_key.iter()
@@ -119,7 +120,7 @@ async fn start_sniffer(
         let id = UdpParser::parse_identifier(&buf, identifier_func.clone());
         trace!("insert {} ({:#10x})", id, id);
         {
-            let mut q = quacker.lock().unwrap();
+            let mut q = quacker.lock().await;
             let time_ms = current_time_ms();
             if q.insert(time_ms, id) {
                 debug!("quack {}", q.get_quack().count());
