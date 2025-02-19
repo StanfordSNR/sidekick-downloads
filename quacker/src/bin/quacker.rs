@@ -3,7 +3,7 @@ use log::{trace, debug, info, warn};
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::time::{self, Duration};
+use tokio::time::{self, Instant, Duration};
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
 use sidekick_utils::discovery::DiscoveryPayload;
@@ -12,6 +12,11 @@ use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
 use quack::PowerSumQuack;
 use quacker::{Quacker, UdpQuacker, current_time_ms};
+
+
+const DISCOVERY_FREQ_MS: u64 = 50;
+const NUM_DISCOVERY_PKTS: usize = 3;
+
 
 /// Sends quACKs in the sidekick protocol, receives data in the base protocol.
 #[derive(Parser)]
@@ -64,6 +69,9 @@ async fn start_sniffer(
     // Note the quack_addr is assumed to never change
     let quack_addr = quacker.lock().await.dst_addr();
 
+    // Time of sending the last discovery packet
+    let mut discovery_sent = Instant::now();
+
     // Loop over received packets
     let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
     info!("tapping socket on fd={} interface={}", recvsock.fd, interface);
@@ -106,8 +114,14 @@ async fn start_sniffer(
                               .map(|b| format!("{:02x}", b))
                               .collect::<String>());
                 // For the first packet, send a discovery
-                // Send 2 dups to account for random loss
-                quacker.send_discovery(addr_key, 3).await;
+                // Send multiple NUM_DISCOVERY_PKTS to account for random loss
+                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS).await;
+                discovery_sent = Instant::now();
+                continue;
+            } else if quacker.awaiting_disc_ack &&
+                    discovery_sent.elapsed() > Duration::from_millis(DISCOVERY_FREQ_MS) {
+                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS).await;
+                discovery_sent = Instant::now();
                 continue;
             }
         }
