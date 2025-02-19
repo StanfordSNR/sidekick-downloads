@@ -1,7 +1,7 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use bincode;
-use log::{trace, info, error, warn};
+use log::{info, error, warn};
 
 use quack::PowerSumQuackU32;
 use crate::{Quacker, BaseQuacker};
@@ -68,7 +68,7 @@ impl UdpQuacker {
                 panic!("Received DiscoverACK from proxy before sending discovery");
             }
         } else {
-            trace!("Received packet from proxy with op {:?}", disc.op);
+            warn!("Received packet from proxy with op {:?}", disc.op);
         }
     }
 
