@@ -79,7 +79,7 @@ impl UdpQuacker {
     /// Note: this will send `n` identical discovery packets. For n > 1, this increases
     /// the chance that a discovery reaches the proxy in the presence of random loss
     /// (duplicate discovery packets are no-ops).
-    pub async fn send_discovery(&mut self, base: AddrKey, n: usize) {
+    pub fn send_discovery(&mut self, base: AddrKey, n: usize) {
         self.base_stoc = Some(base);
         self.awaiting_disc_ack = true;
         let bytes = bincode::serialize(

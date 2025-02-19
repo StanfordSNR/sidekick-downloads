@@ -109,12 +109,12 @@ async fn start_sniffer(
                               .collect::<String>());
                 // For the first packet, send a discovery
                 // Send multiple NUM_DISCOVERY_PKTS to account for random loss
-                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS).await;
+                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
                 discovery_sent = Instant::now();
                 continue;
             } else if quacker.awaiting_disc_ack &&
                     discovery_sent.elapsed() > Duration::from_millis(DISCOVERY_FREQ_MS) {
-                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS).await;
+                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
                 discovery_sent = Instant::now();
                 continue;
             }
