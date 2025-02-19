@@ -341,9 +341,9 @@ def main(args):
         if args.proxy == ProxyType.PEPSAL:
             net.start_tcp_pep(proxy_logfile)
         elif args.proxy == ProxyType.BRIDGE:
-            net.start_bridge(proxy_logfile, debug=args.debug)
+            net.start_bridge(proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
-            net.start_sidekick(proxy_logfile, debug=args.debug)
+            net.start_sidekick(proxy_logfile)
 
         # Start the packet trace collector
         if args.tcpdump:
@@ -353,8 +353,7 @@ def main(args):
         if args.quacker:
             client_logfile = f'{args.logdir}/{CLIENT_LOGFILE}'
             net.start_client_quacker(args.threshold, args.freq_ms,
-                args.freq_pkts, args.quackee_port, logfile=client_logfile,
-                debug=args.debug)
+                args.freq_pkts, args.quackee_port, logfile=client_logfile)
 
         if args.ty == 'cli':
             CLI(net.net)

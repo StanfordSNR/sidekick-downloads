@@ -354,7 +354,7 @@ class EmulatedNetwork:
 
     def start_client_quacker(
         self, threshold: int, frequency_ms: int, frequency_packets: int,
-        quackee_port: int, logfile=None, debug=False,
+        quackee_port: int, logfile=None,
     ):
         cmd = f'./quacker/target/release/quacker '\
               f'--interface h1-eth0 '\
@@ -363,13 +363,12 @@ class EmulatedNetwork:
               f'--frequency-pkts {frequency_packets} '\
               f'--target-addr {self.p1.IP()}:{quackee_port}'
 
-        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile)
 
     def start_bridge(
         self, logfile, timeout=SETUP_TIMEOUT,
-        executable='./proxy/target/release/bridge', debug=False,
+        executable='./proxy/target/release/bridge',
     ):
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -377,7 +376,6 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
-        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
@@ -389,7 +387,7 @@ class EmulatedNetwork:
 
     def start_sidekick(
         self, logfile, timeout=SETUP_TIMEOUT,
-        executable='./proxy/target/release/sidekick', debug=False,
+        executable='./proxy/target/release/sidekick',
     ):
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -398,7 +396,6 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
-        os.environ['RUST_LOG'] = 'debug' if debug else 'info'
         # The cache capacity is currently set arbitrarily larger to 4*cwnd
         # to avoid unnecessary dropping in tests, until we figure out the
         # right value to set it at.
