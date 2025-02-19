@@ -51,7 +51,7 @@ build_sidekick() {
 	cargo build --release --bin bridge
 	cargo build --release --bin sidekick
 	cd $SIDEKICK_HOME/quacker
-	cargo build --release
+	cargo build --release --bin quacker
 }
 
 if [ $1 == "all" ]; then

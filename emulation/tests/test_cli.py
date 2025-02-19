@@ -207,7 +207,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
             _, stderr = self._test_file_download_benchmark(
                 'picoquic',
                 network_options=[
-                    '--quacker', '--debug',
+                    '--quacker', '--debug', '--proxy', 'sidekick',
                     '--freq-ms', str(freq_ms),
                     '--freq-pkts', str(freq_pkts),
                 ],
@@ -225,7 +225,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
                 self.assertLessEqual(quacks[i], quacks[i+1], quacks)
 
         _test_frequency(100, 0)
-        # _test_frequency(0, 8)
+        _test_frequency(0, 8)
         _test_frequency(50, 20)
 
     def _test_sidekick_receives_quacks(self, protocol, add_network_options, protocol_options):
@@ -248,14 +248,16 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_sidekick_receives_sniffer_quacks(self):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '100', '--freq-pkts', '0'], [])
-        # self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
+        self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_discovery(self):
-        self.execute_command(
+        _, stderr = self.execute_command(
             'picoquic',
-            network_options=['--quacker', '--proxy', 'sidekick'],
+            network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
         )
+
+        # Proxy receives discovery packet from client
         pattern = 'Received discovery packet from client'
         found = False
         with open(f'{self.logdir}/{ROUTER_LOGFILE}', 'r') as f:
@@ -264,6 +266,14 @@ class TestFileDownloadBenchmarks(CLITestCase):
                     found = True
                     break
         self.assertEqual(found, True)
+
+        # Client quacks only after receiving discover ack
+        received_discover_ack = False
+        for line in stderr.split('\n'):
+            if 'Received DiscoverACK from proxy' in line:
+                break
+            if re.search(r'\[quack\] .* quack (\d+)', line):
+                self.fail('Client quacked before receiving a discover ACK')
 
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
