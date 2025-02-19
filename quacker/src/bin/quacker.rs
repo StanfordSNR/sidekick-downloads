@@ -6,15 +6,12 @@ use tokio::sync::Mutex;
 use tokio::time::{self, Instant, Duration};
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
+use sidekick_utils::discovery::{NUM_DISCOVERY_PKTS, DISCOVERY_FREQ_MS};
 use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
 use quack::PowerSumQuack;
 use quacker::{Quacker, UdpQuacker, current_time_ms};
-
-
-const DISCOVERY_FREQ_MS: u64 = 50;
-const NUM_DISCOVERY_PKTS: usize = 3;
 
 
 /// Sends quACKs in the sidekick protocol, receives data in the base protocol.

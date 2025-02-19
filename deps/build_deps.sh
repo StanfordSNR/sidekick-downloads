@@ -41,9 +41,15 @@ ninja -C out/Default quic_server quic_client
 }
 
 build_picoquic () {
+	cd $SIDEKICK_HOME/deps/quack
+	cargo build --release
+	cd $SIDEKICK_HOME/sidekick_utils
+	cargo build --release
+	cd $SIDEKICK_HOME/quacker
+	cargo build --release
 	cd $SIDEKICK_HOME/deps/picoquic
 	cmake -DPICOQUIC_FETCH_PTLS=Y .
-	cmake --build .
+	cmake --build . -t picoquic_sample
 }
 
 build_sidekick() {

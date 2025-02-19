@@ -80,6 +80,11 @@ def benchmark_picoquic(net, args):
         keyfile=args.keyfile,
         logdir=args.logdir,
         ack_delay=args.ack_delay,
+        quacker=args.client_quacker,
+        threshold=args.threshold,
+        freq_ms=args.freq_ms,
+        freq_pkts=args.freq_pkts,
+        quackee_port=args.quackee_port,
         proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
@@ -202,7 +207,7 @@ def parse_args(argv=None):
              'have been inserted or at least --freq-ms have elapsed since '\
              'the last quack.')
     proxy_config.add_argument('--quackee-port', type=int, default=5252,
-        help='If --quacker is enabled, the UDP port that the quackee on the '\
+        help='If a quacker is enabled, the UDP port that the quackee on the '\
              'proxy is listening on for quacks')
 
     ###########################################################################
@@ -273,6 +278,8 @@ def parse_args(argv=None):
     picoquic.add_argument('-n', type=parse_data_size, default=1000000,
         help='Number of bytes to download in the HTTP/3 GET request, '\
              'e.g., 1000, 1K, 1M, 1000000, 1G')
+    picoquic.add_argument('--client-quacker', action='store_true',
+        help='Enable an in-line quacker with the client to quack to the proxy')
     picoquic.add_argument('--ack-delay', type=int, default=0, metavar='MS',
         help='Delay (ms) of sidekick ACK signal to reduce spurious retx')
     picoquic.add_argument('-cca', '--congestion-control',

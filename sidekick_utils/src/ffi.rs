@@ -7,6 +7,12 @@ pub static ID_OFFSET: usize = crate::ID_OFFSET;
 pub static UDP_PAYLOAD_OFFSET: usize = crate::UDP_PAYLOAD_OFFSET;
 
 #[no_mangle]
+pub static DISCOVERY_FREQ_MS: u64 = crate::discovery::DISCOVERY_FREQ_MS;
+
+#[no_mangle]
+pub static NUM_DISCOVERY_PKTS: usize = crate::discovery::NUM_DISCOVERY_PKTS;
+
+#[no_mangle]
 pub extern "C" fn sidekick_fixed_offset_to_id(
     bytes: *const u8, packet_length: usize, offset: usize,
 ) -> u32 {

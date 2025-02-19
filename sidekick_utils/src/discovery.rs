@@ -39,6 +39,11 @@ use log::trace;
 
 const MAGIC: [u8; 6] = *b"SKDISC";
 
+/// Suggested number of ms to wait for a discovery ACK before retrying
+pub const DISCOVERY_FREQ_MS: u64 = 50;
+/// Suggested number of discovery packets to send at a time
+pub const NUM_DISCOVERY_PKTS: usize = 3;
+
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub enum DiscoveryOp {
     Discover = 0,
