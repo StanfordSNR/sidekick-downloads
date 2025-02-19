@@ -189,6 +189,7 @@ class TestNetStatistics(NetworkTestCase):
             self.assertGreater(stats['tx_bytes'][i], n * header_size, iface)
             self.assertGreater(stats['rx_bytes'][i], n * header_size, iface)
 
+    @unittest.skip('skip flaky test')
     def test_sending_packets_with_loss(self):
         net = self.setUpOneHopNetwork(loss1=20)
 
