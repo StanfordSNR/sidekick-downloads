@@ -268,11 +268,16 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
         # Client quacks only after receiving discover ack
         received_discover_ack = False
+        quacked_after_discover_ack = False
         for line in self.read_logfile(CLIENT_LOGFILE):
             if 'Received DiscoverACK from proxy' in line:
-                break
+                received_discover_ack = True
             if re.search(r'DEBUG .* quack (\d+)', line):
-                self.fail('Client quacked before receiving a discover ACK')
+                self.assertTrue(received_discover_ack, 'client quacked before receiving a discover ACK')
+                quacked_after_discover_ack = True
+                break
+        self.assertTrue(received_discover_ack, 'received discover ACK')
+        self.assertTrue(quacked_after_discover_ack, 'quacked after discover ACK')
 
     def test_sidekick_receives_picoquic_client_quacks(self):
         self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '100', '--freq-pkts', '0'], ['--client-quacker'])
