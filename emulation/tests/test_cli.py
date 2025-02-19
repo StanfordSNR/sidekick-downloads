@@ -215,8 +215,9 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
             # Parse debug output related to the quacker for lines that describe
             # the number of packets in the sent quacks
-            lines = stderr.split('\n')
-            quacks = self.parse_quacks(lines, r'\[quack\] .* quack (\d+)')
+            with open(f'{self.logdir}/{CLIENT_LOGFILE}', 'r') as f:
+                lines = f.readlines()
+            quacks = self.parse_quacks(lines, r'DEBUG .* quack (\d+)')
 
             # The number of packets in each sent quack is increasing
             self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
@@ -252,7 +253,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_discovery(self):
-        _, stderr = self.execute_command(
+        self.execute_command(
             'picoquic',
             network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
         )
@@ -269,10 +270,12 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
         # Client quacks only after receiving discover ack
         received_discover_ack = False
-        for line in stderr.split('\n'):
+        with open(f'{self.logdir}/{CLIENT_LOGFILE}', 'r') as f:
+            lines = f.readlines()
+        for line in lines:
             if 'Received DiscoverACK from proxy' in line:
                 break
-            if re.search(r'\[quack\] .* quack (\d+)', line):
+            if re.search(r'DEBUG .* quack (\d+)', line):
                 self.fail('Client quacked before receiving a discover ACK')
 
     def test_sidekick_receives_picoquic_client_quacks(self):

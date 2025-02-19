@@ -355,13 +355,8 @@ class EmulatedNetwork:
               f'--target-addr {self.p1.IP()}:{quackee_port}'
 
         os.environ['RUST_LOG'] = 'debug' if debug else 'info'
-        def quacker_log(line):
-            if debug:
-                # Temporary: log debug output from the background process
-                print('[quack]', line.strip(), file=sys.stderr)
-
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
-            logfile=logfile, func=quacker_log)
+            logfile=logfile)
 
     def start_bridge(
         self, logfile, timeout=SETUP_TIMEOUT,
