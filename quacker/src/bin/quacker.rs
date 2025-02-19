@@ -117,6 +117,9 @@ async fn start_sniffer(
                 quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
                 discovery_sent = Instant::now();
                 continue;
+            } else if quacker.awaiting_disc_ack {
+                // Don't process any stoc packets if the DiscoverAck is pending
+                continue;
             }
         }
 
