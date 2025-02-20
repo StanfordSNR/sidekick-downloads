@@ -82,7 +82,6 @@ impl SidekickTable {
                     sk = self.base_stoc.get_mut(k);
                 }
             },
-            ConnectionType::None => { }
             ConnectionType::Discovery => {
                 self.handle_discovery(packet);
                 return; // don't forward
@@ -117,8 +116,7 @@ impl SidekickTable {
         } else if packet.iface == self.stream.server_iface() {
             return ConnectionType::BaseStoc;
         }
-        trace!("Packet received on unknown interface: {}", packet.iface);
-        ConnectionType::None
+        panic!("Packet received on unknown interface: {}", packet.iface);
     }
 
     /// ACK the discovery.
@@ -190,8 +188,6 @@ enum ConnectionType {
     Sidekick,
     /// Sidekick configuration packet
     Discovery,
-    /// Some other connection (forward only)
-    None
 }
 
 impl Sidekick {
@@ -280,9 +276,6 @@ impl Sidekick {
             ConnectionType::Sidekick => {
                 trace!("Received sidekick packet from client");
                 self.handle_sidekick_packet_from_client(packet, stream);
-            }
-            ConnectionType::None => {
-                panic!("Packet from unknown four-tuple should have been forwarded by SidekickTable");
             }
             ConnectionType::Discovery => {
                 panic!("Discovery packet should have been handled by SidekickTable");
