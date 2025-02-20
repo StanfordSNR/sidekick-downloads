@@ -143,8 +143,9 @@ impl SidekickTable {
             }
             Err(e) => error!("Failed to build ack packet: {}", e),
         }
-        // Check for an update (new sidekick connection for base connection)
-        if self.sk_to_base.get(&addr_key).is_none() || self.base_stoc.get(&base).is_none() {
+        // Insert the new or updated connection mapping.
+        if self.sk_to_base.get(&addr_key).is_none() || self.base_stoc.get(&base).is_none() ||
+           self.sk_to_base.get(&addr_key).unwrap() != &base {
             self.insert_sidekick(addr_key, base);
         }
     }
