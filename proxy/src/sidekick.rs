@@ -143,10 +143,22 @@ impl SidekickTable {
             }
             Err(e) => error!("Failed to build ack packet: {}", e),
         }
-        // Insert the new or updated connection mapping.
-        if self.sk_to_base.get(&addr_key).is_none() || self.base_stoc.get(&base).is_none() ||
-           self.sk_to_base.get(&addr_key).unwrap() != &base {
+
+        let curr_base_stoc = self.sk_to_base.get(&addr_key);
+        let curr_sk = self.base_stoc.get(&base);
+        if curr_base_stoc.is_none() && curr_sk.is_none() {
+            // New sidekick connection, new base connection
             self.insert_sidekick(addr_key, base);
+        } else if curr_base_stoc.is_some() && curr_base_stoc.unwrap() != &base {
+            // Existing sidekick connection, new base connection
+            self.base_stoc.remove(curr_base_stoc.unwrap());
+            self.insert_sidekick(addr_key, base);
+        } else {
+            // Otherwise, the sidekick table should be in consistent state.
+            // Note: not supported to create new sidekick connection existing base.
+            assert!(curr_sk.is_some() && curr_base_stoc.is_some() &&
+                    curr_base_stoc.unwrap() == &base,
+                    "Inconsistent sidekick table: existing base connection, different sidekick connection");
         }
     }
 
