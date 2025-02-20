@@ -5,7 +5,9 @@ use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
+use sidekick_utils::reset::{ResetPayload, RESET_FREQ_MS};
 
+use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
@@ -21,6 +23,7 @@ pub struct Sidekick {
     sidekick_connection: Option<AddrKey>,
     num_retx: usize,
     num_tx: usize,
+    last_reset: Instant,
 }
 
 /// Identifies the connection as base or sidekick
@@ -65,6 +68,7 @@ impl Sidekick {
             sidekick_connection: None,
             num_retx: 0,
             num_tx: 0,
+            last_reset: Instant::now(),
         }
     }
 
@@ -72,8 +76,8 @@ impl Sidekick {
     ///
     /// It is a quACK, so decode the quACK. The most basic functionality is
     /// then to retransmit missing packets and delete acknowledged packets
-    /// from the cache. If the quACK can't be decoded, reset the quACK by
-    /// sending any message back to the client on the sidekick connection.
+    /// from the cache. If the quACK can't be decoded, send a Reset packet
+    /// back to the client on the sidekick connection.
     fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
         let payload = UdpParser::payload(&packet.data);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
@@ -93,8 +97,18 @@ impl Sidekick {
             }
             Err(e) => {
                 error!("Failed to decode quACK: {:?}", e);
-                // TODO: send any packet to the UDP src of the quacks to reset
-                // self.cache.reset();
+                if self.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
+                    let mut buf = [0u8; BUFFER_SIZE];
+                    match ResetPayload::build_packet(&mut buf, &packet.data) {
+                        Ok(len) => {
+                            info!("Sending reset packet");
+                            self.stream.send(&buf, len, packet.iface);
+                            self.cache.reset();
+                            self.last_reset = Instant::now();
+                        }
+                        Err(e) => error!("Failed to build reset packet: {}", e),
+                    }
+                }
             }
         }
     }
