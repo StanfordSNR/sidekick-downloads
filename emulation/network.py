@@ -208,18 +208,13 @@ class EmulatedNetwork:
 
     def get_perf_options(self) -> str:
         supported = subprocess.check_output('perf list', shell=True, text=True)
-        ret = ''
-        if 'cache-misses' in supported:
-            ret += 'cache-misses,'
-        if 'LLC-load-misses' in supported:
-            ret += 'LLC-load-misses,'
-        if 'L1-dcache-load-misses' in supported:
-            ret += 'L1-dcache-load-misses,'
-        if ret == '':
+        options = ['cache-misses', 'LLC-load-misses', 'L1-dcache-load-misses']
+        options = list(filter(lambda opt: opt in supported, options))
+        if len(options) == 0:
             WARN("perf options are empty")
+            return ''
         else:
-            ret = ' -e ' + ret
-        return ret
+            return ' -e ' + ','.join(options)
 
     def popen(self, host, cmd, background=False, func=None, timeout=None,
               console_logger=TRACE, stdout=False, stderr=True, logfile=None,
