@@ -160,6 +160,8 @@ impl SidekickTable {
                     curr_base_stoc.unwrap() == &base,
                     "Inconsistent sidekick table: existing base connection, different sidekick connection");
         }
+	// Reset quack cache on ACK
+	self.base_stoc.get(&base).unwrap().cache.reset();
     }
 
     /// Add a new sidekick to the table.
