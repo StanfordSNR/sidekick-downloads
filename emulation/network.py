@@ -206,6 +206,21 @@ class EmulatedNetwork:
         else:
             return value[0]
 
+    def get_perf_options(self) -> str:
+        supported = subprocess.check_output('perf list', shell=True, text=True)
+        ret = ''
+        if 'cache-misses' in supported:
+            ret += 'cache-misses,'
+        if 'LLC-load-misses' in supported:
+            ret += 'LLC-load-misses,'
+        if 'L1-dcache-load-misses' in supported:
+            ret += 'L1-dcache-load-misses,'
+        if ret == '':
+            WARN("perf options are empty")
+        else:
+            ret = ' -e ' + ret
+        return ret
+
     def popen(self, host, cmd, background=False, func=None, timeout=None,
               console_logger=TRACE, stdout=False, stderr=True, logfile=None,
               raise_error=True):
@@ -259,8 +274,8 @@ class EmulatedNetwork:
         a process that is not executed on a mininet host.
         """
         if self.perf and logfile is not None:
-            cmd = f'perf record -g -o {logfile}.perf '\
-                  f'-e L1-dcache-load-misses,LLC-load-misses,cache-misses '\
+            cmd = f'perf record -g -o {logfile}.perf'\
+                  f'{self.get_perf_options()} '\
                   f'{cmd}'
 
         # Log the command to be executed
