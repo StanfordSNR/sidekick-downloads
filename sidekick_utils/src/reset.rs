@@ -1,13 +1,20 @@
 //! Packet for resetting a sidekick connection.
 //!
-//! The quACK receiver sends a Reset packet when it is unable to decode the
-//! received quACK in order to try to "reset" both endpoints of a sidekick
-//! connection to a consistent state. The receiver will wait a fixed duration
-//! before sending another reset, to allow the quACK sender time to process
-//! the reset.
+//! The proxy (quackee) sends a Reset packet to the client (quacker) when it
+//! is unable to decode the received quACK (see `DecodeError`) in order to try
+//! to "reset" both endpoints of a sidekick connection to a consistent state.
+//! The receiver will wait a fixed duration before sending another reset, to
+//! allow the quACK sender time to process the reset.
+//!
+//! Similar to the DiscoverAck, the Reset message acts as a serialization point
+//! in the connection for which only packets sent/received *after* the Reset
+//! is sent/received will be considered in future quACKs. This helps resolve
+//! situations where, for example, there were too many missing packets that
+//! exceeded the threshold, or a corrupted packet that the proxy didn't send
+//! was inserted into the quacker's quACK.
 //!
 //! Upon sending/receiving a Reset packet, the quACK receiver/sender will reset
-//! its quACK to a fresh state with no accumualted packets.
+//! its quACK to a fresh state with no accumulated packets.
 //!
 //! Each Reset packet is prefixed by a constant MAGIC.
 
