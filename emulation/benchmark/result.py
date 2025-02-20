@@ -1,14 +1,14 @@
 import json
 from datetime import datetime
+from abc import ABC, abstractmethod
 
-
-class HTTPBenchmarkResult:
+class BenchmarkResult(ABC):
     def __init__(self, label: str, protocol: str, data_size: int, cca: str,
                  proxy_type: str):
         """Initialize the data structure for tracking benchmark results over
         multiple trials.
         """
-        self.inputs = {
+        self._inputs = {
             'label': label,
             'protocol': protocol,
             'num_trials': 0,
@@ -17,47 +17,53 @@ class HTTPBenchmarkResult:
             'cca': cca,
             'proxy_type': proxy_type,
         }
-        self.outputs = []
+        self._outputs = []
+
+    @property
+    def outputs(self):
+        return self._outputs
+
+    @property
+    def inputs(self):
+        return self._inputs
 
     def append_new_output(self):
         """A new trial is complete. Append an output so following "set_*"
         functions set the metrics for this recently completed trial.
         """
-        self.inputs['num_trials'] += 1
-        self.outputs.append({
+        self._inputs['num_trials'] += 1
+        self._outputs.append({
             'success': False,
         })
 
     def set_success(self, success: bool):
-        """Set whether the most recent trial was successful.
+        """Set whether most recent iteration in most recent trial was successful.
         """
-        self.outputs[-1]['success'] = success
+        self.curr_output()['success'] = success
 
     def set_timeout(self, timeout: bool):
-        """Set whether an unsuccessful trial was due to a timeout.
+        """Set whether an unsuccessful iteration was due to a timeout.
         """
-        self.outputs[-1]['timeout'] = timeout
+        self.curr_output()['timeout'] = timeout
 
     def set_time_s(self, time_s: float):
-        """Set the request latency.
+        """Set the request latency for the most recent iteration.
         """
-        self.outputs[-1]['time_s'] = time_s
-        self.outputs[-1]['throughput_mbps'] = \
+        self.curr_output()['time_s'] = time_s
+        self.curr_output()['throughput_mbps'] = \
             8 * self.inputs['data_size'] / 1000000 / time_s
 
     def set_network_statistics(self, statistics: dict):
-        """Set the network statistics as defined in `snapshot_statistics()`.
+        """Set the network statistics for the most recent iteration.
         """
-        self.outputs[-1]['statistics'] = statistics
+        self.curr_output()['statistics'] = statistics
 
     def set_additional_data(self, data, merge=False):
-        """Set any additional data for the most recent trial.
-        If applicable and merging, merge the two dictionaries together, using
-        the entries in the most recent dictionary when there is a conflict.
+        """Set additional data for the most recent iteration.
         """
-        data_init = self.outputs[-1].get('additional_data')
+        data_init = self.curr_output().get('additional_data')
         if (data_init is None) or not merge:
-            self.outputs[-1]['additional_data'] = data
+            self.curr_output()['additional_data'] = data
         else:
             assert isinstance(data_init, dict)
             assert isinstance(data, dict)
@@ -66,9 +72,35 @@ class HTTPBenchmarkResult:
 
     def json(self, prettify=False) -> str:
         """Format the current result as a JSON string.
+        The length of `outputs` is equal to `num_trials`.
+        The `success` field is required for each output, and all other
+        fields are optional. The `EmulatedNetwork.snapshot_statistics()`
+        function defines the schema of `network_statistics`.
+        """
+        result = {
+            'inputs': self._inputs,
+            'outputs': self._outputs,
+        }
+        if prettify:
+            return json.dumps(result, indent=2)
+        else:
+            return json.dumps(result)
 
+    @abstractmethod
+    def curr_output(self) -> dict:
+        """Return output data for the most recent iteration of the
+        most recent trial. This is what the "set_*" functions will modify.
+        """
+        pass
+
+
+class HTTPBenchmarkResult(BenchmarkResult):
+    """Tracks results over multiple trials. Each trial includes the result of
+    a single HTTP request/response. Stored data is summary, not timeseries.
+
+    Schema:
         {
-            'inputs': {
+            'inputs': { # required
                 'label': str,
                 'protocol': str,
                 'num_trials': int,
@@ -79,7 +111,7 @@ class HTTPBenchmarkResult:
             },
             'outputs': [
                 {
-                    'success': bool,
+                    'success': bool, # required
                     'timeout': bool,
                     'time_s': float,
                     'statistics': {
@@ -93,17 +125,15 @@ class HTTPBenchmarkResult:
                 }
             ]
         }
+    """
 
-        The length of `outputs` is equal to `num_trials`. The `success` field
-        is required for each output, and all other fields are optional. The
-        `EmulatedNetwork.snapshot_statistics()` function defines the schema of
-        `network_statistics`.
+    def __init__(self, label: str, protocol: str, data_size: int, cca: str,
+                 proxy_type: str):
+        super().__init__(label, protocol, data_size, cca, proxy_type)
+
+    def curr_output(self) -> dict:
+        """Current trial. Only one connection per trial.
         """
-        result = {
-            'inputs': self.inputs,
-            'outputs': self.outputs,
-        }
-        if prettify:
-            return json.dumps(result, indent=2)
-        else:
-            return json.dumps(result)
+        assert len(self.outputs) > 0
+        return self.outputs[-1]
+
