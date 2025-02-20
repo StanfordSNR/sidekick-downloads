@@ -23,7 +23,7 @@ pub struct SidekickTable {
     /// AddrKey should be calculated in server-to-client (stoc) direction.
     base_stoc: HashMap<AddrKey, Sidekick>,
     /// Sidekick connection AddrKey -> base connection AddrKey
-    sc_to_base: HashMap<AddrKey, AddrKey>,
+    sk_to_base: HashMap<AddrKey, AddrKey>,
     /// UDP port quACKs are expected on
     quack_port: u16,
     /// Threshold number of missing packets in each quACK.
@@ -45,7 +45,7 @@ impl SidekickTable {
         Self {
             stream,
             base_stoc: HashMap::new(),
-            sc_to_base: HashMap::new(),
+            sk_to_base: HashMap::new(),
             quack_port,
             quack_threshold,
             cache_capacity,
@@ -67,19 +67,19 @@ impl SidekickTable {
     /// If not, check if it's a discovery packet; if so, create a new sidekick.
     /// If neither, forward the packet.
     fn handle_packet(&mut self, packet: Packet) {
-        let mut sc = None;
+        let mut sk = None;
         let conn_type = self.connection_type(&packet);
         match conn_type {
             ConnectionType::BaseCtos => {
-                sc = self.base_stoc.get_mut(&UdpParser::flip_addr_key(UdpParser::parse_addr_key(&packet.data)));
+                sk = self.base_stoc.get_mut(&UdpParser::flip_addr_key(UdpParser::parse_addr_key(&packet.data)));
             },
             ConnectionType::BaseStoc => {
-                sc = self.base_stoc.get_mut(&UdpParser::parse_addr_key(&packet.data));
+                sk = self.base_stoc.get_mut(&UdpParser::parse_addr_key(&packet.data));
             },
             ConnectionType::Sidekick => {
-                let base_key = self.sc_to_base.get(&UdpParser::parse_addr_key(&packet.data));
+                let base_key = self.sk_to_base.get(&UdpParser::parse_addr_key(&packet.data));
                 if let Some(k) = base_key {
-                    sc = self.base_stoc.get_mut(k);
+                    sk = self.base_stoc.get_mut(k);
                 }
             },
             ConnectionType::None => { }
@@ -88,7 +88,7 @@ impl SidekickTable {
                 return; // don't forward
             },
         }
-        match sc {
+        match sk {
             Some(sidekick) => {
                 sidekick.handle_packet(packet, &self.stream, conn_type);
             },
@@ -145,8 +145,8 @@ impl SidekickTable {
             }
             Err(e) => error!("Failed to build ack packet: {}", e),
         }
-        // Check for an update (new sc for base connection)
-        if self.sc_to_base.get(&addr_key).is_none() || self.base_stoc.get(&base).is_none() {
+        // Check for an update (new sidekick connection for base connection)
+        if self.sk_to_base.get(&addr_key).is_none() || self.base_stoc.get(&base).is_none() {
             self.insert_sidekick(addr_key, base);
         }
     }
@@ -154,15 +154,15 @@ impl SidekickTable {
     /// Add a new sidekick to the table.
     /// Sidekick connection identifier -> base connection identifier
     /// Base connection identifier -> sidekick struct
-    fn insert_sidekick(&mut self, sc: AddrKey, base: AddrKey) {
+    fn insert_sidekick(&mut self, sk: AddrKey, base: AddrKey) {
         info!("Inserting new sidekick connection: {} -> {}",
-              sc.iter()
+              sk.iter()
                 .map(|b| format!("{:02x}", b))
                 .collect::<String>(),
               base.iter()
                   .map(|b| format!("{:02x}", b))
                   .collect::<String>());
-        self.sc_to_base.insert(sc, base);
+        self.sk_to_base.insert(sk, base);
         self.base_stoc.insert(base, Sidekick::new(
             self.quack_threshold,
             self.cache_capacity,
