@@ -290,6 +290,25 @@ class TestFileDownloadBenchmarks(CLITestCase):
         quacks = self.parse_quacks(lines)
         self.assertEqual(quacks, [], 'no quacks are received')
 
+    def _test_quacker_receives_resets(self):
+        self.assertIn('InvalidThreshold', self.read_logfile(ROUTER_LOGFILE, lines=False))
+        self.assertIn('Received Reset', self.read_logfile(CLIENT_LOGFILE, lines=False))
+
+    def test_sniffing_quacker_receives_resets(self):
+        self.execute_command(
+            'picoquic',
+            network_options=['--quacker', '--proxy', 'sidekick', '--threshold', '1'],
+        )
+        self._test_quacker_receives_resets()
+
+    def test_picoquic_client_quacker_receives_resets(self):
+        self.execute_command(
+            'picoquic',
+            network_options=['--proxy', 'sidekick', '--threshold', '1'],
+            protocol_options=['--client-quacker'],
+        )
+        self._test_quacker_receives_resets()
+
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
         network_options = ['--tcpdump']
