@@ -4,10 +4,11 @@ use bincode;
 use log::{info, error, warn};
 use socket2::{Socket, Domain, Type, SockAddr};
 
-use quack::PowerSumQuackU32;
+use quack::{PowerSumQuack, PowerSumQuackU32};
 use crate::{Quacker, BaseQuacker};
 
 use sidekick_utils::buffer::AddrKey;
+use sidekick_utils::reset::ResetPayload;
 use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
 
 
@@ -41,9 +42,11 @@ impl UdpQuacker {
     pub fn handle_sidekick_payload(&mut self, udp_payload: &[u8]) {
         if let Some(disc) = DiscoveryPayload::from_payload(udp_payload) {
             self.handle_discover_ack(disc);
-        } else {
-            warn!("Received non-discovery packet from proxy");
+        } else if let Some(_) = ResetPayload::from_payload(udp_payload) {
+            info!("Received Reset, count={}", self.quacker.get_quack().count());
             self.reset();
+        } else {
+            warn!("Received unknown packet from proxy");
         }
     }
 
