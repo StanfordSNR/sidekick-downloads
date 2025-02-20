@@ -137,3 +137,73 @@ class HTTPBenchmarkResult(BenchmarkResult):
         assert len(self.outputs) > 0
         return self.outputs[-1]
 
+class HTTPConcurrentBenchmarkResult(BenchmarkResult):
+    """Tracks results over multiple trials. Each trial includes the result of
+    multiple concurrent HTTP requests/responses. Stored data is summary and as
+    a timeseries.
+
+    Schema:
+        {
+            'inputs': { # required
+                'label': str,
+                'protocol': str,
+                'num_trials': int,
+                'start_time': str,
+                'data_size': int,
+                'cca': str,
+                'proxy_type': str,
+                'connections': int
+            },
+            'outputs': [
+                'success': bool, # required
+                'connections': [
+                    {
+                        'success': bool, # required
+                        'timeout': bool,
+                        'time_s': float,
+                        'statistics': {
+                            'ifaces': [str],
+                            'tx_packets': [int],
+                            'tx_bytes': [int],
+                            'rx_packets': [int],
+                            'rx_bytes': [int]
+                        }
+                        'additional_data': any
+                    },
+                    // ...
+                ]
+            ]
+        }
+    """
+    def __init__(self, label: str, protocol: str, data_size: int, cca: str,
+                 proxy_type: str, n_conns: int):
+        super().__init__(label, protocol, data_size, cca, proxy_type)
+        self.inputs['n_connections'] = n_conns
+
+    def curr_output(self) -> dict:
+        """Current connection in current trial.
+        """
+        assert len(self.outputs) > 0
+        assert len(self.outputs[-1]) > 0
+        return self.outputs[-1]['connections'][-1]
+
+    def append_new_connection(self):
+        """Add a new connection to the current trial.
+        """
+        self.curr_trial()['connections'].append({
+            'success': False,
+        })
+
+    def curr_trial(self) -> dict:
+        """Overarching struct for current trial.
+        Multiple connections per trial.
+        """
+        return self.outputs[-1]
+
+    def trial_complete(self):
+        """Indicate that all connections have been added to the current trial.
+        Set trial success iff all connections in the trial succeeded.
+        """
+        assert len(self.curr_trial()['connections']) == self.inputs['n_connections']
+        self.curr_trial()['success'] = all(conn['success'] for conn in self.curr_trial()['connections'])
+
