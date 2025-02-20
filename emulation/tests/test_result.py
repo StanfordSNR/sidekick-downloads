@@ -3,11 +3,14 @@ Test benchmark/result.py.
 """
 import unittest
 import json
+from abc import ABC, abstractmethod
 
 from benchmark import HTTPBenchmarkResult
 
+class TestBenchmarkResult(ABC):
+    DEFAULT_TIME_S = 100
+    DEFAULT_ADDL_DATA = 'additional_data'
 
-class TestHTTPBenchmarkResult(unittest.TestCase):
     def setUp(self):
         # Default parameters
         self.label = 'my_label'
@@ -16,9 +19,50 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         self.cca = 'cubic'
         self.proxy_type = 'pepsal'
 
-    def test_initialize_result(self):
-        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.proxy_type)
+    def appendTrial(self, res):
+        '''Indicate the beginning of a new trial.
+        Input: a BenchmarkResult.
+        '''
+        res.append_new_output()
+
+    @abstractmethod
+    def appendConnection(self, res):
+        '''Indicate the beginning of a new iteration within a trial,
+        if applicable.
+        Input: a BenchmarkResult.
+        '''
+        pass
+
+    @abstractmethod
+    def completeTrial(self, res):
+        '''Indicate the end of a trial.
+        Input: a BenchmarkResult.
+        '''
+        pass
+
+    @abstractmethod
+    def connectionOutput(self, res_json: dict, n_trial: int, n_conn: int) -> dict:
+        '''Get the output from the `n_conn`'th iteration of the `n_trial`'th trial.
+        If each trial consists of one connection, then `n_conn` is ignored and
+        this is the same as `trialOutput`.
+        Input: a BenchmarkResult as a json-formatted string, the index of the
+               trial, and the index of the connection within the trial.
+        Output: a json-formatted string for a single connection
+                according to the BenchmarkResult schema.
+        '''
+        pass
+
+    @abstractmethod
+    def trialOutput(self, res_json: dict, n: int) -> dict:
+        '''Get the output from the nth trial.
+        Input: a BenchmarkResult as a json-formatted string and the
+               index of the trial.
+        Output: a json-formatted string for a single trial
+                according to the BenchmarkResult schema.
+        '''
+        pass
+
+    def _test_initialize_result(self, res):
         x = res.json()
         self.assertIsInstance(x, str)
 
@@ -40,23 +84,18 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         # Check outputs
         self.assertEqual(x['outputs'], [])
 
-    def test_append_one_output(self):
-        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.proxy_type)
-
-        # Check baseline
-        x = json.loads(res.json())
-        self.assertEqual(x['inputs'].get('num_trials'), 0)
-        self.assertEqual(len(x['outputs']), 0)
-
+    def _test_append_one_output(self, res):
         # Append one output
-        res.append_new_output()
+        self.appendTrial(res)
+        self.completeTrial(res)
         x = json.loads(res.json())
         self.assertEqual(x['inputs'].get('num_trials'), 1)
         self.assertEqual(len(x['outputs']), 1)
-        self.assertFalse(x['outputs'][0].get('success'))
+        trial = self.trialOutput(x, 0)
+        self.assertFalse(trial.get('success'))
 
         # Set keys of new output
+        self.appendConnection(res)
         time_s = 100
         additional_data = 'additional_data'
         res.set_success(True)
@@ -64,65 +103,73 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         res.set_time_s(time_s)
         res.set_network_statistics({})
         res.set_additional_data(additional_data)
+        self.completeTrial(res)
+
+        # Check keys of new output
         x = json.loads(res.json())
         self.assertEqual(x['inputs'].get('num_trials'), 1)
         self.assertEqual(len(x['outputs']), 1)
-        output = x['outputs'][0]
+        output = self.trialOutput(x, 0)
+        self.assertTrue(output.get('success'))
+        output = self.connectionOutput(x, 0, 0)
         self.assertTrue(output.get('success'))
         self.assertFalse(output.get('timeout'))
         self.assertEqual(output.get('time_s'), time_s)
         self.assertIsInstance(output.get('statistics'), dict)
         self.assertEqual(output.get('additional_data'), additional_data)
 
-    def test_append_multiple_outputs(self):
-        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.proxy_type)
+    def _test_append_multiple_outputs(self, res):
 
-        # Check baseline
-        x = json.loads(res.json())
-        self.assertEqual(x['inputs'].get('num_trials'), 0)
-        self.assertEqual(len(x['outputs']), 0)
-
-        # Append multiple outputs
-        res.append_new_output()
+        # Append multiple trials
+        self.appendTrial(res)
+        self.appendConnection(res)
         res.set_success(True)
         res.set_additional_data('x')
-        res.append_new_output()
+        self.completeTrial(res)
+
+        self.appendTrial(res)
+        self.appendConnection(res)
         res.set_additional_data('y')
-        res.append_new_output()
+        self.completeTrial(res)
+
+        self.appendTrial(res)
+        self.appendConnection(res)
         res.set_success(True)
         res.set_additional_data('z')
+        self.completeTrial(res)
 
         # Check json
         x = json.loads(res.json())
         self.assertEqual(x['inputs'].get('num_trials'), 3)
         outputs = x['outputs']
         self.assertEqual(len(outputs), 3)
-        self.assertTrue(outputs[0].get('success'))
-        self.assertFalse(outputs[1].get('success'))
-        self.assertTrue(outputs[2].get('success'))
-        self.assertEqual(outputs[0].get('additional_data'), 'x')
-        self.assertEqual(outputs[1].get('additional_data'), 'y')
-        self.assertEqual(outputs[2].get('additional_data'), 'z')
+        self.assertTrue(self.trialOutput(x, 0).get('success'))
+        self.assertFalse(self.trialOutput(x, 1).get('success'))
+        self.assertTrue(self.trialOutput(x, 2).get('success'))
 
-    def test_additional_data(self):
+        self.assertEqual(self.connectionOutput(x, 0, 0).get('additional_data'), 'x')
+        self.assertEqual(self.connectionOutput(x, 1, 0).get('additional_data'), 'y')
+        self.assertEqual(self.connectionOutput(x, 2, 0).get('additional_data'), 'z')
+
+    def _test_additional_data(self, res):
         def data(res):
-            outputs = json.loads(res.json())['outputs']
-            return outputs[-1].get('additional_data')
-
-        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
-                                  self.cca, self.proxy_type)
+            res_json = json.loads(res.json())
+            connection = self.connectionOutput(res_json, -1, -1)
+            return connection.get('additional_data')
 
         # without merge
-        res.append_new_output()
+        self.appendTrial(res)
+        self.appendConnection(res)
         self.assertIsNone(data(res))
         res.set_additional_data({'a': 1}, merge=False)
         self.assertEqual(data(res), {'a': 1})
         res.set_additional_data({'b': 2}, merge=False)
         self.assertEqual(data(res), {'b': 2})
+        self.completeTrial(res)
 
         # with merge
-        res.append_new_output()
+        self.appendTrial(res)
+        self.appendConnection(res)
         self.assertIsNone(data(res))
         res.set_additional_data({'a': 1}, merge=True)
         self.assertEqual(data(res), {'a': 1})
@@ -132,3 +179,42 @@ class TestHTTPBenchmarkResult(unittest.TestCase):
         self.assertEqual(data(res), {'a': 3, 'b': 2}, 'merge with conflict')
         res.set_additional_data({'c': 3})
         self.assertEqual(data(res), {'c': 3}, 'default is to not merge')
+        self.completeTrial(res)
+
+
+
+class TestHTTPBenchmarkResult(TestBenchmarkResult, unittest.TestCase):
+
+    def appendConnection(self, res):
+        # No-op
+        return
+
+    def completeTrial(self, res):
+        # No-op
+        return
+
+    def connectionOutput(self, res_json: str, n_trial: int, n_conn: int) -> str:
+        return res_json['outputs'][n_trial]
+
+    def trialOutput(self, res_json: str, n: int) -> str:
+        return res_json['outputs'][n]
+
+    def test_initialize_result(self):
+        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
+                            self.cca, self.proxy_type)
+        super()._test_initialize_result(res)
+
+    def test_append_one_output(self):
+        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
+                                  self.cca, self.proxy_type)
+        super()._test_append_one_output(res)
+
+    def test_append_multiple_outputs(self):
+        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
+                                  self.cca, self.proxy_type)
+        super()._test_append_multiple_outputs(res)
+
+    def test_additional_data(self):
+        res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
+                                  self.cca, self.proxy_type)
+        super()._test_additional_data(res)
