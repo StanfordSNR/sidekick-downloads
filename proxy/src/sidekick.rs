@@ -15,13 +15,23 @@ use quack::{PowerSumQuack, PowerSumQuackU32};
 /// As quacks are not marked with a specific base connection,
 /// each base connection must have a distinct sidekick connection.
 pub struct SidekickTable {
+    /// A packet stream between the socket that is expected
+    /// to receive packets from the client (including quACKs)
+    /// and the socket that is expected to receive from the server.
     stream: PacketStream,
+    /// Base connection AddrKey -> sidekick struct
+    /// AddrKey should be calculated in server-to-client (stoc) direction.
     base_stoc: HashMap<AddrKey, Sidekick>,
+    /// Sidekick connection AddrKey -> base connection AddrKey
     sc_to_base: HashMap<AddrKey, AddrKey>,
+    /// UDP port quACKs are expected on
     quack_port: u16,
+    /// Threshold number of missing packets in each quACK.
     quack_threshold: usize,
+    /// Capacity of the quACK cache.
     cache_capacity: usize,
 }
+
 impl SidekickTable {
     /// Create a new sidekick table.
     pub fn new(
@@ -41,6 +51,7 @@ impl SidekickTable {
             cache_capacity,
         }
     }
+
     /// Start the sidekick handler on the packet stream.
     pub async fn start(&mut self) {
         while let Some(packet) = self.stream.receiver.recv().await {
@@ -48,6 +59,7 @@ impl SidekickTable {
             self.handle_packet(packet);
         }
     }
+
     /// Handle an incoming packet
     ///
     /// Forward all non-UDP packets.
@@ -86,6 +98,7 @@ impl SidekickTable {
             }
         }
     }
+
     /// Returns whether this is a base or sidekick connection.
     fn connection_type(&self, packet: &Packet) -> ConnectionType {
         if packet.iface == self.stream.client_iface() {
@@ -107,6 +120,7 @@ impl SidekickTable {
         trace!("Packet received on unknown interface: {}", packet.iface);
         ConnectionType::None
     }
+
     /// ACK the discovery.
     /// If the Sidekick does not exist in the table, insert it.
     /// Method assumes that the packet is known to be a Discovery packet.
@@ -136,6 +150,7 @@ impl SidekickTable {
             self.insert_sidekick(addr_key, base);
         }
     }
+
     /// Add a new sidekick to the table.
     /// Sidekick connection identifier -> base connection identifier
     /// Base connection identifier -> sidekick struct
