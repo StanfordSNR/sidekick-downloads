@@ -333,23 +333,39 @@ class TestSidekickProtocolBasic(CLITestCase):
         test(0, 8)
         test(50, 20)
 
+    def test_sniffing_quacker_different_threshold(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', ['--quacker', '--threshold', '8'])
+
+    def test_sniffing_quacker_different_port(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', ['--quacker', '--quackee-port', '5250'])
+
+    def test_picoquic_client_quacker_different_threshold(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', ['--threshold', '8'], ['--client-quacker'])
+
+    def test_picoquic_client_quacker_different_port(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', ['--quackee-port', '5250'], ['--client-quacker'])
+
 
 class TestSidekickProtocolReset(CLITestCase):
     def _test_quacker_receives_resets(self):
-        self.assertIn('InvalidThreshold', self.read_logfile(ROUTER_LOGFILE, lines=False))
+        self.assertIn('ExceededThreshold', self.read_logfile(ROUTER_LOGFILE, lines=False))
         self.assertIn('Received Reset', self.read_logfile(CLIENT_LOGFILE, lines=False))
 
     def test_sniffing_quacker_receives_resets(self):
         self.execute_command(
             'picoquic',
-            network_options=['--quacker', '--proxy', 'sidekick', '--threshold', '1'],
+            network_options=['--quacker', '--proxy', 'sidekick', '--threshold', '1', '--loss1', '10'],
         )
         self._test_quacker_receives_resets()
 
     def test_picoquic_client_quacker_receives_resets(self):
         self.execute_command(
             'picoquic',
-            network_options=['--proxy', 'sidekick', '--threshold', '1'],
+            network_options=['--proxy', 'sidekick', '--threshold', '1', '--loss1', '10'],
             protocol_options=['--client-quacker'],
         )
         self._test_quacker_receives_resets()

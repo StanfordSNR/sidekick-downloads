@@ -343,7 +343,8 @@ def main(args):
         elif args.proxy == ProxyType.BRIDGE:
             net.start_bridge(proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
-            net.start_sidekick(proxy_logfile)
+            net.start_sidekick(args.threshold, args.quackee_port,
+                logfile=proxy_logfile)
 
         # Start the packet trace collector
         if args.tcpdump:

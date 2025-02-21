@@ -63,6 +63,10 @@ class NetworkTestCase(unittest.TestCase):
         self._stderr = sys.stderr
         sys.stderr = open(os.devnull, 'w')
 
+        # Default parameters
+        self.threshold = 20
+        self.quackee_port = 5252
+
         self.net = None
         self.stopped = True
 
@@ -147,7 +151,7 @@ class TestNetStatistics(NetworkTestCase):
         cwd = os.getcwd()
         os.chdir('..') # run from sidekick base directory
         net = self.setUpOneHopNetwork(bridge_proxy=False)
-        net.start_sidekick(logfile=None)
+        net.start_sidekick(self.threshold, self.quackee_port, logfile=None)
         self.assertSchemaIsCorrect(net, host_ifaces + proxy_ifaces)
         os.chdir(cwd)
 
@@ -272,7 +276,7 @@ class TestNetworkReachability(NetworkTestCase):
         cwd = os.getcwd()
         os.chdir('..') # run from sidekick base directory
         net = self.setUpOneHopNetwork(bridge_proxy=False)
-        net.start_sidekick(logfile=None)
+        net.start_sidekick(self.threshold, self.quackee_port, logfile=None)
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
         os.chdir(cwd)
@@ -296,7 +300,7 @@ class TestNetworkReachability(NetworkTestCase):
         cwd = os.getcwd()
         os.chdir('..')
         net = self.setUpOneHopNetwork(bridge_proxy=False)
-        net.start_sidekick(logfile=None)
+        net.start_sidekick(self.threshold, self.quackee_port, logfile=None)
         self.assertReachable(net.p1, net.h1)
         self.assertReachable(net.p1, net.h2)
         self.assertReachable(net.h1, net.p1)

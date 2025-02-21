@@ -396,7 +396,7 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick(
-        self, logfile, timeout=SETUP_TIMEOUT,
+        self, threshold: int, port: int, logfile: str, timeout=SETUP_TIMEOUT,
         executable='./proxy/target/release/sidekick',
     ):
         condition = threading.Condition()
@@ -409,7 +409,11 @@ class EmulatedNetwork:
         # The cache capacity is currently set arbitrarily larger to 4*cwnd
         # to avoid unnecessary dropping in tests, until we figure out the
         # right value to set it at.
-        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1 --cache-capacity {4 * self.cwnd}',
+        cmd = f'{executable} --client-interface p1-eth0 '\
+              f'--server-interface p1-eth1 --cache-capacity {4 * self.cwnd} '\
+              f'--quack-port {port} --quack-threshold {threshold} '
+
+        self.popen(self.p1, cmd,
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
 
