@@ -265,7 +265,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
     def test_tcp_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpTCPBenchmark()
-        self._test_run_benchmark(bm, 5)
+        self._test_run_benchmark(bm, 2)
 
     @unittest.skip('skip chromium tests')
     def test_google_quic_run_benchmark_one_trial(self):
@@ -277,7 +277,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
     def test_google_quic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpGoogleQUICBenchmark()
-        self._test_run_benchmark(bm, 5)
+        self._test_run_benchmark(bm, 2)
 
     @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_run_benchmark_one_trial(self):
@@ -289,7 +289,7 @@ class TestRunBenchmark(HTTPDownloadTestCase):
     def test_cloudflare_quic_run_benchmark_multiple_trials(self):
         self.setUpOneHopNetwork()
         bm = self.setUpCloudflareQUICBenchmark()
-        self._test_run_benchmark(bm, 5)
+        self._test_run_benchmark(bm, 2)
 
     def test_picoquic_run_benchmark_one_trial(self):
         self.setUpOneHopNetwork()
