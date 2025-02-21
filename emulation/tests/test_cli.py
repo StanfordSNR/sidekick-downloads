@@ -246,13 +246,9 @@ class TestPicoquicBenchmark(CLITestCase):
         self.assertEqual(quacks, [], 'no quacks are received')
 
 
-class TestSidekickProtocolBasic(CLITestCase):
-    def test_discovery(self):
-        self.execute_command_and_check(
-            'picoquic',
-            network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
-        )
 
+class TestSidekickProtocolBasic(CLITestCase):
+    def _test_discovery(self):
         # Proxy receives discovery packet from client
         pattern = 'Received discovery packet from client'
         self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
@@ -270,39 +266,19 @@ class TestSidekickProtocolBasic(CLITestCase):
         self.assertTrue(received_discover_ack, 'received discover ACK')
         self.assertTrue(quacked_after_discover_ack, 'quacked after discover ACK')
 
-    def test_quacker_sends_quacks(self):
-        def _test_frequency(freq_ms, freq_pkts):
-            self.execute_command_and_check(
-                'picoquic',
-                network_options=[
-                    '--quacker', '--debug', '--proxy', 'sidekick',
-                    '--freq-ms', str(freq_ms),
-                    '--freq-pkts', str(freq_pkts),
-                ],
-            )
+    def _test_quacker_sends_quacks(self):
+        # Parse debug output related to the quacker for lines that describe
+        # the number of packets in the sent quacks
+        lines = self.read_logfile(CLIENT_LOGFILE)
+        quacks = self.parse_quacks(lines)
 
-            # Parse debug output related to the quacker for lines that describe
-            # the number of packets in the sent quacks
-            lines = self.read_logfile(CLIENT_LOGFILE)
-            quacks = self.parse_quacks(lines)
+        # The number of packets in each sent quack is increasing
+        self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
+        self.assertGreaterEqual(len(quacks), 2, 'should send more at this freq')
+        for i in range(len(quacks) - 1):
+            self.assertLessEqual(quacks[i], quacks[i+1], quacks)
 
-            # The number of packets in each sent quack is increasing
-            self.assertGreater(len(quacks), 0, 'sent at least 1 quack')
-            self.assertGreaterEqual(len(quacks), 2, 'should send more at this freq')
-            for i in range(len(quacks) - 1):
-                self.assertLessEqual(quacks[i], quacks[i+1], quacks)
-
-        _test_frequency(100, 0)
-        _test_frequency(0, 8)
-        _test_frequency(50, 20)
-
-    def _test_sidekick_receives_quacks(self, protocol, add_network_options, protocol_options):
-        self.execute_command_and_check(
-            protocol,
-            network_options=['--debug', '--proxy', 'sidekick'] + add_network_options,
-            protocol_options=protocol_options,
-        )
-
+    def _test_sidekick_receives_quacks(self):
         # Parse router logfile for number of packets in the received quACKs
         lines = self.read_logfile(ROUTER_LOGFILE)
         quacks = self.parse_quacks(lines)
@@ -313,15 +289,48 @@ class TestSidekickProtocolBasic(CLITestCase):
         for i in range(len(quacks) - 1):
             self.assertLessEqual(quacks[i], quacks[i+1], quacks)
 
-    def test_sidekick_receives_sniffer_quacks(self):
-        self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '100', '--freq-pkts', '0'], [])
-        self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
-        self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
+    def execute_sidekick_command_and_check(
+        self, protocol, add_network_options=[], add_protocol_options=[],
+    ):
+        self.execute_command_and_check(
+            protocol,
+            ['--debug', '--proxy', 'sidekick'] + add_network_options,
+            add_protocol_options,
+        )
+        self._test_discovery()
+        self._test_quacker_sends_quacks()
+        self._test_sidekick_receives_quacks()
 
-    def test_sidekick_receives_picoquic_client_quacks(self):
-        self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '100', '--freq-pkts', '0'], ['--client-quacker'])
-        self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '0', '--freq-pkts', '8'], ['--client-quacker'])
-        self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '50', '--freq-pkts', '20'], ['--client-quacker'])
+    def test_sniffing_quacker_default(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', add_network_options=['--quacker'])
+
+    def test_picoquic_client_quacker_default(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic',
+            add_protocol_options=['--client-quacker'],
+        )
+
+    def test_sniffing_quacker_different_frequencies(self):
+        def test(freq_ms, freq_pkts):
+            add_network_options = ['--quacker']
+            add_network_options += ['--freq-ms', str(freq_ms)]
+            add_network_options += ['--freq-pkts', str(freq_pkts)]
+            self.execute_sidekick_command_and_check('picoquic', add_network_options)
+        test(100, 0)
+        test(0, 8)
+        test(50, 20)
+
+    def test_picoquic_client_quacker_different_frequencies(self):
+        def test(freq_ms, freq_pkts):
+            add_network_options = ['--freq-ms', str(freq_ms)]
+            add_network_options += ['--freq-pkts', str(freq_pkts)]
+            self.execute_sidekick_command_and_check(
+                'picoquic', add_network_options, ['--client-quacker'],
+            )
+        test(100, 0)
+        test(0, 8)
+        test(50, 20)
 
 
 class TestSidekickProtocolReset(CLITestCase):
