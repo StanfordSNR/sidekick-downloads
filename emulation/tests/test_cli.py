@@ -87,6 +87,25 @@ class CLITestCase(unittest.TestCase):
             else:
                 return f.read()
 
+    def execute_command_and_check(
+        self,
+        protocol,
+        network_options: List[str]=[],
+        protocol_options: List[str]=[],
+    ):
+        stdout, stderr = self.execute_command(
+            protocol, network_options, protocol_options)
+        self.assertNotEqual(stdout, '', 'results are logged to stdout')
+        lines = self.parse_json_lines(stdout)
+        self.assertEqual(len(lines), 1)
+        line = lines[0]
+        self.assertIn('inputs', line)
+        self.assertIn('outputs', line)
+        outputs = line['outputs']
+        self.assertEqual(len(outputs), 1)
+        self.assertTrue(outputs[0].get('success'))
+        return (stdout, stderr)
+
 
 class TestCommandLineOptions(CLITestCase):
     def setUp(self):
@@ -147,70 +166,51 @@ class TestCommandLineOptions(CLITestCase):
 
 
 class TestFileDownloadBenchmarks(CLITestCase):
-    def _test_file_download_benchmark(
-        self,
-        protocol,
-        network_options: List[str]=[],
-        protocol_options: List[str]=[],
-    ):
-        stdout, stderr = self.execute_command(
-            protocol, network_options, protocol_options)
-        self.assertNotEqual(stdout, '', 'results are logged to stdout')
-        lines = self.parse_json_lines(stdout)
-        self.assertEqual(len(lines), 1)
-        line = lines[0]
-        self.assertIn('inputs', line)
-        self.assertIn('outputs', line)
-        outputs = line['outputs']
-        self.assertEqual(len(outputs), 1)
-        self.assertTrue(outputs[0].get('success'))
-        return (stdout, stderr)
-
     @unittest.skip('skip chromium tests')
     def test_google_quic_benchmark_default(self):
-        self._test_file_download_benchmark('quic')
+        self.execute_command_and_check('quic')
 
     @unittest.skip('skip chromium tests')
     def test_google_quic_benchmark_with_proxy(self):
-        self._test_file_download_benchmark('quic', ['--proxy', 'sidekick'])
+        self.execute_command_and_check('quic', ['--proxy', 'sidekick'])
 
     @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_benchmark_default(self):
-        self._test_file_download_benchmark('quiche')
+        self.execute_command_and_check('quiche')
 
     @unittest.skip('skip cloudflare tests')
     def test_cloudflare_quic_benchmark_with_proxy(self):
-        self._test_file_download_benchmark('quiche', ['--proxy', 'sidekick'])
+        self.execute_command_and_check('quiche', ['--proxy', 'sidekick'])
 
     def test_tcp_benchmark_default(self):
-        self._test_file_download_benchmark('tcp')
+        self.execute_command_and_check('tcp')
 
     def test_tcp_benchmark_with_pepsal(self):
-        self._test_file_download_benchmark('tcp', ['--proxy', 'pepsal'])
+        self.execute_command_and_check('tcp', ['--proxy', 'pepsal'])
         output = self.read_logfile(ROUTER_LOGFILE, lines=False)
         self.assertIn('Saving new SYN', output)
 
     def test_tcp_benchmark_with_bridge(self):
-        self._test_file_download_benchmark('tcp', ['--proxy', 'bridge'])
+        self.execute_command_and_check('tcp', ['--proxy', 'bridge'])
 
     def test_tcp_benchmark_with_sidekick(self):
-        self._test_file_download_benchmark('tcp', ['--proxy', 'sidekick'])
+        self.execute_command_and_check('tcp', ['--proxy', 'sidekick'])
 
     def test_picoquic_benchmark_default(self):
-        self._test_file_download_benchmark('picoquic')
+        self.execute_command_and_check('picoquic')
 
     def test_picoquic_benchmark_with_bridge(self):
-        self._test_file_download_benchmark('picoquic', ['--proxy', 'bridge'])
+        self.execute_command_and_check('picoquic', ['--proxy', 'bridge'])
 
     def test_picoquic_benchmark_with_sidekick(self):
-        self._test_file_download_benchmark('picoquic', ['--proxy', 'sidekick'])
+        self.execute_command_and_check('picoquic', ['--proxy', 'sidekick'])
 
     def test_picoquic_benchmark_with_ack_delay(self):
-        self._test_file_download_benchmark('picoquic', protocol_options=['--ack-delay', '50'])
+        self.execute_command_and_check('picoquic', protocol_options=['--ack-delay', '50'])
 
     def test_quacker_prints_quacks(self):
         def _test_frequency(freq_ms, freq_pkts):
-            _, stderr = self._test_file_download_benchmark(
+            self.execute_command_and_check(
                 'picoquic',
                 network_options=[
                     '--quacker', '--debug', '--proxy', 'sidekick',
@@ -235,7 +235,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         _test_frequency(50, 20)
 
     def _test_sidekick_receives_quacks(self, protocol, add_network_options, protocol_options):
-        self._test_file_download_benchmark(
+        self.execute_command_and_check(
             protocol,
             network_options=['--debug', '--proxy', 'sidekick'] + add_network_options,
             protocol_options=protocol_options,
@@ -257,7 +257,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
     def test_discovery(self):
-        self.execute_command(
+        self.execute_command_and_check(
             'picoquic',
             network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
         )
@@ -285,7 +285,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '50', '--freq-pkts', '20'], ['--client-quacker'])
 
     def test_picoquic_client_does_not_quack_by_default(self):
-        self._test_file_download_benchmark('picoquic', ['--debug', '--proxy', 'sidekick'])
+        self.execute_command_and_check('picoquic', ['--debug', '--proxy', 'sidekick'])
         lines = self.read_logfile(ROUTER_LOGFILE)
         quacks = self.parse_quacks(lines)
         self.assertEqual(quacks, [], 'no quacks are received')
@@ -312,7 +312,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
         network_options = ['--tcpdump']
-        self.execute_command('picoquic', network_options)
+        self.execute_command_and_check('picoquic', network_options)
         entries = os.listdir(self.logdir)
         self.assertGreater(len(entries), 0, entries)
         hosts = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
@@ -325,7 +325,7 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_perf(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
         network_options = ['--perf', '--proxy', 'pepsal']
-        self.execute_command('tcp', network_options)
+        self.execute_command_and_check('tcp', network_options)
         entries = os.listdir(self.logdir)
         self.assertGreater(len(entries), 0, entries)
         logfiles = [CLIENT_LOGFILE, SERVER_LOGFILE, ROUTER_LOGFILE]
