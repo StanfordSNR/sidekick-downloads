@@ -95,6 +95,23 @@ def benchmark_picoquic(net, args):
     print(result.json())
 
 
+def benchmark_media(net, args):
+    bm = MediaBenchmark(
+        net,
+        label=args.label,
+        logdir=args.logdir,
+        duration=args.duration,
+        frequency=args.frequency,
+        proxy_type=args.proxy,
+    )
+    result = bm.run_benchmark(
+        args.trials,
+        args.timeout,
+        args.network_statistics,
+    )
+    print(result.json())
+
+
 def benchmark_iperf3(net, args):
     bm = Iperf3Benchmark(
         net,
@@ -289,6 +306,20 @@ def parse_args(argv=None):
         help='Path to SSL certificate')
     picoquic.add_argument('--keyfile', type=str, default=DEFAULT_SSL_KEYFILE_TCP,
         help='Path to SSL key')
+
+    ###########################################################################
+    # Media Benchmark
+    ###########################################################################
+    media = subparsers.add_parser(
+        'media',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    media.set_defaults(ty='benchmark', benchmark=benchmark_media)
+    media.add_argument('--duration', type=int, default=1, metavar='SECS',
+        help='Number of seconds to stream data before sending a timeout.')
+    media.add_argument('--frequency', type=int, default=20, metavar='MS',
+        help='Frequency at which to send data packets. The payload size is '\
+             '240 bytes.')
 
     ###########################################################################
     # Iperf3 + TCP Benchmark
