@@ -59,6 +59,34 @@ class CLITestCase(unittest.TestCase):
         argv += protocol_options
         main(parse_args(argv))
 
+    def parse_json_lines(self, output):
+        lines = []
+        for line in output.split('\n'):
+            try:
+                line = json.loads(line)
+                lines.append(line)
+            except json.decoder.JSONDecodeError:
+                continue
+        return lines
+
+    def parse_quacks(self, lines: List[str]) -> List[int]:
+        quacks = []
+        pattern = r'DEBUG .* quack (\d+)'
+        for line in lines:
+            match = re.search(pattern, line)
+            if not match:
+                continue
+            num_packets = int(match.group(1))
+            quacks.append(num_packets)
+        return quacks
+
+    def read_logfile(self, filename: str, lines: bool=True):
+        with open(f'{self.logdir}/{filename}', 'r') as f:
+            if lines:
+                return f.readlines()
+            else:
+                return f.read()
+
 
 class TestCommandLineOptions(CLITestCase):
     def setUp(self):
@@ -119,16 +147,6 @@ class TestCommandLineOptions(CLITestCase):
 
 
 class TestFileDownloadBenchmarks(CLITestCase):
-    def parse_json_lines(self, output):
-        lines = []
-        for line in output.split('\n'):
-            try:
-                line = json.loads(line)
-                lines.append(line)
-            except json.decoder.JSONDecodeError:
-                continue
-        return lines
-
     def _test_file_download_benchmark(
         self,
         protocol,
@@ -189,24 +207,6 @@ class TestFileDownloadBenchmarks(CLITestCase):
 
     def test_picoquic_benchmark_with_ack_delay(self):
         self._test_file_download_benchmark('picoquic', protocol_options=['--ack-delay', '50'])
-
-    def parse_quacks(self, lines: List[str]) -> List[int]:
-        quacks = []
-        pattern = r'DEBUG .* quack (\d+)'
-        for line in lines:
-            match = re.search(pattern, line)
-            if not match:
-                continue
-            num_packets = int(match.group(1))
-            quacks.append(num_packets)
-        return quacks
-
-    def read_logfile(self, filename: str, lines: bool=True):
-        with open(f'{self.logdir}/{filename}', 'r') as f:
-            if lines:
-                return f.readlines()
-            else:
-                return f.read()
 
     def test_quacker_prints_quacks(self):
         def _test_frequency(freq_ms, freq_pkts):
