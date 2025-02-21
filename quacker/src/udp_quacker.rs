@@ -1,7 +1,7 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use bincode;
-use log::{info, error, warn};
+use log::{debug, info, error, warn};
 use socket2::{Socket, Domain, Type, SockAddr};
 
 use quack::{PowerSumQuack, PowerSumQuackU32};
@@ -158,7 +158,9 @@ impl Quacker for UdpQuacker {
 
     fn send_quack(&mut self, time_ms: u64) {
         self.quacker.send_quack(time_ms);
-        let bytes = bincode::serialize(&self.get_quack()).unwrap();
+        let quack = self.get_quack();
+        debug!("quack {}", quack.count());
+        let bytes = bincode::serialize(&quack).unwrap();
         self.src_sock.send_to(&bytes, self.dst_addr).unwrap();
     }
 }

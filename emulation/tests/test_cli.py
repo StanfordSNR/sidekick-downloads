@@ -256,15 +256,16 @@ class TestSidekickProtocolBasic(CLITestCase):
         # Client quacks only after receiving discover ack
         received_discover_ack = False
         quacked_after_discover_ack = False
-        for line in self.read_logfile(CLIENT_LOGFILE):
+        lines = self.read_logfile(CLIENT_LOGFILE)
+        for line in lines:
             if 'Received DiscoverACK from proxy' in line:
                 received_discover_ack = True
             if re.search(r'DEBUG .* quack (\d+)', line):
                 self.assertTrue(received_discover_ack, 'client quacked before receiving a discover ACK')
                 quacked_after_discover_ack = True
                 break
-        self.assertTrue(received_discover_ack, 'received discover ACK')
-        self.assertTrue(quacked_after_discover_ack, 'quacked after discover ACK')
+        self.assertTrue(received_discover_ack, lines)
+        self.assertTrue(quacked_after_discover_ack, lines)
 
     def _test_quacker_sends_quacks(self):
         # Parse debug output related to the quacker for lines that describe

@@ -10,7 +10,6 @@ use sidekick_utils::discovery::{NUM_DISCOVERY_PKTS, DISCOVERY_FREQ_MS};
 use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
-use quack::PowerSumQuack;
 use quacker::{Quacker, UdpQuacker, current_time_ms};
 
 
@@ -47,9 +46,7 @@ async fn send_quacks(
         {
             let mut q = quacker.lock().await;
             let time_ms = current_time_ms();
-            if q.update_time(time_ms) {
-                debug!("quack {}", q.get_quack().count());
-            }
+            q.update_time(time_ms);
         }
     }
 }
@@ -130,9 +127,7 @@ async fn start_sniffer(
         {
             let mut q = quacker.lock().await;
             let time_ms = current_time_ms();
-            if q.insert(time_ms, id) {
-                debug!("quack {}", q.get_quack().count());
-            }
+            q.insert(time_ms, id);
             drop(q);
         }
     }
