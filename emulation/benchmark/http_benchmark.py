@@ -20,12 +20,6 @@ class Protocol(Enum):
     PICOQUIC = 3
 
 
-class ProxyType(Enum):
-    PEPSAL = 'pepsal'
-    BRIDGE = 'bridge'
-    SIDEKICK = 'sidekick'
-
-
 @dataclass(frozen=True)
 class HTTPClientOutput:
     status_code: int
