@@ -552,7 +552,8 @@ class OneHopNetwork(EmulatedNetwork):
         self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
         self._config_iface('e2-eth1', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
 
-        # Save the cwnd
+        # Save network statistics
+        self.rtt = rtt
         self.cwnd = self._calculate_cwnd(bdp)
 
     def setup_router_node(self, node):
