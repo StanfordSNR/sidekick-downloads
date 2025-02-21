@@ -165,7 +165,7 @@ class TestCommandLineOptions(CLITestCase):
         self.assertEqual(mock_start_client_quacker.call_count, 2)
 
 
-class TestFileDownloadBenchmarks(CLITestCase):
+class TestNetworkOptions(CLITestCase):
     @unittest.skip('skip chromium tests')
     def test_google_quic_benchmark_default(self):
         self.execute_command_and_check('quic')
@@ -196,11 +196,42 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_tcp_benchmark_with_sidekick(self):
         self.execute_command_and_check('tcp', ['--proxy', 'sidekick'])
 
-    def test_picoquic_benchmark_default(self):
-        self.execute_command_and_check('picoquic')
-
-    def test_picoquic_benchmark_with_bridge(self):
+    def test_udp_benchmark_with_bridge(self):
         self.execute_command_and_check('picoquic', ['--proxy', 'bridge'])
+
+    def test_udp_benchmark_with_sidekick(self):
+        self.execute_command_and_check('picoquic', ['--proxy', 'sidekick'])
+
+    def test_tcpdump(self):
+        self.assertEqual(len(os.listdir(self.logdir)), 0)
+        network_options = ['--tcpdump']
+        self.execute_command_and_check('picoquic', network_options)
+        entries = os.listdir(self.logdir)
+        self.assertGreater(len(entries), 0, entries)
+        hosts = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
+        for host in hosts:
+            self.assertIn(f'{host}.pcap', entries, host)
+        for host in hosts:
+            file_size = os.path.getsize(f'{self.logdir}/{host}.pcap')
+            self.assertGreater(file_size, 0, host)
+
+    def test_perf(self):
+        self.assertEqual(len(os.listdir(self.logdir)), 0)
+        network_options = ['--perf', '--proxy', 'pepsal']
+        self.execute_command_and_check('tcp', network_options)
+        entries = os.listdir(self.logdir)
+        self.assertGreater(len(entries), 0, entries)
+        logfiles = [CLIENT_LOGFILE, SERVER_LOGFILE, ROUTER_LOGFILE]
+        for logfile in logfiles:
+            self.assertIn(f'{logfile}.perf', entries, logfile)
+        for logfile in logfiles:
+            file_size = os.path.getsize(f'{self.logdir}/{logfile}.perf')
+            self.assertGreater(file_size, 0, logfile)
+
+
+class TestPicoquicBenchmark(CLITestCase):
+    def test_picoquic_benchmark_simple(self):
+        self.execute_command_and_check('picoquic')
 
     def test_picoquic_benchmark_with_sidekick(self):
         self.execute_command_and_check('picoquic', ['--proxy', 'sidekick'])
@@ -208,7 +239,38 @@ class TestFileDownloadBenchmarks(CLITestCase):
     def test_picoquic_benchmark_with_ack_delay(self):
         self.execute_command_and_check('picoquic', protocol_options=['--ack-delay', '50'])
 
-    def test_quacker_prints_quacks(self):
+    def test_picoquic_client_does_not_quack_by_default(self):
+        self.execute_command_and_check('picoquic', ['--debug', '--proxy', 'sidekick'])
+        lines = self.read_logfile(ROUTER_LOGFILE)
+        quacks = self.parse_quacks(lines)
+        self.assertEqual(quacks, [], 'no quacks are received')
+
+
+class TestSidekickProtocolBasic(CLITestCase):
+    def test_discovery(self):
+        self.execute_command_and_check(
+            'picoquic',
+            network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
+        )
+
+        # Proxy receives discovery packet from client
+        pattern = 'Received discovery packet from client'
+        self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
+
+        # Client quacks only after receiving discover ack
+        received_discover_ack = False
+        quacked_after_discover_ack = False
+        for line in self.read_logfile(CLIENT_LOGFILE):
+            if 'Received DiscoverACK from proxy' in line:
+                received_discover_ack = True
+            if re.search(r'DEBUG .* quack (\d+)', line):
+                self.assertTrue(received_discover_ack, 'client quacked before receiving a discover ACK')
+                quacked_after_discover_ack = True
+                break
+        self.assertTrue(received_discover_ack, 'received discover ACK')
+        self.assertTrue(quacked_after_discover_ack, 'quacked after discover ACK')
+
+    def test_quacker_sends_quacks(self):
         def _test_frequency(freq_ms, freq_pkts):
             self.execute_command_and_check(
                 'picoquic',
@@ -256,40 +318,13 @@ class TestFileDownloadBenchmarks(CLITestCase):
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '0', '--freq-pkts', '8'], [])
         self._test_sidekick_receives_quacks('picoquic', ['--quacker', '--freq-ms', '50', '--freq-pkts', '20'], [])
 
-    def test_discovery(self):
-        self.execute_command_and_check(
-            'picoquic',
-            network_options=['--quacker', '--proxy', 'sidekick', '--debug'],
-        )
-
-        # Proxy receives discovery packet from client
-        pattern = 'Received discovery packet from client'
-        self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
-
-        # Client quacks only after receiving discover ack
-        received_discover_ack = False
-        quacked_after_discover_ack = False
-        for line in self.read_logfile(CLIENT_LOGFILE):
-            if 'Received DiscoverACK from proxy' in line:
-                received_discover_ack = True
-            if re.search(r'DEBUG .* quack (\d+)', line):
-                self.assertTrue(received_discover_ack, 'client quacked before receiving a discover ACK')
-                quacked_after_discover_ack = True
-                break
-        self.assertTrue(received_discover_ack, 'received discover ACK')
-        self.assertTrue(quacked_after_discover_ack, 'quacked after discover ACK')
-
     def test_sidekick_receives_picoquic_client_quacks(self):
         self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '100', '--freq-pkts', '0'], ['--client-quacker'])
         self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '0', '--freq-pkts', '8'], ['--client-quacker'])
         self._test_sidekick_receives_quacks('picoquic', ['--freq-ms', '50', '--freq-pkts', '20'], ['--client-quacker'])
 
-    def test_picoquic_client_does_not_quack_by_default(self):
-        self.execute_command_and_check('picoquic', ['--debug', '--proxy', 'sidekick'])
-        lines = self.read_logfile(ROUTER_LOGFILE)
-        quacks = self.parse_quacks(lines)
-        self.assertEqual(quacks, [], 'no quacks are received')
 
+class TestSidekickProtocolReset(CLITestCase):
     def _test_quacker_receives_resets(self):
         self.assertIn('InvalidThreshold', self.read_logfile(ROUTER_LOGFILE, lines=False))
         self.assertIn('Received Reset', self.read_logfile(CLIENT_LOGFILE, lines=False))
@@ -308,29 +343,3 @@ class TestFileDownloadBenchmarks(CLITestCase):
             protocol_options=['--client-quacker'],
         )
         self._test_quacker_receives_resets()
-
-    def test_tcpdump(self):
-        self.assertEqual(len(os.listdir(self.logdir)), 0)
-        network_options = ['--tcpdump']
-        self.execute_command_and_check('picoquic', network_options)
-        entries = os.listdir(self.logdir)
-        self.assertGreater(len(entries), 0, entries)
-        hosts = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
-        for host in hosts:
-            self.assertIn(f'{host}.pcap', entries, host)
-        for host in hosts:
-            file_size = os.path.getsize(f'{self.logdir}/{host}.pcap')
-            self.assertGreater(file_size, 0, host)
-
-    def test_perf(self):
-        self.assertEqual(len(os.listdir(self.logdir)), 0)
-        network_options = ['--perf', '--proxy', 'pepsal']
-        self.execute_command_and_check('tcp', network_options)
-        entries = os.listdir(self.logdir)
-        self.assertGreater(len(entries), 0, entries)
-        logfiles = [CLIENT_LOGFILE, SERVER_LOGFILE, ROUTER_LOGFILE]
-        for logfile in logfiles:
-            self.assertIn(f'{logfile}.perf', entries, logfile)
-        for logfile in logfiles:
-            file_size = os.path.getsize(f'{self.logdir}/{logfile}.perf')
-            self.assertGreater(file_size, 0, logfile)
