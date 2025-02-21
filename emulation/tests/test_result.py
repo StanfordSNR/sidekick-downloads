@@ -5,18 +5,15 @@ import unittest
 import json
 from abc import ABC, abstractmethod
 
-from benchmark import HTTPBenchmarkResult
+from benchmark import HTTPBenchmarkResult, MediaBenchmarkResult
 
-class TestBenchmarkResult(ABC):
+class TestBenchmarkResult(ABC, unittest.TestCase):
     DEFAULT_TIME_S = 100
     DEFAULT_ADDL_DATA = 'additional_data'
 
     def setUp(self):
         # Default parameters
         self.label = 'my_label'
-        self.protocol = 'TCP'
-        self.data_size = 1000
-        self.cca = 'cubic'
         self.proxy_type = 'pepsal'
 
     def appendTrial(self, res):
@@ -25,17 +22,15 @@ class TestBenchmarkResult(ABC):
         '''
         res.append_new_output()
 
-    @abstractmethod
     def appendConnection(self, res):
         '''Indicate the beginning of a new iteration within a trial,
-        if applicable.
+        if applicable. Default no-op.
         Input: a BenchmarkResult.
         '''
         pass
 
-    @abstractmethod
     def completeTrial(self, res):
-        '''Indicate the end of a trial.
+        '''Indicate the end of a trial. Default no-op.
         Input: a BenchmarkResult.
         '''
         pass
@@ -74,15 +69,13 @@ class TestBenchmarkResult(ABC):
         # Check inputs
         inputs = x['inputs']
         self.assertEqual(inputs.get('label'), self.label)
-        self.assertEqual(inputs.get('protocol'), self.protocol)
-        self.assertEqual(inputs.get('data_size'), self.data_size)
-        self.assertEqual(inputs.get('cca'), self.cca)
         self.assertEqual(inputs.get('proxy_type'), self.proxy_type)
         self.assertIsInstance(inputs.get('start_time'), str)
         self.assertEqual(inputs.get('num_trials'), 0)
 
         # Check outputs
         self.assertEqual(x['outputs'], [])
+        return inputs
 
     def _test_append_one_output(self, res):
         # Append one output
@@ -182,16 +175,12 @@ class TestBenchmarkResult(ABC):
         self.completeTrial(res)
 
 
-
-class TestHTTPBenchmarkResult(TestBenchmarkResult, unittest.TestCase):
-
-    def appendConnection(self, res):
-        # No-op
-        return
-
-    def completeTrial(self, res):
-        # No-op
-        return
+class TestHTTPBenchmarkResult(TestBenchmarkResult):
+    def setUp(self):
+        super().setUp()
+        self.protocol = 'TCP'
+        self.data_size = 1000
+        self.cca = 'cubic'
 
     def connectionOutput(self, res_json: str, n_trial: int, n_conn: int) -> str:
         return res_json['outputs'][n_trial]
@@ -202,7 +191,10 @@ class TestHTTPBenchmarkResult(TestBenchmarkResult, unittest.TestCase):
     def test_initialize_result(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
                             self.cca, self.proxy_type)
-        super()._test_initialize_result(res)
+        inputs = super()._test_initialize_result(res)
+        self.assertEqual(inputs.get('protocol'), self.protocol)
+        self.assertEqual(inputs.get('data_size'), self.data_size)
+        self.assertEqual(inputs.get('cca'), self.cca)
 
     def test_append_one_output(self):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
@@ -218,3 +210,37 @@ class TestHTTPBenchmarkResult(TestBenchmarkResult, unittest.TestCase):
         res = HTTPBenchmarkResult(self.label, self.protocol, self.data_size,
                                   self.cca, self.proxy_type)
         super()._test_additional_data(res)
+
+
+class TestMediaBenchmarkResult(TestBenchmarkResult):
+    def connectionOutput(self, res_json: str, n_trial: int, n_conn: int) -> str:
+        return res_json['outputs'][n_trial]
+
+    def trialOutput(self, res_json: str, n: int) -> str:
+        return res_json['outputs'][n]
+
+    def test_initialize_result(self):
+        res = MediaBenchmarkResult(self.label, self.proxy_type)
+        inputs = super()._test_initialize_result(res)
+        self.assertEqual(inputs.get('protocol'), 'media')
+
+    def test_base_class_functions(self):
+        res = MediaBenchmarkResult(self.label, self.proxy_type)
+        self._test_append_one_output(res)
+        res = MediaBenchmarkResult(self.label, self.proxy_type)
+        self._test_append_multiple_outputs(res)
+        res = MediaBenchmarkResult(self.label, self.proxy_type)
+        self._test_additional_data(res)
+
+    def test_set_latencies(self):
+        res = MediaBenchmarkResult(self.label, self.proxy_type)
+        res.append_new_output()
+        res.set_success(True)
+        res.set_client_latencies([1, 2, 3])
+        res.set_server_latencies([4, 5, 6])
+        x = json.loads(res.json())
+        self.assertIn('outputs', x)
+        self.assertEqual(len(x['outputs']), 1)
+        output = x['outputs'][0]
+        self.assertEqual(output.get('client_latencies'), [1, 2, 3])
+        self.assertEqual(output.get('server_latencies'), [4, 5, 6])

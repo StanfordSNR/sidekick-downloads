@@ -1,10 +1,10 @@
 import json
 from datetime import datetime
 from abc import ABC, abstractmethod
+from typing import List
 
 class BenchmarkResult(ABC):
-    def __init__(self, label: str, protocol: str, data_size: int, cca: str,
-                 proxy_type: str):
+    def __init__(self, label: str, protocol: str, proxy_type: str):
         """Initialize the data structure for tracking benchmark results over
         multiple trials.
         """
@@ -13,8 +13,6 @@ class BenchmarkResult(ABC):
             'protocol': protocol,
             'num_trials': 0,
             'start_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'data_size': data_size,
-            'cca': cca,
             'proxy_type': proxy_type,
         }
         self._outputs = []
@@ -50,8 +48,10 @@ class BenchmarkResult(ABC):
         """Set the request latency for the most recent iteration.
         """
         self.curr_output()['time_s'] = time_s
-        self.curr_output()['throughput_mbps'] = \
-            8 * self.inputs['data_size'] / 1000000 / time_s
+        data_size = self.inputs.get('data_size')
+        if data_size is not None:
+            self.curr_output()['throughput_mbps'] = \
+                8 * data_size / 1000000 / time_s
 
     def set_network_statistics(self, statistics: dict):
         """Set the network statistics for the most recent iteration.
@@ -114,6 +114,7 @@ class HTTPBenchmarkResult(BenchmarkResult):
                     'success': bool, # required
                     'timeout': bool,
                     'time_s': float,
+                    'throughput_mbps': float,
                     'statistics': {
                         'ifaces': [str],
                         'tx_packets': [int],
@@ -129,7 +130,9 @@ class HTTPBenchmarkResult(BenchmarkResult):
 
     def __init__(self, label: str, protocol: str, data_size: int, cca: str,
                  proxy_type: str):
-        super().__init__(label, protocol, data_size, cca, proxy_type)
+        super().__init__(label, protocol, proxy_type)
+        self.inputs['data_size'] = data_size
+        self.inputs['cca'] = cca
 
     def curr_output(self) -> dict:
         """Current trial. Only one connection per trial.
@@ -137,3 +140,47 @@ class HTTPBenchmarkResult(BenchmarkResult):
         assert len(self.outputs) > 0
         return self.outputs[-1]
 
+
+class MediaBenchmarkResult(BenchmarkResult):
+    """Tracks results over multiple trials. Each trial includes the result of
+    a single media client connection.
+
+    Schema:
+        {
+            'inputs': { # required
+                'label': str,
+                'protocol': str,
+                'num_trials': int,
+                'start_time': str,
+                'proxy_type': str
+            },
+            'outputs': [
+                {
+                    'success': bool, # required
+                    'time_s': float,
+                    'statistics': {
+                        'ifaces': [str],
+                        'tx_packets': [int],
+                        'tx_bytes': [int],
+                        'rx_packets': [int],
+                        'rx_bytes': [int]
+                    },
+                    'client_latencies': [int],
+                    'server_latencies': [int]
+                }
+            ]
+        }
+    """
+
+    def __init__(self, label: str, proxy_type: str):
+        super().__init__(label, 'media', proxy_type)
+
+    def curr_output(self) -> dict:
+        assert len(self.outputs) > 0
+        return self.outputs[-1]
+
+    def set_client_latencies(self, client_latencies: List[int]):
+        self.curr_output()['client_latencies'] = client_latencies
+
+    def set_server_latencies(self, server_latencies: List[int]):
+        self.curr_output()['server_latencies'] = server_latencies
