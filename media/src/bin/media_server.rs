@@ -1,7 +1,5 @@
 //! Receives dummy WebRTC messages on a UDP socket.
 //!
-//! The first four bytes of the payload indicate a packet sequence number.
-//! The sequence numbers start at 1.
 //! Store the incoming packets in a buffer and play them as soon as the next
 //! packet in the sequence is available. If it ever detects a loss i.e. a
 //! packet is missing after 3 later packets have been received, send a NACK
@@ -17,16 +15,14 @@ use clap::Parser;
 use log::{debug, trace};
 use tokio::net::UdpSocket;
 use tokio::time::{Duration, Instant};
-use media::{Statistics, BufferedPackets};
+use media::{TIMEOUT_SEQNO, PAYLOAD_SIZE};
+use media::{Statistics, BufferedPackets, Packet};
 
 #[derive(Parser)]
 struct Cli {
     /// Port to listen on.
     #[arg(long, default_value_t = 5201)]
     port: u16,
-    /// Number of bytes to expect in the payload.
-    #[arg(long, short, default_value_t = 240)]
-    bytes: usize,
     /// End-to-end RTT in ms, which is also how often to resend NACKs.
     #[arg(long)]
     rtt: u64,
@@ -34,8 +30,6 @@ struct Cli {
     #[arg(long = "loop")]
     should_loop: bool,
 }
-
-const TIMEOUT_SEQNO: u32 = u32::MAX;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
@@ -53,25 +47,26 @@ async fn main() -> io::Result<()> {
     loop {
         let mut stats = Statistics::new();
         let mut pkts = BufferedPackets::new();
-        let mut buf = vec![0; args.bytes];
+        let mut payload = [0; PAYLOAD_SIZE];
         debug!("webrtc server is now listening");
         loop {
-            let (len, addr) = sock.recv_from(&mut buf).await?;
-            assert_eq!(len, args.bytes);
-            let seqno = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
-            trace!("received seqno {} ({} bytes)", seqno, len);
-            if seqno == TIMEOUT_SEQNO {
+            let (len, addr) = sock.recv_from(&mut payload).await?;
+            assert_eq!(len, PAYLOAD_SIZE);
+            let packet = Packet::from_payload(&payload);
+            trace!("received seqno {} ({} bytes)", packet.seqno, len);
+            assert!(!packet.is_nack);
+            if packet.seqno == TIMEOUT_SEQNO {
                 debug!("timeout message received");
                 break;
             }
             let now = Instant::now();
-            pkts.recv_seqno(seqno, now);
+            pkts.recv_seqno(packet.seqno, now);
             while let Some(time_recv) = pkts.pop_seqno() {
                 stats.add_value(now - time_recv);
             }
             for seqno in pkts.nacks_to_send(now, nack_frequency) {
-                let buf = seqno.to_be_bytes();
-                sock.send_to(&buf, addr).await?;
+                Packet::new_nack(seqno).fill_payload(&mut payload);
+                sock.send_to(&payload, addr).await?;
             }
         }
 
@@ -85,7 +80,7 @@ async fn main() -> io::Result<()> {
 
         // Process remaining timeout messages.
         tokio::time::sleep(Duration::from_secs(1)).await;
-        while sock.try_recv(&mut buf).is_ok() {}
+        while sock.try_recv(&mut payload).is_ok() {}
     }
     Ok(())
 }
