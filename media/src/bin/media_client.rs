@@ -7,33 +7,16 @@
 //! stream.) When <TIMEOUT> time has elapsed, send a timeout packet where the
 //! sequence number is the max u32 integer. On receiving a NACK, retransmit
 //! the missing packet that was identified in the NACK.
-//!
-//! When using a quACK, immediately retransmit missing packets from the quACK
-//! i.e. a packet is missing after 3 later packets have been received. If the
-//! quACK is undecodeable, send a reset message to the socket address from
-//! which the quACK was sent.
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use log::{debug, info, trace};
-use quack::arithmetic::{self, ModularArithmetic};
-use quack::{PowerSumQuack, PowerSumQuackU32, StrawmanAQuack, StrawmanBQuack};
 use rand::Rng;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
-use tokio::sync::Mutex; // locked across calls to .await
 use tokio::time::{Duration, Instant};
-
-#[derive(ValueEnum, PartialEq, Debug, Clone, Copy)]
-#[clap(rename_all = "snake_case")]
-enum QuackStyle {
-    StrawmanA,
-    StrawmanB,
-    StrawmanC,
-    PowerSum,
-}
 
 #[derive(Parser)]
 struct Cli {
@@ -49,18 +32,6 @@ struct Cli {
     /// Frequency at which to send packets, in milliseconds.
     #[arg(long, short, default_value_t = 20)]
     frequency: u64,
-    /// Style of quack to expect.
-    #[arg(long, value_enum)]
-    quack_style: Option<QuackStyle>,
-    /// Port to listen on for quACKs.
-    #[arg(long, default_value_t = 5103)]
-    quack_port: u16,
-    /// Address to send quACK resets too.
-    #[arg(long, default_value = "10.42.0.1:1234")]
-    reset_addr: SocketAddr,
-    /// QuACK threshold.
-    #[arg(long, default_value_t = 8)]
-    threshold: usize,
 }
 
 /// NACKs just have 4 bytes for the sequence number.
@@ -75,9 +46,6 @@ const NACK_BUFFER_SIZE: usize = 4;
 /// offset 63, including the Ethernet (14), IP (20), UDP (8) headers.
 const ID_OFFSET: usize = 63 - (14 + 20 + 8);
 
-/// Max UDP payload size to expect.
-const MTU: usize = 1500;
-
 /// A packet is considered missing if a packet with a sequence number greater
 /// than this threshold away has been received. So packet 4 is considered
 /// missing if packet 7 or greater has been received. If the last received
@@ -86,17 +54,13 @@ const _REORDER_THRESHOLD: u32 = 3;
 
 #[derive(Clone)]
 struct PacketSender {
-    sidekick: bool,
     channel: mpsc::Sender<(u32, u32)>,
-    seqno_ids: Arc<Mutex<Vec<(u32, u32)>>>,
 }
 
 impl PacketSender {
-    async fn new(sidekick: bool, channel: mpsc::Sender<(u32, u32)>) -> io::Result<Self> {
+    async fn new(channel: mpsc::Sender<(u32, u32)>) -> io::Result<Self> {
         Ok(Self {
-            sidekick,
             channel,
-            seqno_ids: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -106,9 +70,6 @@ impl PacketSender {
 
         // Add the new packet to the buffer and send the packet.
         // (may be some harmless reordering here)
-        if self.sidekick {
-            self.seqno_ids.lock().await.push((seqno, id));
-        }
         self.channel.send((seqno, id)).await.unwrap();
         Ok(())
     }
@@ -159,171 +120,6 @@ fn listen_for_nacks(sock: Arc<UdpSocket>, mut sender: PacketSender) {
     });
 }
 
-/// Spawn a thread that listens for sidekick quACKs using Strawman 1a (echo
-/// every identifier) and retransmit packets when determined missing.
-fn listen_for_quacks_strawman_a(mut _sender: PacketSender, quack_port: u16) {
-    tokio::spawn(async move {
-        let sock = UdpSocket::bind(format!("0.0.0.0:{}", quack_port))
-            .await
-            .unwrap();
-        let mut buf = vec![0; MTU];
-        #[allow(clippy::never_loop)]
-        loop {
-            let (len, _) = sock.recv_from(&mut buf).await.unwrap();
-            let _quack: StrawmanAQuack = bincode::deserialize(&buf[..len]).unwrap();
-            unimplemented!()
-        }
-    });
-}
-
-/// Spawn a thread that listens for sidekick quACKs using Strawman 1b (echo a
-/// sliding window of identifiers) and retransmit packets when determined
-/// missing.
-fn listen_for_quacks_strawman_b(mut _sender: PacketSender, quack_port: u16) {
-    tokio::spawn(async move {
-        let sock = UdpSocket::bind(format!("0.0.0.0:{}", quack_port))
-            .await
-            .unwrap();
-        let mut buf = vec![0; MTU];
-        #[allow(clippy::never_loop)]
-        loop {
-            let (len, _) = sock.recv_from(&mut buf).await.unwrap();
-            let _quack: StrawmanBQuack = bincode::deserialize(&buf[..len]).unwrap();
-            unimplemented!()
-        }
-    });
-}
-
-/// Spawn a thread that listens for sidekick quACKs using Strawman 1c (echo
-/// every identifier over TCP) and retransmit packets when determined missing.
-fn listen_for_quacks_strawman_c(mut _sender: PacketSender, _quack_port: u16) {
-    tokio::spawn(async move { unimplemented!() });
-}
-
-/// Spawn a thread that listens for sidekick quACKs using the power sum quACK
-/// and retransmit packets when determined missing.
-fn listen_for_quacks_power_sum(
-    mut sender: PacketSender,
-    quack_port: u16,
-    reset_addr: SocketAddr,
-    threshold: usize,
-) {
-    tokio::spawn(async move {
-        let sock = UdpSocket::bind(format!("0.0.0.0:{}", quack_port))
-            .await
-            .unwrap();
-        let mut buf = vec![0; MTU];
-        let mut my_quack: PowerSumQuackU32 = PowerSumQuackU32::new(threshold);
-        info!("listening for quacks on {:?}", sock.local_addr());
-
-        // Variables for sending quack resets.
-        let mut last_quack_reset = None;
-        let sidekick_reset_threshold = Duration::from_millis(100);
-
-        loop {
-            // Deserialize the quACK and only process it if at least one packet
-            // has been received and the quack has changed.
-            let (len, _) = sock.recv_from(&mut buf).await.unwrap();
-            let quack: PowerSumQuackU32 = bincode::deserialize(&buf[..len]).unwrap();
-            trace!(
-                "received quack count={} last_value={:?}",
-                quack.count(),
-                quack.last_value()
-            );
-            if quack.last_value() == my_quack.last_value() {
-                continue;
-            }
-
-            // Update our own cumulative quACK to include up to the last value
-            // received (we would have sent everything in order).
-            let mut seqno_ids = sender.seqno_ids.lock().await;
-            let mut last_index_inserted = None;
-            for (i, &(_, id)) in seqno_ids.iter().enumerate() {
-                if Some(id) == quack.last_value() {
-                    last_index_inserted = Some(i);
-                    break;
-                }
-            }
-            if let Some(idx) = last_index_inserted {
-                for &(seqno, id) in seqno_ids.iter().take(idx + 1) {
-                    my_quack.insert(id);
-                    trace!("quack insert {} ({})", id, seqno);
-                }
-            }
-
-            // Reset the quack if 1) the log got messed up above, 2) we're
-            // still waiting to process a previous reset, or 3) the number of
-            // missing packets exceeds the threshold.
-            let now = Instant::now();
-            let reset0 = last_index_inserted.is_none();
-            let reset1 = my_quack.count() < quack.count();
-            let reset2 = my_quack.count() > quack.count() + threshold as u32;
-            if reset0 || reset1 || reset2 {
-                let should_reset = if let Some(last_quack_reset) = last_quack_reset {
-                    now > last_quack_reset + sidekick_reset_threshold
-                } else {
-                    true
-                };
-                if should_reset {
-                    info!(
-                        "reset: reordered? {} retx? {} exceeds threshold? {}",
-                        reset0, reset1, reset2
-                    );
-                    sock.send_to(&[0], reset_addr).await.unwrap();
-                    my_quack = PowerSumQuackU32::new(threshold);
-                    *seqno_ids = vec![];
-                    last_quack_reset = Some(now);
-                }
-                continue;
-            }
-
-            let last_index_inserted = last_index_inserted.unwrap();
-            if last_quack_reset.is_some() {
-                info!("successful reset");
-                last_quack_reset = None;
-            }
-
-            // If the number of missing packets exceeds the threshold, reset
-            // the quack. If no packets are missing, continue on.
-            trace!(
-                "quack counts {} - {} (last values {:?} {:?})",
-                my_quack.count(),
-                quack.count(),
-                my_quack.last_value(),
-                quack.last_value()
-            );
-            let mut diff_quack = my_quack.clone();
-            diff_quack.sub_assign(quack);
-            if diff_quack.count() == 0 {
-                seqno_ids.drain(..(last_index_inserted + 1));
-                continue;
-            }
-
-            // Identify the missing sequence numbers up to the last value
-            // received.
-            let coeffs = diff_quack.to_coeffs();
-            let mut missing_seqno_ids = Vec::new();
-            for &(seqno, id) in seqno_ids.iter() {
-                if Some(id) == diff_quack.last_value() {
-                    break;
-                }
-                if arithmetic::eval(&coeffs, id).value() == 0 {
-                    missing_seqno_ids.push((seqno, id));
-                }
-            }
-
-            // Retransmit any missing packets.
-            seqno_ids.drain(..(last_index_inserted + 1));
-            drop(seqno_ids);
-            for (seqno, id) in missing_seqno_ids.into_iter() {
-                my_quack.remove(id);
-                debug!("retransmit {} from quack", seqno);
-                sender.send(seqno).await.unwrap();
-            }
-        }
-    });
-}
-
 /// Send a stream of packets at the specified frequency with the given payload.
 /// When the timeout is reached, send several timeout packets and return.
 async fn stream_data(
@@ -366,22 +162,9 @@ async fn main() -> io::Result<()> {
         sock.connect(args.server_addr).await?;
         Arc::new(sock)
     };
-    let sender = PacketSender::new(args.quack_style.is_some(), tx).await?;
+    let sender = PacketSender::new(tx).await?;
     send_data(sock.clone(), args.bytes, rx).await?;
     listen_for_nacks(sock, sender.clone());
-    if let Some(quack_style) = args.quack_style {
-        match quack_style {
-            QuackStyle::StrawmanA => listen_for_quacks_strawman_a(sender.clone(), args.quack_port),
-            QuackStyle::StrawmanB => listen_for_quacks_strawman_b(sender.clone(), args.quack_port),
-            QuackStyle::StrawmanC => listen_for_quacks_strawman_c(sender.clone(), args.quack_port),
-            QuackStyle::PowerSum => listen_for_quacks_power_sum(
-                sender.clone(),
-                args.quack_port,
-                args.reset_addr,
-                args.threshold,
-            ),
-        };
-    }
     stream_data(
         sender,
         Duration::from_secs(args.timeout),
