@@ -185,3 +185,12 @@ Building the repository may take a few minutes.
 ### Generate certificates
 
 See the section on generating certificates under "TCP Benchmarks".
+
+## Media Benchmark
+
+### Build the endpoint binary
+
+```
+cd $SIDEKICK_HOME/deps
+./build_deps.sh 6
+```

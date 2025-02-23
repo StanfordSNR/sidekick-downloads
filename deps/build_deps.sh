@@ -1,3 +1,4 @@
+
 #!/bin/bash
 help() {
 	echo "USAGE: $0 [all|0|1]"
@@ -6,6 +7,7 @@ help() {
 	echo "3 = quiche"
 	echo "4 = picoquic"
 	echo "5 = sidekick"
+	echo "6 = media"
 	exit 1
 }
 
@@ -60,13 +62,18 @@ build_sidekick() {
 	cargo build --release --bin quacker
 }
 
+build_media() {
+	cd $SIDEKICK_HOME/media
+	cargo build --release --bin endpoint
+}
+
 if [ $1 == "all" ]; then
 	build_pepsal
-	build_sidekick
 	build_chromium
 	build_quiche
 	build_picoquic
 	build_sidekick
+	build_media
 elif [ $1 -eq 1 ]; then
 	build_pepsal
 elif [ $1 -eq 2 ]; then
@@ -77,6 +84,8 @@ elif [ $1 -eq 4 ]; then
 	build_picoquic
 elif [ $1 -eq 5 ]; then
 	build_sidekick
+elif [ $1 -eq 6 ]; then
+	build_media
 else
 	help
 fi
