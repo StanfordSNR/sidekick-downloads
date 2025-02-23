@@ -3,14 +3,18 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
-use log::{trace, debug, info};
-use tokio::sync::mpsc;
+use log::{debug, info};
+use tokio::task;
+use tokio::sync::mpsc::{self, error::SendError};
 use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
 
 use media::{Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, TIMEOUT_SEQNO};
 
+
+const MPSC_CHANNEL_SIZE: usize = 100;
+const NUM_TIMEOUT_MESSAGES: usize = 100;
 
 #[derive(Parser)]
 struct Cli {
@@ -44,101 +48,126 @@ enum Mode {
     },
 }
 
+/// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
-    sock: Arc<UdpSocket>, nack_frequency: Duration,
+    tx: mpsc::Sender<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
+    frequency: Duration, nack_frequency: Duration, should_loop: bool,
 ) -> io::Result<()> {
-    // Listen for incoming packets.
+    let mut buf = [0u8; PAYLOAD_SIZE];
+    let mut connection = None;
     loop {
-        let mut stats = Statistics::new();
-        let mut pkts = BufferedPackets::new();
-        let mut payload = [0; PAYLOAD_SIZE];
-        debug!("webrtc server is now listening");
-        loop {
-            let (len, addr) = sock.recv_from(&mut payload).await?;
-            assert_eq!(len, PAYLOAD_SIZE);
-            let packet = Packet::from_payload(&payload);
-            trace!("received seqno {} ({} bytes)", packet.seqno, len);
-            assert!(!packet.is_nack);
-            if packet.seqno == TIMEOUT_SEQNO {
-                debug!("timeout message received");
+        // Parse the incoming packet.
+        let (len, addr) = sock.recv_from(&mut buf).await?;
+        assert_eq!(len, PAYLOAD_SIZE);
+        let data = Packet::from_payload(&buf);
+
+        // Waiting for a data packet from a new connection. If it's a NACK
+        // or timeout packet, assume it's from a previous connection. If it's
+        // the server, also send data back in that direction.
+        if connection.is_none() {
+            if data.is_nack || data.seqno == TIMEOUT_SEQNO {
+                continue;
+            }
+            let stats = Statistics::new();
+            let buffer = BufferedPackets::new();
+            let send_task = if should_loop {
+                let tx = tx.clone();
+                let send_task = task::spawn(async move {
+                    gen_data_packets(tx, None, frequency, addr).await.unwrap();
+                });
+                Some(send_task)
+            } else {
+                None
+            };
+            connection = Some((addr, stats, buffer, send_task));
+        }
+
+        // Assume we handle one connection at a time.
+        let (from_addr, ref mut stats, ref mut buffer, send_task) = connection.as_mut().unwrap();
+        assert_eq!(*from_addr, addr);
+
+        // Retransmit data if it's a NACK.
+        if data.is_nack {
+            debug!("retransmit data {}", data.seqno);
+            let retx = Packet::new_data(data.seqno);
+            tx.send((retx, addr.clone())).await.unwrap();
+            continue;
+        }
+
+        // Otherwise it's a data packet. Timeout packets end the connection.
+        if data.seqno == TIMEOUT_SEQNO {
+            stats.print_statistics();
+            if should_loop {
+                send_task.as_mut().unwrap().abort();
+                gen_timeout_packets(tx.clone(), from_addr.clone()).await.unwrap();
+                connection = None;
+                continue;
+            } else {
                 break;
             }
-            let now = Instant::now();
-            pkts.recv_seqno(packet.seqno, now);
-            while let Some(time_recv) = pkts.pop_seqno() {
-                stats.add_value(now - time_recv);
-            }
-            for seqno in pkts.nacks_to_send(now, nack_frequency) {
-                Packet::new_nack(seqno).fill_payload(&mut payload);
-                sock.send_to(&payload, addr).await?;
-            }
         }
 
-        // Print statistics before exiting.
-        stats.print_statistics();
+        // Add the data packet to the dejitter buffer and try to play data.
+        let now = Instant::now();
+        buffer.recv_seqno(data.seqno, now);
+        debug!("receive data {}", data.seqno);
+        while let Some(time_recv) = buffer.pop_seqno() {
+            stats.add_value(now - time_recv);
+        }
 
-        // Process remaining timeout messages.
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        while sock.try_recv(&mut payload).is_ok() {}
+        // Send NACKs for missing data.
+        for seqno in buffer.nacks_to_send(now, nack_frequency) {
+            debug!("nack {}", seqno);
+            let nack = Packet::new_nack(seqno);
+            tx.send((nack, addr.clone())).await.unwrap();
+        }
     }
-}
-
-/// Listen to the mpsc channel and actually send packets on the UDP socket.
-/// Receives sequence numbers and random identifiers and fills the packets.
-async fn send_data(
-    sock: Arc<UdpSocket>,
-    mut rx: mpsc::Receiver<u32>,
-) -> io::Result<()> {
-    let mut payload = [0xFF; PAYLOAD_SIZE];
-    tokio::spawn(async move {
-        while let Some(seqno) = rx.recv().await {
-            Packet::new_data(seqno).fill_payload(&mut payload);
-            sock.send(&payload).await.unwrap();
-        }
-    });
     Ok(())
 }
 
-/// Spawn a thread that listens for end-to-end NACKs and retransmit packets
-/// when requested.
-fn listen_for_nacks(sock: Arc<UdpSocket>, tx: mpsc::Sender<u32>) {
+/// Send outgoing packets on the UDP socket based on the mpsc channel.
+async fn send_outgoing(
+    mut rx: mpsc::Receiver<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
+) -> io::Result<()> {
     let mut payload = [0xFF; PAYLOAD_SIZE];
-    tokio::spawn(async move {
-        loop {
-            let len = sock.recv(&mut payload).await.unwrap();
-            assert_eq!(len, PAYLOAD_SIZE);
-            let seqno = Packet::from_payload(&payload).seqno;
-            debug!("retransmit {} from nack", seqno);
-            tx.send(seqno).await.unwrap();
-        }
-    });
+    while let Some((packet, to)) = rx.recv().await {
+        packet.fill_payload(&mut payload);
+        sock.send_to(&payload, to).await.unwrap();
+    }
+    Ok(())
 }
 
-/// Send a stream of packets at the specified frequency with the given payload.
-/// When the timeout is reached, send several timeout packets and return.
-async fn stream_data(
-    tx: mpsc::Sender<u32>,
-    timeout: Duration,
-    frequency: Duration,
-) -> io::Result<()> {
+/// Generate a stream of media packets at the specified frequency. When the
+/// timeout is reached, send several timeout packets and return.
+async fn gen_data_packets(
+    tx: mpsc::Sender<(Packet, SocketAddr)>,
+    timeout: Option<Duration>, frequency: Duration, to: SocketAddr,
+) -> Result<(), SendError<(Packet, SocketAddr)>> {
     let mut interval = tokio::time::interval(frequency);
     let start = Instant::now();
-
-    // Send packets with increasing sequence numbers until the elapsed time
-    // is greater than the timeout.
     for seqno in 1..u32::MAX {
         interval.tick().await;
-        trace!("send {}", seqno);
-        tx.send(seqno).await.unwrap();
-        if Instant::now() - start > timeout {
-            break;
+        debug!("send data {}", seqno);
+        let data = Packet::new_data(seqno);
+        tx.send((data, to.clone())).await?;
+        if let Some(timeout) = timeout {
+            if Instant::now() > start + timeout {
+                break;
+            }
         }
     }
 
-    // Send the timeout message. Do it a bunch and hope one makes it through.
-    info!("sending timeout message");
-    for _ in 0..100 {
-        tx.send(TIMEOUT_SEQNO).await.unwrap();
+    gen_timeout_packets(tx, to).await?;
+    Ok(())
+}
+
+/// Send the timeout message. Do it a bunch and hope one makes it through.
+async fn gen_timeout_packets(
+    tx: mpsc::Sender<(Packet, SocketAddr)>, to: SocketAddr,
+) -> Result<(), SendError<(Packet, SocketAddr)>> {
+    for _ in 0..NUM_TIMEOUT_MESSAGES {
+        let data = Packet::new_data(TIMEOUT_SEQNO);
+        tx.send((data, to.clone())).await?;
     }
     Ok(())
 }
@@ -150,33 +179,41 @@ async fn main() -> io::Result<()> {
     let frequency = Duration::from_millis(args.frequency);
     let nack_frequency = Duration::from_millis(args.nack_frequency);
 
+    // Bind to the local socket to listen to and send packets from.
+    let sock = Arc::new(UdpSocket::bind(format!("0.0.0.0:{}", args.port)).await?);
+    info!("Ready to accept incoming packets {:?}", sock.local_addr());
+
+    // Channel for sending data on the UDP socket from one thread.
+    let (tx, rx) = mpsc::channel(MPSC_CHANNEL_SIZE);
+    let send_task = {
+        let sock = sock.clone();
+        task::spawn(async move { send_outgoing(rx, sock).await.unwrap() })
+    };
+
     // Start the server or client.
     match args.mode {
         Mode::Server => {
-            let sock = {
-                let addr = format!("0.0.0.0:{}", args.port);
-                let sock = UdpSocket::bind(addr).await.unwrap();
-                Arc::new(sock)
-            };
-            listen_incoming(sock, nack_frequency).await?;
+            listen_incoming(tx, sock, frequency, nack_frequency, true).await.unwrap();
         }
         Mode::Client { timeout, addr } => {
-            let (tx, rx) = mpsc::channel(100);
-
-            let sock = {
-                let sock = UdpSocket::bind("0.0.0.0:0").await?;
-                info!("sending from {:?}", sock.local_addr().unwrap());
-                sock.connect(addr).await?;
-                Arc::new(sock)
+            let recv_task = {
+                let tx = tx.clone();
+                let sock = sock.clone();
+                task::spawn(async move {
+                    listen_incoming(tx, sock, frequency, nack_frequency, false).await.unwrap()
+                })
             };
-            send_data(sock.clone(), rx).await?;
-            listen_for_nacks(sock, tx.clone());
-            stream_data(
-                tx,
-                Duration::from_secs(timeout),
-                frequency,
-            )
-            .await?;
+            let data_task = {
+                task::spawn(async move {
+                    let timeout = Duration::from_secs(timeout);
+                    gen_data_packets(tx, Some(timeout), frequency, addr).await.unwrap();
+                })
+            };
+
+            // Wait for tasks to complete.
+            data_task.await?;
+            recv_task.await?;
+            send_task.await?;
         }
     }
     Ok(())
