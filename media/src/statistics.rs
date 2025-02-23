@@ -19,9 +19,14 @@ impl Statistics {
 
     /// Print average, p95, and p99 latency statistics.
     pub fn print_statistics(&self) {
-        let mut values = self.values.clone();
-        values.sort();
-        let len = values.len();
+        let (len, values) = {
+            let mut values = self.values.clone();
+            if values.len() == 0 {
+                values.push(Duration::from_millis(0));
+            }
+            values.sort();
+            (values.len(), values)
+        };
         info!("Num Values: {}", len);
         info!("Median: {:?}", values[(len as f64 * 0.50) as usize]);
         info!("p95: {:?}", values[(len as f64 * 0.95) as usize]);
