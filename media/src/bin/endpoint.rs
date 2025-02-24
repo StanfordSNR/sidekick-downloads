@@ -115,6 +115,20 @@ async fn listen_incoming_sidekick(quacker: Arc<Mutex<UdpQuacker>>) -> io::Result
     }
 }
 
+/// Send quacks at a specified frequency if there aren't many incoming packets.
+async fn send_quacks(quacker: Arc<Mutex<UdpQuacker>>, frequency: Duration) {
+    let mut interval = tokio::time::interval(frequency);
+    loop {
+        interval.tick().await;
+        // Not exactly the algorithm but close enough.
+        {
+            let mut q = quacker.lock().await;
+            let time_ms = current_time_ms();
+            q.update_time(time_ms);
+        }
+    }
+}
+
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
     quacker: Option<Arc<Mutex<UdpQuacker>>>,
@@ -295,22 +309,33 @@ async fn main() -> io::Result<()> {
     // Initialize the client quacker if enabled.
     let quacker = if args.quacker {
         let config = args.quacker_config.unwrap();
-        let quacker = UdpQuacker::new(
+        let quacker = Arc::new(Mutex::new(UdpQuacker::new(
             config.threshold,
             config.frequency_pkts,
             config.frequency_ms,
             config.target_addr,
-        );
-        Some(Arc::new(Mutex::new(quacker)))
+        )));
+
+        // Ensure quACKs are sent at a time interval if specified.
+        if config.frequency_ms > 0 {
+            let quacker = quacker.clone();
+            let quack_frequency = Duration::from_millis(config.frequency_ms);
+            tokio::task::spawn(async move {
+                send_quacks(quacker, quack_frequency).await;
+            });
+        }
+
+        // Monitor packets on the sidekick connection.
+        {
+            let quacker = quacker.clone();
+            task::spawn(async move {
+                listen_incoming_sidekick(quacker.clone()).await.unwrap()
+            });
+        }
+        Some(quacker)
     } else {
         None
     };
-
-    // Monitor packets on the sidekick connection.
-    if let Some(ref quacker) = quacker {
-        let quacker = quacker.clone();
-        task::spawn(async move { listen_incoming_sidekick(quacker.clone()).await.unwrap() });
-    }
 
     // Start the server or client.
     match args.mode {
