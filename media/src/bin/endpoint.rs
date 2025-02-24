@@ -5,9 +5,14 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand};
 use log::{debug, info};
 use tokio::task;
-use tokio::sync::mpsc::{self, error::SendError};
+use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc::error::SendError;
 use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
+
+use quacker::{current_time_ms, UdpQuacker};
+use sidekick_utils::buffer::AddrKey;
+use sidekick_utils::discovery::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
 use media::{Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, TIMEOUT_SEQNO};
@@ -70,13 +75,30 @@ enum Mode {
     },
 }
 
+/// Parse `base_stoc` for the sidekick connection.
+fn parse_addr_key(src: &SocketAddr, dst: &SocketAddr) -> AddrKey {
+    match (src, dst) {
+        (SocketAddr::V4(src), SocketAddr::V4(dst)) => {
+            let mut key = [0u8; 12];
+            key[..4].copy_from_slice(&src.ip().octets());
+            key[4..6].copy_from_slice(&src.port().to_be_bytes());
+            key[6..10].copy_from_slice(&dst.ip().octets());
+            key[10..12].copy_from_slice(&dst.port().to_be_bytes());
+            key
+        }
+        _ => panic!("IPv6 not supported"),
+    }
+}
+
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
+    quacker: Option<Arc<Mutex<UdpQuacker>>>,
     tx: mpsc::Sender<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
     frequency: Duration, nack_frequency: Duration, should_loop: bool,
 ) -> io::Result<()> {
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
+    let mut discovery_sent = current_time_ms();
     loop {
         // Parse the incoming packet.
         let (len, addr) = sock.recv_from(&mut buf).await?;
@@ -102,6 +124,24 @@ async fn listen_incoming(
                 None
             };
             connection = Some((addr, stats, buffer, send_task));
+        }
+
+        if let Some(ref quacker) = quacker {
+            let mut quacker = quacker.lock().await;
+            let current_time = current_time_ms();
+
+            // Send <NUM_DISCOVERY_PKTS> packets if
+            // (1) The quacker is enabled.
+            // (2a) We haven't sent them already OR
+            // (2b) More than <DISCOVERY_FREQ_MS> have elapsed since we
+            //      last sent them, and we're awaiting a disc ACK.
+            if quacker.base_stoc.is_none() ||
+               (quacker.awaiting_disc_ack && current_time >= discovery_sent + DISCOVERY_FREQ_MS * 1000)
+            {
+                let addr_key = parse_addr_key(&addr, &sock.local_addr().unwrap());
+                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
+                discovery_sent = current_time;
+            }
         }
 
         // Assume we handle one connection at a time.
@@ -212,17 +252,31 @@ async fn main() -> io::Result<()> {
         task::spawn(async move { send_outgoing(rx, sock).await.unwrap() })
     };
 
+    // Initialize the client quacker if enabled.
+    let quacker = if args.quacker {
+        let config = args.quacker_config.unwrap();
+        let quacker = UdpQuacker::new(
+            config.threshold,
+            config.frequency_pkts,
+            config.frequency_ms,
+            config.target_addr,
+        );
+        Some(Arc::new(Mutex::new(quacker)))
+    } else {
+        None
+    };
+
     // Start the server or client.
     match args.mode {
         Mode::Server => {
-            listen_incoming(tx, sock, frequency, nack_frequency, true).await.unwrap();
+            listen_incoming(quacker, tx, sock, frequency, nack_frequency, true).await.unwrap();
         }
         Mode::Client { timeout, addr } => {
             let recv_task = {
                 let tx = tx.clone();
                 let sock = sock.clone();
                 task::spawn(async move {
-                    listen_incoming(tx, sock, frequency, nack_frequency, false).await.unwrap()
+                    listen_incoming(quacker, tx, sock, frequency, nack_frequency, false).await.unwrap()
                 })
             };
             let data_task = {
