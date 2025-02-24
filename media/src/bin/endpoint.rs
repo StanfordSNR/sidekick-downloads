@@ -219,7 +219,9 @@ async fn listen_incoming(
 
         // Add the data packet to the dejitter buffer and try to play data.
         let now = Instant::now();
-        buffer.recv_seqno(data.seqno, now);
+        if buffer.recv_seqno(data.seqno, now) {
+            stats.add_spurious();
+        }
         debug!("receive data {}", data.seqno);
         while let Some(time_recv) = buffer.pop_seqno() {
             stats.add_value(now - time_recv);

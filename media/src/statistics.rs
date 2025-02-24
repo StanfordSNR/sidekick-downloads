@@ -1,20 +1,26 @@
-use log::info;
+use log::{debug, info};
 use tokio::time::Duration;
 
 /// Dejitter delay statistics.
 pub struct Statistics {
     values: Vec<Duration>,
+    num_spurious: usize,
 }
 
 impl Statistics {
     /// Create a new histogram for adding duration values.
     pub fn new() -> Self {
-        Self { values: Vec::new() }
+        Self { values: Vec::new(), num_spurious: 0 }
     }
 
     /// Add a new duration value.
     pub fn add_value(&mut self, value: Duration) {
         self.values.push(value);
+    }
+
+    /// Add a spurious retransmission.
+    pub fn add_spurious(&mut self) {
+        self.num_spurious += 1;
     }
 
     /// Print average, p95, and p99 latency statistics.
@@ -27,6 +33,7 @@ impl Statistics {
             values.sort();
             (values.len(), values)
         };
+        info!("Num Spurious: {}", self.num_spurious);
         info!("Num Values: {}", len);
         info!("Median: {:?}", values[(len as f64 * 0.50) as usize]);
         info!("p95: {:?}", values[(len as f64 * 0.95) as usize]);
@@ -36,7 +43,7 @@ impl Statistics {
             .map(|duration| duration.as_secs() * 1000000000 + duration.subsec_nanos() as u64)
             .collect::<Vec<_>>();
         // Print 90% to 100% by 0.1%
-        info!(
+        debug!(
             "Latencies (ns) = {:?}",
             (900..1001)
                 .map(|percent| (percent as f64) / 1000.0)

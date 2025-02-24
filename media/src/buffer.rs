@@ -34,10 +34,12 @@ impl BufferedPackets {
     }
 
     /// Receive a packet with this sequence number.
-    pub fn recv_seqno(&mut self, new_seqno: u32, now: Instant) {
+    ///
+    /// Returns whether the seqno was already received.
+    pub fn recv_seqno(&mut self, new_seqno: u32, now: Instant) -> bool {
         // Ignore the seqno if it has already been received.
         if new_seqno < self.next_seqno {
-            return;
+            return true;
         }
 
         // Add packets to the buffer until the seqno is guaranteed to be there.
@@ -55,8 +57,10 @@ impl BufferedPackets {
                 if packet.time_recv.is_none() {
                     packet.time_recv = Some(now);
                     packet.time_nack = None;
+                    return false;
+                } else {
+                    return true;
                 }
-                return;
             }
         }
 
@@ -110,7 +114,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_recv_and_pop_consecutive_seqno() {
+    fn test_pop_consecutive_seqno() {
         let mut buffer = BufferedPackets::new();
         let now = Instant::now();
         buffer.recv_seqno(1, now);
@@ -123,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn test_recv_and_pop_missing_seqno() {
+    fn test_pop_missing_seqno() {
         let mut buffer = BufferedPackets::new();
         let now = Instant::now();
         buffer.recv_seqno(2, now);
@@ -142,6 +146,22 @@ mod tests {
         assert!(buffer.pop_seqno().is_some());
         assert!(buffer.pop_seqno().is_some());
         assert!(buffer.pop_seqno().is_none());
+    }
+
+    #[test]
+    fn test_recv_seqno() {
+        let mut buffer = BufferedPackets::new();
+        let now = Instant::now();
+        assert!(!buffer.recv_seqno(1, now));
+        assert!(buffer.recv_seqno(1, now));
+        assert!(!buffer.recv_seqno(3, now));
+        assert!(!buffer.recv_seqno(4, now));
+        assert!(!buffer.recv_seqno(5, now));
+        assert!(buffer.recv_seqno(3, now));
+        assert!(buffer.recv_seqno(4, now));
+        assert!(buffer.recv_seqno(5, now));
+        assert!(!buffer.recv_seqno(2, now));
+        assert!(buffer.recv_seqno(2, now));
     }
 
     #[test]

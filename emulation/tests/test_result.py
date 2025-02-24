@@ -232,15 +232,17 @@ class TestMediaBenchmarkResult(TestBenchmarkResult):
         res = MediaBenchmarkResult(self.label, self.proxy_type)
         self._test_additional_data(res)
 
-    def test_set_latencies(self):
+    def test_set_media_result_fields(self):
         res = MediaBenchmarkResult(self.label, self.proxy_type)
         res.append_new_output()
         res.set_success(True)
         res.set_client_latencies([1, 2, 3])
         res.set_server_latencies([4, 5, 6])
+        res.set_client_num_spurious(7)
         x = json.loads(res.json())
         self.assertIn('outputs', x)
         self.assertEqual(len(x['outputs']), 1)
         output = x['outputs'][0]
         self.assertEqual(output.get('client_latencies'), [1, 2, 3])
         self.assertEqual(output.get('server_latencies'), [4, 5, 6])
+        self.assertEqual(output.get('client_num_spurious'), 7)

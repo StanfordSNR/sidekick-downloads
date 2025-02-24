@@ -104,7 +104,7 @@ class CLITestCase(unittest.TestCase):
         outputs = line['outputs']
         self.assertEqual(len(outputs), 1)
         self.assertTrue(outputs[0].get('success'))
-        return (stdout, stderr)
+        return outputs
 
 
 class TestCommandLineOptions(CLITestCase):
@@ -248,7 +248,11 @@ class TestPicoquicBenchmark(CLITestCase):
 
 class TestMediaBenchmark(CLITestCase):
     def test_media_benchmark_simple(self):
-        self.execute_command_and_check('media')
+        outputs = self.execute_command_and_check('media')
+        output = outputs[0]
+        self.assertIn('client_latencies', output);
+        self.assertIn('server_latencies', output);
+        self.assertIn('client_num_spurious', output);
 
     def test_media_benchmark_with_sidekick(self):
         network_options = [
