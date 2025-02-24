@@ -1,5 +1,5 @@
 use std::io;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
@@ -61,7 +61,7 @@ struct QuackerConfig {
     target_addr: SocketAddr,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, PartialEq, Eq)]
 enum Mode {
     /// Listen for incoming connections.
     Server,
@@ -76,16 +76,29 @@ enum Mode {
     },
 }
 
+impl Mode {
+    fn is_client(&self) -> bool {
+        match self {
+            Mode::Server => { false }
+            Mode::Client { timeout: _, addr: _ } => { true }
+        }
+    }
+}
+
 /// Parse `base_stoc` for the sidekick connection.
-fn parse_addr_key(src: &SocketAddr, dst: &SocketAddr) -> AddrKey {
+fn parse_addr_key(src: &SocketAddr, dst: &SocketAddr) -> Option<AddrKey> {
     match (src, dst) {
         (SocketAddr::V4(src), SocketAddr::V4(dst)) => {
-            let mut key = [0u8; 12];
-            key[..4].copy_from_slice(&src.ip().octets());
-            key[4..6].copy_from_slice(&src.port().to_be_bytes());
-            key[6..10].copy_from_slice(&dst.ip().octets());
-            key[10..12].copy_from_slice(&dst.port().to_be_bytes());
-            key
+            if *dst.ip() == Ipv4Addr::new(0, 0, 0, 0) {
+                None
+            } else {
+                let mut key = [0u8; 12];
+                key[..4].copy_from_slice(&src.ip().octets());
+                key[4..6].copy_from_slice(&src.port().to_be_bytes());
+                key[6..10].copy_from_slice(&dst.ip().octets());
+                key[10..12].copy_from_slice(&dst.port().to_be_bytes());
+                Some(key)
+            }
         }
         _ => panic!("IPv6 not supported"),
     }
@@ -147,12 +160,14 @@ async fn listen_incoming(
             // (2a) We haven't sent them already OR
             // (2b) More than <DISCOVERY_FREQ_MS> have elapsed since we
             //      last sent them, and we're awaiting a disc ACK.
+            // (3) The base connection has bound to a local addr.
             if quacker.base_stoc.is_none() ||
                (quacker.awaiting_disc_ack && current_time >= discovery_sent + DISCOVERY_FREQ_MS * 1000)
             {
-                let addr_key = parse_addr_key(&addr, &sock.local_addr().unwrap());
-                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
-                discovery_sent = current_time;
+                if let Some(addr_key) = parse_addr_key(&addr, &sock.local_addr().unwrap()) {
+                    quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
+                    discovery_sent = current_time;
+                }
             }
         }
 
@@ -202,11 +217,16 @@ async fn listen_incoming(
 /// Send outgoing packets on the UDP socket based on the mpsc channel.
 async fn send_outgoing(
     mut rx: mpsc::Receiver<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
+    bound: bool,
 ) -> io::Result<()> {
     let mut payload = [0xFF; PAYLOAD_SIZE];
     while let Some((packet, to)) = rx.recv().await {
         packet.fill_payload(&mut payload);
-        sock.send_to(&payload, to).await.unwrap();
+        if bound {
+            sock.send(&payload).await.unwrap();
+        } else {
+            sock.send_to(&payload, to).await.unwrap();
+        }
     }
     Ok(())
 }
@@ -261,7 +281,8 @@ async fn main() -> io::Result<()> {
     let (tx, rx) = mpsc::channel(MPSC_CHANNEL_SIZE);
     let send_task = {
         let sock = sock.clone();
-        task::spawn(async move { send_outgoing(rx, sock).await.unwrap() })
+        let bound = args.mode.is_client();
+        task::spawn(async move { send_outgoing(rx, sock, bound).await.unwrap() })
     };
 
     // Initialize the client quacker if enabled.
@@ -290,6 +311,7 @@ async fn main() -> io::Result<()> {
             listen_incoming(quacker, tx, sock, frequency, nack_frequency, true).await.unwrap();
         }
         Mode::Client { timeout, addr } => {
+            sock.connect(addr).await?;
             let recv_task = {
                 let tx = tx.clone();
                 let sock = sock.clone();
