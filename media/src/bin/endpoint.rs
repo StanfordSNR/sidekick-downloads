@@ -11,6 +11,7 @@ use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
 
 use quacker::{current_time_ms, UdpQuacker};
+use sidekick_utils::BUFFER_SIZE;
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::discovery::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
@@ -87,6 +88,17 @@ fn parse_addr_key(src: &SocketAddr, dst: &SocketAddr) -> AddrKey {
             key
         }
         _ => panic!("IPv6 not supported"),
+    }
+}
+
+/// Listen for incoming packets on the sidekick connection and handle.
+async fn listen_incoming_sidekick(quacker: Arc<Mutex<UdpQuacker>>) -> io::Result<()> {
+    let sock = quacker.lock().await.src_sock();
+    let mut buf = [0u8; BUFFER_SIZE];
+    loop {
+        // NOTE: This is a blocking UDP socket!
+        let _len = sock.recv(&mut buf);
+        quacker.lock().await.handle_sidekick_payload(&buf);
     }
 }
 
@@ -266,6 +278,12 @@ async fn main() -> io::Result<()> {
         None
     };
 
+    // Monitor packets on the sidekick connection.
+    if let Some(ref quacker) = quacker {
+        let quacker = quacker.clone();
+        task::spawn(async move { listen_incoming_sidekick(quacker.clone()).await.unwrap() });
+    }
+
     // Start the server or client.
     match args.mode {
         Mode::Server => {
@@ -292,5 +310,7 @@ async fn main() -> io::Result<()> {
             send_task.await?;
         }
     }
-    Ok(())
+
+    // Abort any sidekick tasks
+    std::process::exit(0);
 }
