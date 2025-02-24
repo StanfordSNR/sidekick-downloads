@@ -10,7 +10,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
 
-use quacker::{current_time_ms, UdpQuacker};
+use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::BUFFER_SIZE;
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::discovery::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
@@ -168,6 +168,13 @@ async fn listen_incoming(
                     quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
                     discovery_sent = current_time;
                 }
+            }
+
+            // Insert the received packet into the quACK.
+            else
+            {
+                info!("insert {}", data.identifier);
+                quacker.insert(current_time, data.identifier);
             }
         }
 
