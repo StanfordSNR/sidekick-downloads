@@ -89,7 +89,7 @@ class HTTPDownloadTestCase(unittest.TestCase):
     ) -> PicoQUICBenchmark:
         bm = PicoQUICBenchmark(
             self.net, self.label, self.data_size, self.cca, self.certfile,
-            self.keyfile, self.logdir, quacker=False, ack_delay=ack_delay,
+            self.keyfile, self.logdir, ack_delay=ack_delay,
             port=port, proxy_type=proxy_type,
         )
         return bm

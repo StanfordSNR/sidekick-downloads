@@ -16,7 +16,7 @@ use media::{PAYLOAD_SIZE, TIMEOUT_SEQNO};
 const MPSC_CHANNEL_SIZE: usize = 100;
 const NUM_TIMEOUT_MESSAGES: usize = 100;
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 struct Cli {
     /// Port to receive packets on.
     #[arg(long, default_value_t = 5201)]
@@ -31,9 +31,31 @@ struct Cli {
     /// immediately sends data to the target address.
     #[command(subcommand)]
     mode: Mode,
+    /// Whether to enable the client quacker.
+    #[arg(long, requires = "quacker_config")]
+    quacker: bool,
+    #[command(flatten)]
+    quacker_config: Option<QuackerConfig>,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Parser, Clone)]
+struct QuackerConfig {
+    /// The threshold number of missing packets.
+    #[arg(long, short = 't', default_value_t = 20)]
+    threshold: usize,
+    /// Frequency at which to quack, in ms.
+    #[arg(long = "frequency-ms", default_value_t = 0)]
+    frequency_ms: u64,
+    /// Frequency at which to quack, in packets.
+    #[arg(long = "frequency-pkts", default_value_t = 0)]
+    frequency_pkts: u32,
+    /// Address of the UDP socket to quack to e.g., <IP:PORT>. If missing,
+    /// goes to stdout.
+    #[arg(long = "target-addr", default_value = "172.16.2.10:5252")]
+    target_addr: SocketAddr,
+}
+
+#[derive(Debug, Subcommand)]
 enum Mode {
     /// Listen for incoming connections.
     Server,
