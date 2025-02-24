@@ -112,6 +112,7 @@ def benchmark_media(net, args):
         logdir=args.logdir,
         duration=args.duration,
         frequency=args.frequency,
+        ack_delay=args.ack_delay,
         quacker=quacker,
         proxy_type=args.proxy,
     )
@@ -333,6 +334,8 @@ def parse_args(argv=None):
              '240 bytes.')
     media.add_argument('--client-quacker', action='store_true',
         help='Enable an in-line quacker with the client to quack to the proxy')
+    media.add_argument('--ack-delay', type=int, default=0, metavar='MS',
+        help='Delay (ms) of NACK signal to reduce spurious retransmissions')
 
     ###########################################################################
     # Iperf3 + TCP Benchmark

@@ -30,6 +30,7 @@ class MediaBenchmark:
         frequency: int,
         logdir: str,
         quacker: Optional[QuackerConfig]=None,
+        ack_delay: int=0,
         proxy_type: Optional[ProxyType]=None,
     ):
         """
@@ -51,6 +52,7 @@ class MediaBenchmark:
 
         Optional parameters:
         - quacker: If enabled, the quacker configuration.
+        - ack_delay: Delay (ms) of the NACK signal to reduce spurious retxes.
         - proxy_type: The type of proxy on the p1 host, if any.
         """
         self.net = net
@@ -59,6 +61,7 @@ class MediaBenchmark:
         self.frequency = frequency
         self.proxy_type = 'none' if proxy_type is None else proxy_type.value
         self._logdir = logdir
+        self.nack_delay = ack_delay
         self.quacker = quacker
 
         # Fields for the server to notify the client of certain statistics
@@ -146,6 +149,7 @@ class MediaBenchmark:
         """
         cmd = f'./media/target/release/endpoint '\
               f'--nack-frequency {self.net.rtt} '\
+              f'--nack-delay {self.nack_delay} '\
               f'--frequency {self.frequency} '
 
         # Add parameters to configure the client quacker

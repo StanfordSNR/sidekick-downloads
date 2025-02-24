@@ -33,6 +33,9 @@ struct Cli {
     /// The NACK frequency, in ms. Typically the end-to-end RTT.
     #[arg(long)]
     nack_frequency: u64,
+    /// The delay to wait after detecting loss before sending a NACK, in ms.
+    #[arg(long, default_value_t = 0)]
+    nack_delay: u64,
     /// The server listens for incoming connections while the client
     /// immediately sends data to the target address.
     #[command(subcommand)]
@@ -131,9 +134,9 @@ async fn send_quacks(quacker: Arc<Mutex<UdpQuacker>>, frequency: Duration) {
 
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
-    quacker: Option<Arc<Mutex<UdpQuacker>>>,
+    should_loop: bool, quacker: Option<Arc<Mutex<UdpQuacker>>>,
     tx: mpsc::Sender<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
-    frequency: Duration, nack_frequency: Duration, should_loop: bool,
+    frequency: Duration, nack_frequency: Duration, nack_delay: Option<Duration>,
 ) -> io::Result<()> {
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
@@ -228,7 +231,7 @@ async fn listen_incoming(
         }
 
         // Send NACKs for missing data.
-        for seqno in buffer.nacks_to_send(now, nack_frequency) {
+        for seqno in buffer.nacks_to_send(now, nack_frequency, nack_delay) {
             debug!("nack {}", seqno);
             let nack = Packet::new_nack(seqno);
             tx.send((nack, addr.clone())).await.unwrap();
@@ -295,6 +298,11 @@ async fn main() -> io::Result<()> {
     let args = Cli::parse();
     let frequency = Duration::from_millis(args.frequency);
     let nack_frequency = Duration::from_millis(args.nack_frequency);
+    let nack_delay = if args.nack_delay > 0 {
+        Some(Duration::from_millis(args.nack_delay))
+    } else {
+        None
+    };
 
     // Bind to the local socket to listen to and send packets from.
     let sock = Arc::new(UdpSocket::bind(format!("0.0.0.0:{}", args.port)).await?);
@@ -342,7 +350,9 @@ async fn main() -> io::Result<()> {
     // Start the server or client.
     match args.mode {
         Mode::Server => {
-            listen_incoming(quacker, tx, sock, frequency, nack_frequency, true).await.unwrap();
+            listen_incoming(
+                true, quacker, tx, sock, frequency, nack_frequency, nack_delay,
+            ).await.unwrap();
         }
         Mode::Client { timeout, addr } => {
             sock.connect(addr).await?;
@@ -350,7 +360,10 @@ async fn main() -> io::Result<()> {
                 let tx = tx.clone();
                 let sock = sock.clone();
                 task::spawn(async move {
-                    listen_incoming(quacker, tx, sock, frequency, nack_frequency, false).await.unwrap()
+                    listen_incoming(
+                        false, quacker, tx, sock, frequency, nack_frequency,
+                        nack_delay,
+                    ).await.unwrap()
                 })
             };
             let data_task = {
