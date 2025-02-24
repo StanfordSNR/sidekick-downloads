@@ -3,6 +3,7 @@ import select
 import sys
 import subprocess
 import re
+from enum import Enum
 
 SERVER_LOGFILE = 'server.log'
 CLIENT_LOGFILE = 'client.log'
@@ -18,6 +19,11 @@ HTTP_TIMEOUT_STATUSCODE = 408
 LOG_CHUNK_TIME = 300
 
 DEFAULT_DELAY_CORR = 40
+
+class ProxyType(Enum):
+    PEPSAL = 'pepsal'
+    BRIDGE = 'bridge'
+    SIDEKICK = 'sidekick'
 
 def TRACE(val):
     # LOG(val, 'TRACE')

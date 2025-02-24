@@ -246,6 +246,16 @@ class TestPicoquicBenchmark(CLITestCase):
         self.assertEqual(quacks, [], 'no quacks are received')
 
 
+class TestMediaBenchmark(CLITestCase):
+    def test_media_benchmark_simple(self):
+        self.execute_command_and_check('media')
+
+    def test_media_benchmark_with_sidekick(self):
+        network_options = [
+            '--proxy', 'sidekick', '--quacker', '--threshold', '8',
+        ]
+        self.execute_command_and_check('media', network_options)
+
 
 class TestSidekickProtocolBasic(CLITestCase):
     def _test_discovery(self):
@@ -305,6 +315,8 @@ class TestSidekickProtocolBasic(CLITestCase):
     def test_sniffing_quacker_default(self):
         self.execute_sidekick_command_and_check(
             'picoquic', add_network_options=['--quacker'])
+        self.execute_sidekick_command_and_check(
+            'media', add_network_options=['--quacker'])
 
     def test_picoquic_client_quacker_default(self):
         self.execute_sidekick_command_and_check(
@@ -312,7 +324,7 @@ class TestSidekickProtocolBasic(CLITestCase):
             add_protocol_options=['--client-quacker'],
         )
 
-    def test_sniffing_quacker_different_frequencies(self):
+    def test_sniffing_picoquic_quacker_different_frequencies(self):
         def test(freq_ms, freq_pkts):
             add_network_options = ['--quacker']
             add_network_options += ['--freq-ms', str(freq_ms)]
@@ -321,6 +333,19 @@ class TestSidekickProtocolBasic(CLITestCase):
         test(100, 0)
         test(0, 8)
         test(50, 20)
+
+    def test_sniffing_media_quacker_different_frequencies(self):
+        def test(freq_ms, freq_pkts, freq_media_ms):
+            add_network_options = ['--quacker']
+            add_network_options += ['--freq-ms', str(freq_ms)]
+            add_network_options += ['--freq-pkts', str(freq_pkts)]
+            add_protocol_options = ['--frequency', str(freq_media_ms)]
+            self.execute_sidekick_command_and_check(
+                'media', add_network_options, add_protocol_options,
+            )
+        test(100, 0, 20)
+        test(0, 8, 10)
+        test(50, 20, 20)
 
     def test_picoquic_client_quacker_different_frequencies(self):
         def test(freq_ms, freq_pkts):
@@ -336,10 +361,14 @@ class TestSidekickProtocolBasic(CLITestCase):
     def test_sniffing_quacker_different_threshold(self):
         self.execute_sidekick_command_and_check(
             'picoquic', ['--quacker', '--threshold', '8'])
+        self.execute_sidekick_command_and_check(
+            'media', ['--quacker', '--threshold', '8'])
 
     def test_sniffing_quacker_different_port(self):
         self.execute_sidekick_command_and_check(
             'picoquic', ['--quacker', '--quackee-port', '5250'])
+        self.execute_sidekick_command_and_check(
+            'media', ['--quacker', '--quackee-port', '5250'])
 
     def test_picoquic_client_quacker_different_threshold(self):
         self.execute_sidekick_command_and_check(
@@ -355,10 +384,21 @@ class TestSidekickProtocolReset(CLITestCase):
         self.assertIn('ExceededThreshold', self.read_logfile(ROUTER_LOGFILE, lines=False))
         self.assertIn('Received Reset', self.read_logfile(CLIENT_LOGFILE, lines=False))
 
-    def test_sniffing_quacker_receives_resets(self):
+    def test_sniffing_picoquic_quacker_receives_resets(self):
         self.execute_command(
             'picoquic',
             network_options=['--quacker', '--proxy', 'sidekick', '--threshold', '1', '--loss1', '10'],
+        )
+        self._test_quacker_receives_resets()
+
+    def test_sniffing_media_quacker_receives_resets(self):
+        self.execute_command(
+            'media',
+            network_options=[
+                '--quacker', '--proxy', 'sidekick', '--loss1', '10',
+                '--threshold', '1', '--freq-ms', '0', '--freq-pkts', '50',
+            ],
+            protocol_options=['--frequency', '1'],
         )
         self._test_quacker_receives_resets()
 
