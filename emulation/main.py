@@ -71,6 +71,13 @@ def benchmark_cloudflare_quic(net, args):
 
 
 def benchmark_picoquic(net, args):
+    # Generate the config for the client quacker, if enabled
+    if args.client_quacker:
+        quacker = QuackerConfig.from_args(args)
+    else:
+        quacker = None
+
+    # Create the benchmark and run it
     bm = PicoQUICBenchmark(
         net,
         label=args.label,
@@ -80,11 +87,7 @@ def benchmark_picoquic(net, args):
         keyfile=args.keyfile,
         logdir=args.logdir,
         ack_delay=args.ack_delay,
-        quacker=args.client_quacker,
-        threshold=args.threshold,
-        freq_ms=args.freq_ms,
-        freq_pkts=args.freq_pkts,
-        quackee_port=args.quackee_port,
+        quacker=quacker,
         proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
@@ -96,12 +99,20 @@ def benchmark_picoquic(net, args):
 
 
 def benchmark_media(net, args):
+    # Generate the config for the client quacker, if enabled
+    if args.client_quacker:
+        quacker = QuackerConfig.from_args(args)
+    else:
+        quacker = None
+
+    # Create the benchmark and run it
     bm = MediaBenchmark(
         net,
         label=args.label,
         logdir=args.logdir,
         duration=args.duration,
         frequency=args.frequency,
+        quacker=quacker,
         proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
@@ -320,6 +331,8 @@ def parse_args(argv=None):
     media.add_argument('--frequency', type=int, default=20, metavar='MS',
         help='Frequency at which to send data packets. The payload size is '\
              '240 bytes.')
+    media.add_argument('--client-quacker', action='store_true',
+        help='Enable an in-line quacker with the client to quack to the proxy')
 
     ###########################################################################
     # Iperf3 + TCP Benchmark
@@ -384,8 +397,8 @@ def main(args):
         # Start the client quacker if using a sniffing version
         if args.quacker:
             client_logfile = f'{args.logdir}/{CLIENT_LOGFILE}'
-            net.start_client_quacker(args.threshold, args.freq_ms,
-                args.freq_pkts, args.quackee_port, logfile=client_logfile)
+            config = QuackerConfig.from_args(args)
+            net.start_client_quacker(config, logfile=client_logfile)
 
         if args.ty == 'cli':
             CLI(net.net)

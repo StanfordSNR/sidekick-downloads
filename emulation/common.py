@@ -4,6 +4,7 @@ import sys
 import subprocess
 import re
 from enum import Enum
+from dataclasses import dataclass
 
 SERVER_LOGFILE = 'server.log'
 CLIENT_LOGFILE = 'client.log'
@@ -24,6 +25,22 @@ class ProxyType(Enum):
     PEPSAL = 'pepsal'
     BRIDGE = 'bridge'
     SIDEKICK = 'sidekick'
+
+@dataclass(frozen=True)
+class QuackerConfig:
+    # The threshold number of missing packets the quACK can find.
+    threshold: int
+    # The quacker quacks on the first insertion, AND if <freq_pkts> have been
+    # inserted or at least <freq_ms> have elapsed since the last quack.
+    freq_ms: int
+    # The quacker quacks on the first insertion, AND if <freq_pkts> have been
+    # inserted or at least <freq_ms> have elapsed since the last quack.
+    freq_pkts: int
+    # The UDP port that the quackee on the proxy is listening to for quACKs.
+    quackee_port: int
+
+    def from_args(args):
+        return QuackerConfig(args.threshold, args.freq_ms, args.freq_pkts, args.quackee_port)
 
 def TRACE(val):
     # LOG(val, 'TRACE')

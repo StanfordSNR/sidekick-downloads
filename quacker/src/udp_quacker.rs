@@ -105,6 +105,11 @@ impl UdpQuacker {
         }
     }
 
+    /// The local UDP socket.
+    pub fn src_sock(&self) -> Arc<UdpSocket> {
+        self.src_sock.clone()
+    }
+
     /// The socket address on which we expect to receive resets.
     ///
     /// The application is responsible for identifying reset packets in order

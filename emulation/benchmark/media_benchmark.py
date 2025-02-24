@@ -28,6 +28,7 @@ class MediaBenchmark:
         duration: int,
         frequency: int,
         logdir: str,
+        quacker: Optional[QuackerConfig]=None,
         proxy_type: Optional[ProxyType]=None,
     ):
         """
@@ -46,6 +47,9 @@ class MediaBenchmark:
         - duration: The length of the stream, in seconds.
         - frequency: The frequency at which to send data packets, in ms. The
           payload size is 240 bytes.
+
+        Optional parameters:
+        - quacker: If enabled, the quacker configuration.
         - proxy_type: The type of proxy on the p1 host, if any.
         """
         self.net = net
@@ -54,6 +58,7 @@ class MediaBenchmark:
         self.frequency = frequency
         self.proxy_type = 'none' if proxy_type is None else proxy_type.value
         self._logdir = logdir
+        self.quacker = quacker
 
         # Fields for the server to notify the client of certain statistics
         self.condition = threading.Condition()
@@ -140,9 +145,20 @@ class MediaBenchmark:
         """
         cmd = f'./media/target/release/endpoint '\
               f'--nack-frequency {self.net.rtt} '\
-              f'--frequency {self.frequency} '\
-              f'client '\
-              f'--timeout {self.duration} '
+              f'--frequency {self.frequency} '
+
+        # Add parameters to configure the client quacker
+        if self.quacker is not None:
+            q = self.quacker
+            target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
+            cmd += f'--quacker '\
+                   f'--threshold {q.threshold} '\
+                   f'--frequency-pkts {q.freq_pkts} '\
+                   f'--frequency-ms {q.freq_ms} '\
+                   f'--target-addr {target_addr} '
+
+        # Add client parameters
+        cmd += f'client --timeout {self.duration} '
 
         result = []
         def parse_result(line):

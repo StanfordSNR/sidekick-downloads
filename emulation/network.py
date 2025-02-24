@@ -362,16 +362,13 @@ class EmulatedNetwork:
             cmd = f'tcpdump -i {iface} -w {logdir}/{iface}.pcap'
             self.popen(host, cmd, background=True, console_logger=DEBUG)
 
-    def start_client_quacker(
-        self, threshold: int, frequency_ms: int, frequency_packets: int,
-        quackee_port: int, logfile=None,
-    ):
+    def start_client_quacker(self, config: QuackerConfig, logfile=None):
         cmd = f'./quacker/target/release/quacker '\
               f'--interface h1-eth0 '\
-              f'--threshold {threshold} '\
-              f'--frequency-ms {frequency_ms} '\
-              f'--frequency-pkts {frequency_packets} '\
-              f'--target-addr {self.p1.IP()}:{quackee_port}'
+              f'--threshold {config.threshold} '\
+              f'--frequency-ms {config.freq_ms} '\
+              f'--frequency-pkts {config.freq_pkts} '\
+              f'--target-addr {self.p1.IP()}:{config.quackee_port}'
 
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile)
