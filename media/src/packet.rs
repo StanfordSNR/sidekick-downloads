@@ -5,7 +5,7 @@
 //! the packet is a NACK. Four bytes at a given offset indicate a random
 //! identifier to be parsed by the sidekicks.
 use rand::{self, Rng};
-use crate::{PAYLOAD_SIZE, PAYLOAD_ID_OFFSET, TIMEOUT_SEQNO};
+use crate::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, PAYLOAD_ID_OFFSET, TIMEOUT_SEQNO};
 
 
 #[derive(Debug, Clone)]
@@ -44,7 +44,7 @@ impl Packet {
         Self { seqno, is_nack, identifier }
     }
 
-    pub fn fill_payload(&self, buf: &mut [u8; PAYLOAD_SIZE]) {
+    pub fn fill_payload(&self, buf: &mut [u8; PAYLOAD_SIZE]) -> usize {
         // Set the sequence number in the first 4 bytes.
         let seqno_bytes = self.seqno.to_be_bytes();
         buf[0] = seqno_bytes[0];
@@ -61,6 +61,12 @@ impl Packet {
         buf[PAYLOAD_ID_OFFSET + 1] = id_bytes[1];
         buf[PAYLOAD_ID_OFFSET + 2] = id_bytes[2];
         buf[PAYLOAD_ID_OFFSET + 3] = id_bytes[3];
+
+        if self.is_nack {
+            NACK_PAYLOAD_SIZE
+        } else {
+            PAYLOAD_SIZE
+        }
     }
 
     pub fn is_timeout(&self) -> bool {
@@ -100,7 +106,7 @@ mod tests {
     fn test_data_packet_fill_and_from_payload() {
         let p1 = Packet::new_data(12345);
         let mut payload = [0u8; PAYLOAD_SIZE];
-        p1.fill_payload(&mut payload);
+        assert_eq!(p1.fill_payload(&mut payload), PAYLOAD_SIZE);
         let p2 = Packet::from_payload(&payload);
         assert!(!p2.is_nack);
         assert_eq!(p1.seqno, p2.seqno);
@@ -127,7 +133,7 @@ mod tests {
     fn test_nack_packet_to_and_from_payload() {
         let p1 = Packet::new_nack(12345);
         let mut payload = [0u8; PAYLOAD_SIZE];
-        p1.fill_payload(&mut payload);
+        assert_eq!(p1.fill_payload(&mut payload), NACK_PAYLOAD_SIZE);
         let p2 = Packet::from_payload(&payload);
         assert!(p2.is_nack);
         assert_eq!(p1.seqno, p2.seqno);

@@ -16,7 +16,7 @@ use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::discovery::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
 use media::{Packet, BufferedPackets, Statistics};
-use media::{PAYLOAD_SIZE, TIMEOUT_SEQNO};
+use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
 
 
 const MPSC_CHANNEL_SIZE: usize = 100;
@@ -144,7 +144,7 @@ async fn listen_incoming(
     loop {
         // Parse the incoming packet.
         let (len, addr) = sock.recv_from(&mut buf).await?;
-        assert_eq!(len, PAYLOAD_SIZE);
+        assert!(len == PAYLOAD_SIZE || len == NACK_PAYLOAD_SIZE);
         let data = Packet::from_payload(&buf);
 
         // Waiting for a data packet from a new connection. If it's a NACK
@@ -247,11 +247,11 @@ async fn send_outgoing(
 ) -> io::Result<()> {
     let mut payload = [0xFF; PAYLOAD_SIZE];
     while let Some((packet, to)) = rx.recv().await {
-        packet.fill_payload(&mut payload);
+        let len = packet.fill_payload(&mut payload);
         if bound {
-            sock.send(&payload).await.unwrap();
+            sock.send(&payload[..len]).await.unwrap();
         } else {
-            sock.send_to(&payload, to).await.unwrap();
+            sock.send_to(&payload[..len], to).await.unwrap();
         }
     }
     Ok(())
