@@ -124,6 +124,24 @@ def benchmark_media(net, args):
     print(result.json())
 
 
+def benchmark_multicast(net, args):
+    bm = MulticastBenchmark(
+        net,
+        label=args.label,
+        logdir=args.logdir,
+        duration=args.duration,
+        frequency=args.frequency,
+        nack_delay=args.ack_delay,
+        num_clients=args.num_clients,
+        proxy_type=args.proxy,
+    )
+    result = bm.run_benchmark(
+        args.trials,
+        args.network_statistics,
+    )
+    print(result.json())
+
+
 def benchmark_iperf3(net, args):
     bm = Iperf3Benchmark(
         net,
@@ -336,6 +354,24 @@ def parse_args(argv=None):
         help='Enable an in-line quacker with the client to quack to the proxy')
     media.add_argument('--ack-delay', type=int, default=0, metavar='MS',
         help='Delay (ms) of NACK signal to reduce spurious retransmissions')
+
+    ###########################################################################
+    # Multicast Benchmark
+    ###########################################################################
+    multicast = subparsers.add_parser(
+        'multicast',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    multicast.set_defaults(ty='benchmark', benchmark=benchmark_multicast)
+    multicast.add_argument('--duration', type=int, default=1, metavar='SECS',
+        help='Number of seconds to stream data before sending a timeout.')
+    multicast.add_argument('--frequency', type=int, default=20, metavar='MS',
+        help='Frequency at which the server sends data packets. The payload '\
+             'size is 240 bytes.')
+    multicast.add_argument('--num-clients', type=int, default=3,
+        help='Number of multicast clients who are receiving data.')
+    multicast.add_argument('--ack-delay', type=int, default=0, metavar='MS',
+        help='Delay (ms) of client NACK signal to reduce spurious retransmissions')
 
     ###########################################################################
     # Iperf3 + TCP Benchmark

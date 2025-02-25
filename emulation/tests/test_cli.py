@@ -270,6 +270,32 @@ class TestMediaBenchmark(CLITestCase):
         self.check_media_output(outputs[0])
 
 
+class TestMulticastBenchmark(CLITestCase):
+    def check_multicast_output(self, output):
+        self.assertIsInstance(output.get('client_ids'), list);
+        self.assertIsInstance(output.get('client_ids'), list);
+        num_clients = len(output['client_ids'])
+        self.assertEqual(num_clients, 3, '3 clients by default')
+        self.assertIsInstance(output.get('latencies'), list);
+        self.assertEqual(len(output['latencies']), num_clients);
+        self.assertIsInstance(output.get('num_spurious'), list);
+        self.assertEqual(len(output['num_spurious']), num_clients);
+
+    def test_multicast_benchmark_simple(self):
+        outputs = self.execute_command_and_check(
+            'multicast', protocol_options=['--num-clients', '3'],
+        )
+        self.check_multicast_output(outputs[0])
+
+    def test_multicast_benchmark_with_sidekick(self):
+        outputs = self.execute_command_and_check(
+            'multicast',
+            network_options=['--proxy', 'sidekick'],
+            protocol_options=['--num-clients', '3'],
+        )
+        self.check_multicast_output(outputs[0])
+
+
 class TestSidekickProtocolBasic(CLITestCase):
     def _test_discovery(self):
         # Proxy receives discovery packet from client
