@@ -1,3 +1,4 @@
+
 import json
 from datetime import datetime
 from abc import ABC, abstractmethod
@@ -166,7 +167,8 @@ class MediaBenchmarkResult(BenchmarkResult):
                         'rx_bytes': [int]
                     },
                     'client_latencies': [int],
-                    'server_latencies': [int]
+                    'server_latencies': [int],
+                    'client_num_spurious': int,
                 }
             ]
         }
@@ -184,3 +186,6 @@ class MediaBenchmarkResult(BenchmarkResult):
 
     def set_server_latencies(self, server_latencies: List[int]):
         self.curr_output()['server_latencies'] = server_latencies
+
+    def set_client_num_spurious(self, num_spurious: int):
+        self.curr_output()['client_num_spurious'] = num_spurious

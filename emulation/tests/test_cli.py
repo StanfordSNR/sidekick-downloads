@@ -104,7 +104,7 @@ class CLITestCase(unittest.TestCase):
         outputs = line['outputs']
         self.assertEqual(len(outputs), 1)
         self.assertTrue(outputs[0].get('success'))
-        return (stdout, stderr)
+        return outputs
 
 
 class TestCommandLineOptions(CLITestCase):
@@ -247,14 +247,27 @@ class TestPicoquicBenchmark(CLITestCase):
 
 
 class TestMediaBenchmark(CLITestCase):
+    def check_media_output(self, output):
+        self.assertIsInstance(output.get('client_latencies'), list);
+        self.assertGreater(len(output['client_latencies']), 0);
+        self.assertIsInstance(output.get('server_latencies'), list);
+        self.assertGreater(len(output['server_latencies']), 0);
+        self.assertIsInstance(output.get('client_num_spurious'), int);
+
     def test_media_benchmark_simple(self):
-        self.execute_command_and_check('media')
+        outputs = self.execute_command_and_check('media')
+        self.check_media_output(outputs[0])
 
     def test_media_benchmark_with_sidekick(self):
         network_options = [
             '--proxy', 'sidekick', '--quacker', '--threshold', '8',
         ]
-        self.execute_command_and_check('media', network_options)
+        outputs = self.execute_command_and_check('media', network_options)
+        self.check_media_output(outputs[0])
+
+    def test_media_benchmark_with_ack_delay(self):
+        outputs = self.execute_command_and_check('media', protocol_options=['--ack-delay', '30'])
+        self.check_media_output(outputs[0])
 
 
 class TestSidekickProtocolBasic(CLITestCase):

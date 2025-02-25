@@ -17,6 +17,7 @@ class MediaClientOutput:
     time_s: int
     client_latencies: List[int]
     server_latencies: List[int]
+    client_num_spurious: int
     additional_data: any = None
 
 
@@ -29,6 +30,7 @@ class MediaBenchmark:
         frequency: int,
         logdir: str,
         quacker: Optional[QuackerConfig]=None,
+        ack_delay: int=0,
         proxy_type: Optional[ProxyType]=None,
     ):
         """
@@ -50,6 +52,7 @@ class MediaBenchmark:
 
         Optional parameters:
         - quacker: If enabled, the quacker configuration.
+        - ack_delay: Delay (ms) of the NACK signal to reduce spurious retxes.
         - proxy_type: The type of proxy on the p1 host, if any.
         """
         self.net = net
@@ -58,6 +61,7 @@ class MediaBenchmark:
         self.frequency = frequency
         self.proxy_type = 'none' if proxy_type is None else proxy_type.value
         self._logdir = logdir
+        self.nack_delay = ack_delay
         self.quacker = quacker
 
         # Fields for the server to notify the client of certain statistics
@@ -145,6 +149,7 @@ class MediaBenchmark:
         """
         cmd = f'./media/target/release/endpoint '\
               f'--nack-frequency {self.net.rtt} '\
+              f'--nack-delay {self.nack_delay} '\
               f'--frequency {self.frequency} '
 
         # Add parameters to configure the client quacker
@@ -160,14 +165,14 @@ class MediaBenchmark:
         # Add client parameters
         cmd += f'client --timeout {self.duration} '
 
-        result = []
+        result = {}
         def parse_result(line):
-            pattern = r'Raw values = (\[.*\])'
-            match = re.search(pattern, line)
-            if match is None:
-                return
-            latencies = json.loads(match.group(1))
-            result.append(latencies)
+            match1 = re.search(r'Num Spurious: (\d+)', line)
+            match2 = re.search(r'Raw values = (\[.*\])', line)
+            if match1:
+                result['num_spurious'] = int(match1.group(1))
+            elif match2:
+                result['latencies'] = json.loads(match2.group(1))
 
         with self.condition:
             logfile = self.logfile(self.client)
@@ -178,18 +183,17 @@ class MediaBenchmark:
             end = time.time()
 
             # Check for an error running the client
-            if len(result) == 0:
+            if 'num_spurious' not in result or 'latencies' not in result:
                 WARN('Media client failed to return result')
-            elif len(result) > 1:
-                WARN(f'Media client returned multiple results {result}')
 
             # Wait for the server to log its dejitter latencies.
             if not self.condition.wait(timeout=5):
                 raise TimeoutError(f'timeout waiting for server stats')
             return MediaClientOutput(
                 time_s=end - start,
-                client_latencies=result[0],
+                client_latencies=result.get('latencies'),
                 server_latencies=self.additional_data,
+                client_num_spurious=result.get('num_spurious'),
             )
 
     def run_benchmark(
@@ -241,6 +245,7 @@ class MediaBenchmark:
             result.set_time_s(output.time_s)
             result.set_client_latencies(output.client_latencies)
             result.set_server_latencies(output.server_latencies)
+            result.set_client_num_spurious(output.client_num_spurious)
             if output.additional_data is not None:
                 result.set_additional_data(output.additional_data)
 
