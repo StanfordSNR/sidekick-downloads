@@ -24,7 +24,8 @@ impl Statistics {
     }
 
     /// Print average, p95, and p99 latency statistics.
-    pub fn print_statistics(&self) {
+    pub fn print_statistics(&self, prefix: Option<String>) {
+        let prefix = prefix.unwrap_or(String::new());
         let (len, values) = {
             let mut values = self.values.clone();
             if values.len() == 0 {
@@ -33,18 +34,19 @@ impl Statistics {
             values.sort();
             (values.len(), values)
         };
-        info!("Num Spurious: {}", self.num_spurious);
-        info!("Num Values: {}", len);
-        info!("Median: {:?}", values[(len as f64 * 0.50) as usize]);
-        info!("p95: {:?}", values[(len as f64 * 0.95) as usize]);
-        info!("p99: {:?}", values[(len as f64 * 0.99) as usize]);
+        info!("{}Num Spurious: {}", prefix, self.num_spurious);
+        info!("{}Num Values: {}", prefix, len);
+        info!("{}Median: {:?}", prefix, values[(len as f64 * 0.50) as usize]);
+        info!("{}p95: {:?}", prefix, values[(len as f64 * 0.95) as usize]);
+        info!("{}p99: {:?}", prefix, values[(len as f64 * 0.99) as usize]);
         let values_raw = values
             .into_iter()
             .map(|duration| duration.as_secs() * 1000000000 + duration.subsec_nanos() as u64)
             .collect::<Vec<_>>();
         // Print 90% to 100% by 0.1%
         debug!(
-            "Latencies (ns) = {:?}",
+            "{}Latencies (ns) = {:?}",
+            prefix,
             (900..1001)
                 .map(|percent| (percent as f64) / 1000.0)
                 .map(|percent| ((len as f64) * percent) as usize)
@@ -53,7 +55,8 @@ impl Statistics {
                 .collect::<Vec<_>>()
         );
         info!(
-            "Raw values = {:?}",
+            "{}Raw values = {:?}",
+            prefix,
             self.values
                 .iter()
                 .map(|duration| duration.as_secs() * 1000000000 + duration.subsec_nanos() as u64)
