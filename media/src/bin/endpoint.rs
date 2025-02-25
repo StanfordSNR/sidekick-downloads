@@ -155,7 +155,7 @@ async fn listen_incoming(
                 continue;
             }
             let stats = Statistics::new();
-            let buffer = BufferedPackets::new();
+            let buffer = BufferedPackets::new(1);
             let send_task = if should_loop {
                 let tx = tx.clone();
                 let send_task = task::spawn(async move {
