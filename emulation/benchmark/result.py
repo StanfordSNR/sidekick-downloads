@@ -189,3 +189,53 @@ class MediaBenchmarkResult(BenchmarkResult):
 
     def set_client_num_spurious(self, num_spurious: int):
         self.curr_output()['client_num_spurious'] = num_spurious
+
+
+class MulticastBenchmarkResult(BenchmarkResult):
+    """Tracks results over multiple trials. Each trial includes the result of
+    a multiple multicast client connections. Each entry in 'latencies' and
+    'num_spurious' corresponds to the client at the same index in 'client_ids'.
+
+    Schema:
+        {
+            'inputs': { # required
+                'label': str,
+                'protocol': str,
+                'num_trials': int,
+                'start_time': str,
+                'proxy_type': str
+            },
+            'outputs': [
+                {
+                    'success': bool, # required
+                    'time_s': float,
+                    'statistics': {
+                        'ifaces': [str],
+                        'tx_packets': [int],
+                        'tx_bytes': [int],
+                        'rx_packets': [int],
+                        'rx_bytes': [int]
+                    },
+                    'client_ids': [str],
+                    'latencies': [[int]],
+                    'num_spurious': [int],
+                }
+            ]
+        }
+    """
+
+    def __init__(self, label: str, proxy_type: str):
+        super().__init__(label, 'multicast', proxy_type)
+
+    def curr_output(self) -> dict:
+        assert len(self.outputs) > 0
+        return self.outputs[-1]
+
+    def set_client_ids(self, client_ids: List[str]):
+        self.curr_output()['client_ids'] = client_ids
+
+    def set_latencies(self, latencies: List[List[int]]):
+        self.curr_output()['latencies'] = latencies
+
+    def set_num_spurious(self, num_spurious: List[int]):
+        self.curr_output()['num_spurious'] = num_spurious
