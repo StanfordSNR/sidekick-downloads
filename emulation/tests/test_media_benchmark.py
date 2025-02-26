@@ -126,7 +126,6 @@ class TestRunBenchmark(MediaTestCase):
         """The benchmark runs and returns successful results for the given
         number of trials.
         """
-        bm = self.setUpMediaBenchmark()
         result = self.run_benchmark(bm, num_trials)
 
         # Validate inputs
