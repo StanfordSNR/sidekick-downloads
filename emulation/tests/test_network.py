@@ -224,14 +224,15 @@ class TestNetStatistics(NetworkTestCase):
 
 class TestEmulatedNetwork(unittest.TestCase):
     def test_ip(self):
-        self.assertEqual(EmulatedNetwork._ip(1), '172.16.1.10/24')
-        self.assertEqual(EmulatedNetwork._ip(2), '172.16.2.10/24')
-        self.assertEqual(EmulatedNetwork._ip(0), '172.16.0.10/24')
-        self.assertEqual(EmulatedNetwork._ip(9), '172.16.9.10/24')
+        self.assertEqual(EmulatedNetwork._ip(1, 10), '172.16.1.10/24')
+        self.assertEqual(EmulatedNetwork._ip(2, 10), '172.16.2.10/24')
+        self.assertEqual(EmulatedNetwork._ip(0, 10), '172.16.0.10/24')
+        self.assertEqual(EmulatedNetwork._ip(9, 10), '172.16.9.10/24')
+        self.assertEqual(EmulatedNetwork._ip(9, 21), '172.16.9.21/24')
         with self.assertRaises(AssertionError):
-            EmulatedNetwork._ip(10)
+            EmulatedNetwork._ip(10, 10)
         with self.assertRaises(AssertionError):
-            EmulatedNetwork._ip(-1)
+            EmulatedNetwork._ip(-1, 10)
 
     def test_mac(self):
         self.assertEqual(EmulatedNetwork._mac(1), '00:00:00:00:00:01')
