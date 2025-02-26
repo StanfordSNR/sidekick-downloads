@@ -506,8 +506,8 @@ class OneHopNetwork(EmulatedNetwork):
             self.setup_router_node(self.p1)
         else:
             self.setup_router_node(self.e2)
-        self.popen(self.h1, "ip route add 172.16.2.0/24 via 172.16.1.1")
-        self.popen(self.h2, "ip route add 172.16.1.0/24 via 172.16.2.1")
+        self.popen(self.h1, "ip route add default via 172.16.1.1")
+        self.popen(self.h2, "ip route add default via 172.16.2.1")
 
         # Set up transparent bridging
         if router_proxy:
