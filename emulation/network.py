@@ -558,7 +558,7 @@ class OneHopNetwork(EmulatedNetwork):
         self.popen(node, f"ifconfig {node.name}-eth1 hw ether 00:00:00:00:01:02")
         self.popen(node, f"ip addr add 172.16.1.1/24 brd + dev {node.name}-eth0")
         self.popen(node, f"ip addr add 172.16.2.1/24 brd + dev {node.name}-eth1")
-        node.cmd("echo 1 > /proc/sys/net/ipv4/ip_forward")
+        self.popen(node, 'sysctl net.ipv4.ip_forward=1')
 
     def setup_bridging_node(self, node):
         self.popen(node, "brctl addbr br0")
