@@ -166,7 +166,7 @@ class MulticastBenchmark:
                     results[client_id] = manager.dict()
                 results[client_id][key] = val
 
-        # Run all the client simultaneously and wait until they are complete
+        # Run all the client simultaneously
         start = time.time()
         processes = []
         threads = []
@@ -178,8 +178,17 @@ class MulticastBenchmark:
                 func=parse_result, raise_error=False)
             processes.append(p)
             threads.append(thread)
+
+        # Wait until they are complete, up to 2x the expected duration, after
+        # which there is probably an error and we timeout
+        timeout_time = start + 2 * self.duration
         for p, thread in zip(processes, threads):
-            p.wait()
+            remaining_time = max(0, timeout_time - time.time())
+            try:
+                p.wait(timeout=remaining_time)
+            except subprocess.TimeoutExpired:
+                p.terminate()
+                return None
             thread.join()
         end = time.time()
 
@@ -233,6 +242,7 @@ class MulticastBenchmark:
             # Handle an error in the client
             if output is None:
                 result.set_success(False)
+                result.set_timeout(True)
                 continue
 
             # Handle a successful trial
