@@ -5,6 +5,7 @@ use std::sync::Arc;
 use clap::Parser;
 use log::{debug, info};
 use tokio::task;
+use tokio::select;
 use tokio::sync::Mutex;
 use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
@@ -43,11 +44,13 @@ async fn listen_incoming(
     sock: Sockets, nack_frequency: Duration, nack_delay: Option<Duration>,
     timeout: Duration, client_id: String,
 ) -> io::Result<()> {
-    let mut buf = [0u8; PAYLOAD_SIZE];
+    let mut buf1 = [0u8; PAYLOAD_SIZE];
+    let mut buf2 = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let start = Instant::now();
     loop {
-        let (len, addr) = sock.recv_from_multicast(&mut buf).await;
+        let (len, addr, is_multicast) = sock.recv_from(&mut buf1, &mut buf2).await;
+        let mut buf = if is_multicast { buf2 } else { buf1 };
         let data = Packet::from_payload(&buf);
 
         // Handle non-data packets.
@@ -112,7 +115,7 @@ async fn init_connection(
         task::spawn(async move {
             let mut payload = [0xFF; PAYLOAD_SIZE];
             loop {
-                let len = sock.recv_from_server(&mut payload).await;
+                let (len, _) = sock.recv_from_server(&mut payload).await;
                 if len != NACK_PAYLOAD_SIZE {
                     continue;
                 }
@@ -176,12 +179,21 @@ impl Sockets {
         Ok(())
     }
 
-    async fn recv_from_multicast(&self, payload: &mut [u8]) -> (usize, SocketAddr) {
-        self.multicast.as_ref().unwrap().recv_from(payload).await.unwrap()
+    /// Returns the number of bytes received, the socket address of the packet
+    /// sender, and whether the packet is from the multicast socket.
+    async fn recv_from(&self, payload_unicast: &mut [u8], payload_multicast: &mut [u8]) -> (usize, SocketAddr, bool) {
+        select! {
+            Ok((len, addr)) = {
+                self.unicast.recv_from(payload_unicast)
+            } => (len, addr, false),
+            Ok((len, addr)) = {
+                self.multicast.as_ref().unwrap().recv_from(payload_multicast)
+            } => (len, addr, true)
+        }
     }
 
-    async fn recv_from_server(&self, payload: &mut [u8]) -> usize {
-        self.unicast.recv(payload).await.unwrap()
+    async fn recv_from_server(&self, payload: &mut [u8]) -> (usize, SocketAddr) {
+        self.unicast.recv_from(payload).await.unwrap()
     }
 
     async fn send_to_server(&self, payload: &[u8]) -> usize {
