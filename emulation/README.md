@@ -38,3 +38,10 @@ Run tests that match a specific module:
 ```
 sudo -E python3 -m unittest tests.test_network.TestPopen
 ```
+
+## tcpdump
+
+```
+sudo -E python3 emulation/main.py --debug --tcpdump multicast --duration 1
+tcpdump -r /tmp/sidekick-logs/p1-eth0.pcap | less
+```
