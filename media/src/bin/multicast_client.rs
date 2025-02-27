@@ -69,7 +69,7 @@ async fn listen_incoming(
         if buffer.recv_seqno(data.seqno, now) {
             stats.add_spurious();
         }
-        debug!("receive data {}", data.seqno);
+        debug!("receive data {} <- {:?}", data.seqno, addr);
         while let Some(time_recv) = buffer.pop_seqno() {
             stats.add_value(now - time_recv);
         }
@@ -112,6 +112,7 @@ async fn init_connection(
                 }
                 let packet = Packet::from_payload(&payload);
                 if packet.is_init_ack {
+                    debug!("Received init ACK");
                     *discovered.lock().await = true;
                     break;
                 }
@@ -126,6 +127,7 @@ async fn init_connection(
         }
         let init = Packet::new_init();
         let len = init.fill_payload(&mut payload);
+        debug!("Sending init");
         sock.send(&payload[..len]).await.unwrap();
     }
     Ok(())
@@ -140,7 +142,7 @@ async fn main() -> io::Result<()> {
     // Bind to the local socket to listen to and send packets from.
     let sock = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
     sock.connect(args.addr).await?;
-    info!("Ready to accept incoming packets {:?}", sock.local_addr());
+    info!("Ready to accept incoming packets {:?} -> {:?}", sock.local_addr(), sock.peer_addr());
 
     // Initialize the connection.
     {

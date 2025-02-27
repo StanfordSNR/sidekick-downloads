@@ -92,7 +92,7 @@ async fn gen_data_packets(
     let mut interval = tokio::time::interval(frequency);
     for seqno in 1..u32::MAX {
         interval.tick().await;
-        debug!("send data {}", seqno);
+        debug!("send data {} -> {:?}", seqno, to);
         let data = Packet::new_data(seqno);
         tx.send((data, to.clone())).await?;
     }
