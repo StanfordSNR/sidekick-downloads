@@ -1,5 +1,5 @@
 use std::io;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use clap::Parser;
@@ -27,21 +27,27 @@ struct Cli {
     /// Number of seconds to stream data before sending a timeout message.
     #[arg(long, default_value_t = 60)]
     timeout: u64,
-    /// Address of the other endpoint to send data to.
-    #[arg(long, default_value = "172.16.2.10:5201")]
+    /// Source server address.
+    #[arg(long, default_value = "192.168.1.10:5201")]
     addr: SocketAddr,
+    /// Multicast address to join.
+    #[arg(long, default_value = "239.0.0.1")]
+    multicast_ip: Ipv4Addr,
+    /// Port to receive packets on.
+    #[arg(long, default_value_t = 5202)]
+    multicast_port: u16,
 }
 
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
-    sock: Arc<UdpSocket>, nack_frequency: Duration, nack_delay: Option<Duration>,
+    sock: Sockets, nack_frequency: Duration, nack_delay: Option<Duration>,
     timeout: Duration, client_id: String,
 ) -> io::Result<()> {
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let start = Instant::now();
     loop {
-        let (len, addr) = sock.recv_from(&mut buf).await?;
+        let (len, addr) = sock.recv_from_multicast(&mut buf).await;
         let data = Packet::from_payload(&buf);
 
         // Handle non-data packets.
@@ -79,7 +85,7 @@ async fn listen_incoming(
             debug!("nack {}", seqno);
             let nack = Packet::new_nack(seqno);
             let len = nack.fill_payload(&mut buf);
-            sock.send(&buf[..len]).await.unwrap();
+            sock.send_to_server(&buf[..len]).await;
         }
 
         // Check for timeout.
@@ -94,7 +100,7 @@ async fn listen_incoming(
 
 /// Send the initial message. Do it a bunch and hope one makes it through.
 async fn init_connection(
-    sock: Arc<UdpSocket>, init_frequency: Duration,
+    sock: Sockets, init_frequency: Duration,
 ) -> io::Result<()> {
     let discovered = Arc::new(Mutex::new(false));
     let mut payload = [0xFF; PAYLOAD_SIZE];
@@ -106,7 +112,7 @@ async fn init_connection(
         task::spawn(async move {
             let mut payload = [0xFF; PAYLOAD_SIZE];
             loop {
-                let len = sock.recv(&mut payload).await.unwrap();
+                let len = sock.recv_from_server(&mut payload).await;
                 if len != NACK_PAYLOAD_SIZE {
                     continue;
                 }
@@ -128,9 +134,59 @@ async fn init_connection(
         let init = Packet::new_init();
         let len = init.fill_payload(&mut payload);
         debug!("Sending init");
-        sock.send(&payload[..len]).await.unwrap();
+        sock.send_to_server(&payload[..len]).await;
     }
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct Sockets {
+    multicast_ip: Ipv4Addr,
+    multicast_port: u16,
+    unicast: Arc<UdpSocket>,
+    multicast: Option<Arc<UdpSocket>>,
+    server_addr: SocketAddr,
+}
+
+impl Sockets {
+    async fn new(
+        multicast_ip: Ipv4Addr, multicast_port: u16, server_addr: SocketAddr,
+    ) -> io::Result<Self> {
+        // Create the unicast port
+        let sock_unicast = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
+        info!("Ready to init unicast connection {:?}", sock_unicast.local_addr());
+
+        Ok(Self {
+            multicast_ip,
+            multicast_port,
+            unicast: sock_unicast,
+            multicast: None,
+            server_addr,
+        })
+    }
+
+    async fn join_multicast(&mut self) -> io::Result<()> {
+        // Create the multicast port after init ACK
+        let local_ip = "0.0.0.0".parse().unwrap();
+        let local_addr = (local_ip, self.multicast_port);
+        let sock_multicast = Arc::new(UdpSocket::bind(local_addr).await?);
+        sock_multicast.join_multicast_v4(self.multicast_ip, local_ip).unwrap();
+        info!("Ready to receive multicast packets at {:?}", sock_multicast.local_addr());
+        self.multicast = Some(sock_multicast);
+        Ok(())
+    }
+
+    async fn recv_from_multicast(&self, payload: &mut [u8]) -> (usize, SocketAddr) {
+        self.multicast.as_ref().unwrap().recv_from(payload).await.unwrap()
+    }
+
+    async fn recv_from_server(&self, payload: &mut [u8]) -> usize {
+        self.unicast.recv(payload).await.unwrap()
+    }
+
+    async fn send_to_server(&self, payload: &[u8]) -> usize {
+        self.unicast.send_to(payload, self.server_addr).await.unwrap()
+    }
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -138,22 +194,17 @@ async fn main() -> io::Result<()> {
     env_logger::init();
     let args = Cli::parse();
     let nack_frequency = Duration::from_millis(args.nack_frequency);
-
-    // Bind to the local socket to listen to and send packets from.
-    let sock = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
-    sock.connect(args.addr).await?;
-    info!("Ready to accept incoming packets {:?} -> {:?}", sock.local_addr(), sock.peer_addr());
+    let mut sock = Sockets::new(args.multicast_ip, args.multicast_port, args.addr).await?;
 
     // Initialize the connection.
     {
-        let sock = sock.clone();
-        init_connection(sock, nack_frequency).await?;
+        init_connection(sock.clone(), nack_frequency).await?;
         info!("Connected to the server");
+        sock.join_multicast().await?;
     }
 
     // Start the client.
     {
-        let sock = sock.clone();
         let timeout = Duration::from_secs(args.timeout);
         let nack_delay = if args.nack_delay > 0 {
             Some(Duration::from_millis(args.nack_delay))

@@ -1,5 +1,5 @@
 use std::io;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -25,12 +25,17 @@ struct Cli {
     /// Frequency at which to send data packets, in ms.
     #[arg(long, default_value_t = 20)]
     frequency: u64,
+    /// Multicast address to send packets to.
+    #[arg(long, default_value = "239.0.0.1")]
+    multicast_ip: Ipv4Addr,
+    /// Multicast port to send packets to.
+    #[arg(long, default_value_t = 5202)]
+    multicast_port: u16,
 }
 
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
     tx: mpsc::Sender<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
-    frequency: Duration,
 ) -> io::Result<()> {
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connections = HashSet::new();
@@ -48,17 +53,13 @@ async fn listen_incoming(
             tx.send((Packet::new_init_ack(), addr)).await.unwrap();
             if !connections.contains(&addr) {
                 connections.insert(addr);
-                let tx = tx.clone();
-                task::spawn(async move {
-                    gen_data_packets(tx, frequency, addr).await.unwrap();
-                });
             }
             continue;
         }
 
         // Retransmit data if it's a NACK.
         if data.is_nack {
-            debug!("retransmit data {}", data.seqno);
+            debug!("retransmit data {} {:?}", data.seqno, addr);
             let retx = Packet::new_data(data.seqno);
             tx.send((retx, addr.clone())).await.unwrap();
             continue;
@@ -108,6 +109,7 @@ async fn main() -> io::Result<()> {
 
     // Bind to the local socket to listen to and send packets from.
     let sock = Arc::new(UdpSocket::bind(format!("0.0.0.0:{}", args.port)).await?);
+    sock.set_multicast_ttl_v4(5)?;
     info!("Ready to accept incoming packets {:?}", sock.local_addr());
 
     // Channel for sending data on the UDP socket from one thread.
@@ -117,15 +119,16 @@ async fn main() -> io::Result<()> {
         task::spawn(async move { send_outgoing(rx, sock, false).await.unwrap() });
     }
 
-    // // Send data packets to the multicast proxy.
-    // {
-    //     let tx = tx.clone();
-    //     task::spawn(async move {
-    //         gen_data_packets(tx, frequency, args.addr).await.unwrap();
-    //     });
-    // }
+    // Send data packets to the multicast address.
+    {
+        let tx = tx.clone();
+        task::spawn(async move {
+            let multicast_addr = SocketAddr::from((args.multicast_ip, args.multicast_port));
+            gen_data_packets(tx, frequency, multicast_addr).await.unwrap();
+        });
+    }
 
-    // Start the server.
-    listen_incoming(tx, sock, frequency).await.unwrap();
+    // Start the server to register clients for NACKs.
+    listen_incoming(tx, sock).await.unwrap();
     Ok(())
 }
