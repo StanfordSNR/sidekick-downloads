@@ -299,7 +299,7 @@ class TestMulticastBenchmark(CLITestCase):
     def test_multicast_benchmark_with_sidekick(self):
         outputs = self.execute_command_and_check(
             'multicast',
-            network_options=['--proxy', 'sidekick'],
+            network_options=['--proxy', 'sidekick-multicast'],
             protocol_options=['--num-clients', '3'],
         )
         self.check_multicast_output(outputs[0], 3)
@@ -352,10 +352,13 @@ class TestSidekickProtocolBasic(CLITestCase):
     def execute_sidekick_command_and_check(
         self, protocol, add_network_options=[], add_protocol_options=[],
     ):
+        network_options = add_network_options + ['--debug']
+        if protocol == 'multicast':
+            network_options += ['--proxy', 'sidekick-multicast']
+        else:
+            network_options += ['--proxy', 'sidekick']
         self.execute_command_and_check(
-            protocol,
-            ['--debug', '--proxy', 'sidekick'] + add_network_options,
-            add_protocol_options,
+            protocol, network_options, add_protocol_options,
         )
         self._test_sidekick_receives_discovery()
         self._test_quacker_receives_discover_ack()
@@ -378,6 +381,33 @@ class TestSidekickProtocolBasic(CLITestCase):
         self.execute_sidekick_command_and_check(
             'media',
             add_protocol_options=['--client-quacker'],
+        )
+
+    def test_multicast_client_quacker_default_one(self):
+        self.execute_sidekick_command_and_check(
+            'multicast',
+            add_protocol_options=[
+                '--num-clients', '1',
+                '--client-quacker', '1',
+            ],
+        )
+
+    def test_multicast_client_quacker_default_all(self):
+        self.execute_sidekick_command_and_check(
+            'multicast',
+            add_protocol_options=[
+                '--num-clients', '2',
+                '--client-quacker', '2',
+            ],
+        )
+
+    def test_multicast_client_quacker_default_mixed(self):
+        self.execute_sidekick_command_and_check(
+            'multicast',
+            add_protocol_options=[
+                '--num-clients', '3',
+                '--client-quacker', '2',
+            ],
         )
 
     def test_sniffing_picoquic_quacker_different_frequencies(self):
@@ -420,6 +450,25 @@ class TestSidekickProtocolBasic(CLITestCase):
             add_protocol_options = ['--client-quacker', '--frequency', str(freq_media_ms)]
             self.execute_sidekick_command_and_check(
                 'media', add_network_options, add_protocol_options,
+            )
+        test(100, 0, 20)
+        test(0, 8, 10)
+        test(50, 20, 20)
+
+    def test_multicast_client_quacker_different_configs(self):
+        def test(freq_ms, freq_pkts, freq_media_ms):
+            self.execute_sidekick_command_and_check(
+                'multicast',
+                add_network_options=[
+                    '--freq-ms', str(freq_ms), '--freq-pkts', str(freq_pkts),
+                    '--threshold', '8',
+                    '--quackee-port', '5250',
+                ],
+                add_protocol_options=[
+                    '--num-clients', '1',
+                    '--client-quacker', '1',
+                    '--frequency', str(freq_media_ms),
+                ],
             )
         test(100, 0, 20)
         test(0, 8, 10)
@@ -493,5 +542,21 @@ class TestSidekickProtocolReset(CLITestCase):
                 '--threshold', '1', '--freq-ms', '0', '--freq-pkts', '50',
             ],
             protocol_options=['--frequency', '1', '--client-quacker'],
+        )
+        self._test_quacker_receives_resets()
+
+    def test_multicast_client_quacker_receives_resets(self):
+        self.execute_command(
+            'multicast',
+            # In the multicast network, the client is on the second link instead
+            # of the first, so the loss needs to be on *that* path segment.
+            network_options=[
+                '--proxy', 'sidekick-multicast', '--loss2', '10',
+                '--threshold', '1', '--freq-ms', '0', '--freq-pkts', '50',
+            ],
+            protocol_options=[
+                '--frequency', '1',
+                '--client-quacker', '1', '--num-clients', '1',
+            ],
         )
         self._test_quacker_receives_resets()
