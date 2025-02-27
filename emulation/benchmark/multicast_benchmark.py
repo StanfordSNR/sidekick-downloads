@@ -9,7 +9,7 @@ import multiprocessing
 import mininet
 
 from common import *
-from network import EmulatedNetwork
+from network import MulticastNetwork
 from .result import MulticastBenchmarkResult
 
 
@@ -25,12 +25,13 @@ class MulticastClientOutput:
 class MulticastBenchmark:
     def __init__(
         self,
-        net: EmulatedNetwork,
+        net: MulticastNetwork,
         label: str,
         duration: int,
         frequency: int,
         logdir: str,
         num_clients: int,
+        port: int=5201,
         nack_delay: int=0,
         proxy_type: Optional[ProxyType]=None,
     ):
@@ -53,12 +54,14 @@ class MulticastBenchmark:
         - num_clients: Number of multicast clients in the group.
 
         Optional parameters:
+        - port: The port to start the multicast server on (default: 5201).
         - nack_delay: Delay (ms) of the NACK signal to reduce spurious retxes.
         - proxy_type: The type of proxy on the p1 host, if any.
         """
         self.net = net
         self.label = label
         self.duration = duration
+        self.port = port
         self.frequency = frequency
         self.proxy_type = 'none' if proxy_type is None else proxy_type.value
         self._logdir = logdir
@@ -66,16 +69,16 @@ class MulticastBenchmark:
         self.num_clients = num_clients
 
     @property
-    def client(self) -> mininet.node.Host:
-        """The mininet host of the Multicast client.
+    def clients(self) -> List[mininet.node.Host]:
+        """The mininet hosts of the Multicast clients.
         """
-        return self.net.h1
+        return self.net.clients
 
     @property
     def server(self) -> mininet.node.Host:
         """The mininet host of the Multicast server.
         """
-        return self.net.h2
+        return self.net.server
 
     @property
     def proxy(self) -> Optional[mininet.node.Host]:
@@ -93,7 +96,7 @@ class MulticastBenchmark:
         """
         if host == self.server:
             return f'{self._logdir}/{SERVER_LOGFILE}'
-        elif host == self.client:
+        elif host in self.clients:
             return f'{self._logdir}/{CLIENT_LOGFILE}'
         elif host == self.proxy and self.proxy is not None:
             return f'{self._logdir}/{ROUTER_LOGFILE}'
@@ -109,6 +112,7 @@ class MulticastBenchmark:
         """
         cmd = f'./media/target/release/multicast_server '\
               f'--frequency {self.frequency} '\
+              f'--port {self.port} '
 
         condition = threading.Condition()
         def parse_output(line):
@@ -137,6 +141,7 @@ class MulticastBenchmark:
         cmd = f'./media/target/release/multicast_client '\
               f'--nack-frequency {self.net.rtt} '\
               f'--nack-delay {self.nack_delay} '\
+              f'--addr {self.server.IP()}:{self.port} '\
               f'--timeout {self.duration} '
 
         # Create a thread-safe and process-safe results object
@@ -162,15 +167,15 @@ class MulticastBenchmark:
                 results[client_id][key] = val
 
         # Run all the client simultaneously and wait until they are complete
-        logfile = self.logfile(self.client)
         start = time.time()
         processes = []
         threads = []
-        for index in range(self.num_clients):
-            client_cmd = f'{cmd} --client-id {index} '
-            p, thread = self.net.popen(self.client, client_cmd, background=True,
-                console_logger=DEBUG, logfile=logfile, func=parse_result,
-                raise_error=False)
+        for i in range(self.num_clients):
+            logfile = self.logfile(self.clients[i])
+            client_cmd = f'{cmd} --client-id {i} '
+            p, thread = self.net.popen(self.clients[i], client_cmd,
+                background=True, console_logger=DEBUG, logfile=logfile,
+                func=parse_result, raise_error=False)
             processes.append(p)
             threads.append(thread)
         for p, thread in zip(processes, threads):
@@ -187,9 +192,6 @@ class MulticastBenchmark:
             time_s=end - start, client_ids=client_ids, latencies=latencies,
             num_spurious=num_spurious,
         )
-        assert len(output.client_ids) > 0
-        assert len(output.client_ids) == len(output.latencies)
-        assert len(output.client_ids) == len(output.num_spurious)
         return output
 
     def run_benchmark(

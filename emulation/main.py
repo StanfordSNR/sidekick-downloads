@@ -203,10 +203,12 @@ def parse_args(argv=None):
         help='Collect perf reports at the proxy and server')
     exp_config.add_argument('--debug', action='store_true',
         help='More verbose debug logging')
-    exp_config.add_argument('--topology',
-        choices=['one_hop', 'direct', 'multicast'], default='one_hop',
+    exp_config.add_argument('--topology', default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
-             'properties for the "near path segment" i.e. Link 1.')
+             'properties for the "near path segment" i.e. Link 1. The '\
+             '"multicast" topology uses the number of clients set in the '\
+             'multicast benchmark. If using the CLI, uses <n> clients in '\
+             '"multicast-<n>".')
 
     ###########################################################################
     # Network Configurations
@@ -362,7 +364,8 @@ def parse_args(argv=None):
         'multicast',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    multicast.set_defaults(ty='benchmark', benchmark=benchmark_multicast)
+    multicast.set_defaults(ty='benchmark', benchmark=benchmark_multicast,
+        topology='multicast')
     multicast.add_argument('--duration', type=int, default=1, metavar='SECS',
         help='Number of seconds to stream data before sending a timeout.')
     multicast.add_argument('--frequency', type=int, default=20, metavar='MS',
@@ -413,11 +416,14 @@ def main(args):
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
             args.qdisc, pacing, perf=args.perf, debug=args.debug)
-    elif args.topology == 'multicast':
-        NUM_CLIENTS = 3
+    elif 'multicast' in args.topology:
+        if hasattr(args, 'num_clients'):
+            num_clients = args.num_clients
+        else:
+            num_clients = int(args.topology.split('-')[1])
         net = MulticastNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.qdisc, pacing,
-            num_clients=NUM_CLIENTS, perf=args.perf, debug=args.debug,
+            num_clients=num_clients, perf=args.perf, debug=args.debug,
             bridge_proxy=args.proxy is None)
     else:
         raise NotImplementedError(args.topology)

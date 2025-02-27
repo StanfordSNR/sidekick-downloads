@@ -271,21 +271,27 @@ class TestMediaBenchmark(CLITestCase):
 
 
 class TestMulticastBenchmark(CLITestCase):
-    def check_multicast_output(self, output):
+    def check_multicast_output(self, output, expected_num_clients):
         self.assertIsInstance(output.get('client_ids'), list);
         self.assertIsInstance(output.get('client_ids'), list);
         num_clients = len(output['client_ids'])
-        self.assertEqual(num_clients, 3, '3 clients by default')
+        self.assertEqual(num_clients, expected_num_clients)
         self.assertIsInstance(output.get('latencies'), list);
         self.assertEqual(len(output['latencies']), num_clients);
         self.assertIsInstance(output.get('num_spurious'), list);
         self.assertEqual(len(output['num_spurious']), num_clients);
 
+    def test_multicast_benchmark_one_client(self):
+        outputs = self.execute_command_and_check(
+            'multicast', protocol_options=['--num-clients', '1'],
+        )
+        self.check_multicast_output(outputs[0], 1)
+
     def test_multicast_benchmark_simple(self):
         outputs = self.execute_command_and_check(
             'multicast', protocol_options=['--num-clients', '3'],
         )
-        self.check_multicast_output(outputs[0])
+        self.check_multicast_output(outputs[0], 3)
 
     def test_multicast_benchmark_with_sidekick(self):
         outputs = self.execute_command_and_check(
@@ -293,7 +299,7 @@ class TestMulticastBenchmark(CLITestCase):
             network_options=['--proxy', 'sidekick'],
             protocol_options=['--num-clients', '3'],
         )
-        self.check_multicast_output(outputs[0])
+        self.check_multicast_output(outputs[0], 3)
 
 
 class TestSidekickProtocolBasic(CLITestCase):

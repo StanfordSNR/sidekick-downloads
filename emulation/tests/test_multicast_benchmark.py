@@ -7,7 +7,7 @@ import tempfile
 
 import unittest
 
-from network import OneHopNetwork
+from network import MulticastNetwork
 from benchmark import *
 
 
@@ -23,13 +23,13 @@ class MulticastTestCase(unittest.TestCase):
 
         # Setup a mininet network
         self.stopped = True
-        self.setUpOneHopNetwork()
 
         # Set default parameters
         self.label = 'my_benchmark'
         self.duration = 1
         self.frequency = 20
         self.nack_delay = 0
+        self.port = 5202
 
         # Setup logfiles
         self._logdir = tempfile.TemporaryDirectory()
@@ -45,20 +45,21 @@ class MulticastTestCase(unittest.TestCase):
             self.net.stop()
             self.stopped = True
 
-    def setUpOneHopNetwork(
-        self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
-        jitter1=None, jitter2=None, qdisc='red', pacing=False,
-        bridge_proxy=True
-    ) -> OneHopNetwork:
+    def setUpMulticastNetwork(
+        self, num_clients, delay1=1, delay2=10, loss1=0, loss2=0,
+        bw1=50, bw2=10, qdisc='red', pacing=False, bridge_proxy=True
+    ) -> MulticastNetwork:
         self.stopNetwork()
-        self.net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                                 jitter1, jitter2, qdisc, pacing, bridge_proxy)
+        self.net = MulticastNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
+                                    qdisc, pacing, num_clients, bridge_proxy)
         self.stopped = False
 
     def setUpMulticastBenchmark(self, num_clients) -> MulticastBenchmark:
+        self.setUpMulticastNetwork(num_clients)
         bm = MulticastBenchmark(
             self.net, self.label, self.duration, self.frequency, self.logdir,
-            num_clients=num_clients, nack_delay=self.nack_delay, proxy_type=None,
+            port=self.port, num_clients=num_clients, nack_delay=self.nack_delay,
+            proxy_type=None,
         )
         return bm
 
@@ -76,10 +77,12 @@ class TestConstructor(MulticastTestCase):
         self.assertEqual(bm.num_clients, 3)
 
         # Test mininet host property methods
-        self.assertEqual(bm.client, self.net.h1)
-        self.assertEqual(bm.server, self.net.h2)
+        self.assertEqual(bm.clients, self.net.clients)
+        self.assertEqual(bm.server, self.net.server)
         self.assertEqual(bm.proxy, self.net.p1)
-        self.assertEqual(bm.logfile(bm.client), f'{self.logdir}/{CLIENT_LOGFILE}')
+        self.assertEqual(bm.logfile(bm.clients[0]), f'{self.logdir}/{CLIENT_LOGFILE}')
+        self.assertEqual(bm.logfile(bm.clients[1]), f'{self.logdir}/{CLIENT_LOGFILE}')
+        self.assertEqual(bm.logfile(bm.clients[2]), f'{self.logdir}/{CLIENT_LOGFILE}')
         self.assertEqual(bm.logfile(bm.server), f'{self.logdir}/{SERVER_LOGFILE}')
         self.assertEqual(bm.logfile(bm.proxy), f'{self.logdir}/{ROUTER_LOGFILE}')
 
@@ -89,14 +92,13 @@ class TestEndpoints(MulticastTestCase):
         """The server starts successfully without hanging, and can be found to
         be listening on a specific port. The server also writes to a logfile.
         """
-        port = 5201
         bm = self.setUpMulticastBenchmark(1)
         server_logfile = bm.logfile(bm.server)
-        output = bm.server.cmd(f'lsof -i :{port}')
+        output = bm.server.cmd(f'lsof -i :{self.port}')
         self.assertEqual(output, '', 'server is not running initially')
         self.assertFalse(os.path.exists(server_logfile))
         bm.start_server()
-        output = bm.server.cmd(f'lsof -i :{port}')
+        output = bm.server.cmd(f'lsof -i :{self.port}')
         self.assertNotEqual(output, '', 'server should have started')
         self.stopNetwork()  # Give background processes a chance to flush
         self.assertTrue(os.path.exists(server_logfile))
@@ -108,7 +110,7 @@ class TestEndpoints(MulticastTestCase):
         """
         bm = self.setUpMulticastBenchmark(num_clients)
         bm.start_server()
-        client_logfile = bm.logfile(bm.client)
+        client_logfile = bm.logfile(bm.clients[0])
         self.assertFalse(os.path.exists(client_logfile))
         result = bm.run_client()
         self.assertIsNotNone(result)
