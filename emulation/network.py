@@ -597,6 +597,7 @@ class MulticastNetwork(EmulatedNetwork):
         super().__init__(perf=perf, debug=debug)
 
         # Create the topology
+        client_ids = list(range(1, num_clients + 1))
         self.server = self.net.addHost('h0', ip='192.168.1.10/24')
         self.e1 = self.net.addHost('e1')
         self.p1 = self.net.addHost('p1', ip='192.168.1.11/24')
@@ -605,8 +606,8 @@ class MulticastNetwork(EmulatedNetwork):
         self.net.addLink(self.e1, self.p1)
         self.net.addLink(self.p1, self.e2)
         self.clients = []
-        for i in range(1, num_clients+1):
-            host = self.net.addHost(f'h{i}', ip=f'172.16.{i}.100')
+        for cid in client_ids:
+            host = self.net.addHost(f'h{cid}', ip=f'172.16.{cid}.100')
             self.clients.append(host)
             self.net.addLink(self.e2, host)
         self.net.build()
@@ -622,11 +623,11 @@ class MulticastNetwork(EmulatedNetwork):
             'e2-eth0': self.e2,
             'e2-eth1': self.e2,
         }
-        for i, host in enumerate(self.clients):
+        for cid, host in zip(client_ids, self.clients):
             iface = f'{host.name}-eth0'
             self.primary_ifaces.append(iface)
             self.iface_to_host[iface] = host
-            self.iface_to_host[f'e2-eth{i+1}'] = self.e2
+            self.iface_to_host[f'e2-eth{cid}'] = self.e2
         self.reset_statistics()
 
         # Setup routing and forwarding (e2 acts as router)
@@ -660,13 +661,11 @@ class MulticastNetwork(EmulatedNetwork):
         self._config_iface('h0-eth0', False, pacing)
         self._config_iface('p1-eth0', False, pacing)
         self._config_iface('p1-eth1', False, pacing)
-        for host in self.clients:
-            self._config_iface(f'{host.name}-eth0', False, pacing)
         self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc)
         self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc)
-        self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc)
-        for i in range(num_clients):
-            self._config_iface(f'e2-eth{i+1}', True, False, delay2, loss2, bw2, bdp, qdisc)
+        for cid in client_ids:
+            self._config_iface(f'h{cid}-eth0', False, pacing)
+            self._config_iface(f'e2-eth{cid}', True, False, delay2, loss2, bw2, bdp, qdisc)
 
         # Save network statistics
         self.rtt = rtt
