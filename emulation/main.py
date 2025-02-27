@@ -204,7 +204,7 @@ def parse_args(argv=None):
     exp_config.add_argument('--debug', action='store_true',
         help='More verbose debug logging')
     exp_config.add_argument('--topology',
-        choices=['one_hop', 'direct'], default='one_hop',
+        choices=['one_hop', 'direct', 'multicast'], default='one_hop',
         help='Network topology to use. If "direct", uses the network path '\
              'properties for the "near path segment" i.e. Link 1.')
 
@@ -413,6 +413,12 @@ def main(args):
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
             args.qdisc, pacing, perf=args.perf, debug=args.debug)
+    elif args.topology == 'multicast':
+        NUM_CLIENTS = 3
+        net = MulticastNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
+            args.bw1, args.bw2, args.qdisc, pacing,
+            num_clients=NUM_CLIENTS, perf=args.perf, debug=args.debug,
+            bridge_proxy=args.proxy is None)
     else:
         raise NotImplementedError(args.topology)
 

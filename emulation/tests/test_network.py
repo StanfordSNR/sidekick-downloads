@@ -10,9 +10,20 @@ from network import *
 
 class PingResult:
     def __init__(self, output):
+        # Parse each individual ping
+        self.pings = []
+        pattern = r'bytes from ([\d\.]+): icmp_seq=(\d+)'
+        for line in output.split('\n'):
+            match = re.search(pattern, line)
+            if match:
+                ip = match.group(1)
+                icmp_seq = int(match.group(2))
+                self.pings.append((ip, icmp_seq))
+
+        # Parse the result summary
         pattern = (
             r'\s+(?P<packets_tx>\d+) packets transmitted, '
-            r'(?P<packets_rx>\d+) received, '
+            r'(?P<packets_rx>\d+) received, .*'
             r'(?P<packet_loss>[\d.]+)% packet loss, '
             r'time (?P<total_time>\d+)ms\s+'
             r'rtt min/avg/max/mdev = '
@@ -93,6 +104,21 @@ class NetworkTestCase(unittest.TestCase):
             time.sleep(setup_time)
         return net
 
+    def setUpMulticastNetwork(
+        self, num_clients, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50,
+        bw2=10, jitter1=None, jitter2=None, qdisc='red', pacing=False,
+        setup_time=0, bridge_proxy=True, cache=True,
+    ) -> MulticastNetwork:
+        net = MulticastNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
+                               qdisc, pacing, num_clients, bridge_proxy)
+        if cache:
+            self.stopNetwork()
+            self.net = net
+            self.stopped = False
+        if setup_time > 0:
+            time.sleep(setup_time)
+        return net
+
     def setUpDirectNetwork(
         self, delay=10, loss=0, bw=10, jitter=None, qdisc='red', pacing=False,
         setup_time=0, cache=True,
@@ -121,6 +147,27 @@ class NetworkTestCase(unittest.TestCase):
         self.assertTrue(result.success, debug_output)
         self.assertEqual(result.packets_tx(), n)
         return result
+
+
+class TestMulticastNetwork(NetworkTestCase):
+    def _test_multicast_reachability(self, num_clients, num_pings=2):
+        net = self.setUpMulticastNetwork(num_clients)
+        self.assertEqual(net.server.name, 'h0')
+        self.assertEqual(len(net.clients), num_clients)
+        for i in range(num_clients):
+            self.assertEqual(net.clients[i].name, f'h{i+1}')
+        output = net.server.cmd(f'ping -t 2 -c {num_pings} 239.0.0.1')
+        result = PingResult(output)
+        self.assertTrue(result.success)
+        self.assertEqual(result.packets_tx(), num_pings)
+        ping_ips = set([ip for (ip, _) in result.pings])
+        self.assertEqual(len(ping_ips), num_clients, ping_ips)
+
+    def test_multicast_reachability_one_client(self):
+        self._test_multicast_reachability(1)
+
+    def test_multicast_reachability_multiple_clients(self):
+        self._test_multicast_reachability(3)
 
 
 class TestNetStatistics(NetworkTestCase):
@@ -312,6 +359,19 @@ class TestNetworkReachability(NetworkTestCase):
         net = self.setUpDirectNetwork()
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
+
+    def test_multicast_hosts_are_reachable_one_client(self):
+        net = self.setUpMulticastNetwork(1)
+        self.assertReachable(net.server, net.clients[0])
+        self.assertReachable(net.clients[0], net.server)
+
+    def test_multicast_hosts_are_reachable_multiple_client(self):
+        net = self.setUpMulticastNetwork(2)
+        self.assertReachable(net.server, net.clients[0])
+        self.assertReachable(net.server, net.clients[1])
+        self.assertReachable(net.clients[0], net.server)
+        self.assertReachable(net.clients[1], net.server)
+
 
 class TestDelayConfig(NetworkTestCase):
     def assertDelayIsCorrect(self, node1, node2, expected_delay, n=10):

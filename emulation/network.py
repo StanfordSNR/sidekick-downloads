@@ -568,6 +568,143 @@ class OneHopNetwork(EmulatedNetwork):
 
 
 """
+Defines an emulated network in mininet with a branching topology as follows:
+
+                                   -- h1 172.16.1.100
+                                  /
+192.168.1.10 h0 -- e1 -- p1 -- e2 --- h2 172.16.2.100
+                                  \
+                                   -- h3 172.16.3.100
+
+Unlike the OneHopNetwork, h0 is the sever / data sender, and h1, h2, h3, etc.
+are the clients / data receivers. The number of clients is configurable. The
+clients are added to a multicast address 239.0.0.1 that h0 can send to.
+The emulator nodes (e1, e2) emulate link properties (e.g., delay, loss,
+bandwidth, jitter). e2 also handles L3 routing from h0 to the other hosts.
+"""
+class MulticastNetwork(EmulatedNetwork):
+    def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, qdisc, pacing,
+                 num_clients, bridge_proxy=True, perf=False, debug=False):
+        """
+        Parameters:
+        - num_clients: Number of data receivers.
+        - bridge_proxy: Whether the proxy node should act as a transparent bridge.
+        - perf: Whether to collect perf reports when a process with a logfile is
+          started.
+        - debug: Whether to set the debug environment variable RUST_LOG=debug
+          for Rust processes when running popen.
+        """
+        super().__init__(perf=perf, debug=debug)
+
+        # Create the topology
+        self.server = self.net.addHost('h0', ip='192.168.1.10/24')
+        self.e1 = self.net.addHost('e1')
+        self.p1 = self.net.addHost('p1', ip='192.168.1.11/24')
+        self.e2 = self.net.addHost('e2')
+        self.net.addLink(self.server, self.e1)
+        self.net.addLink(self.e1, self.p1)
+        self.net.addLink(self.p1, self.e2)
+        self.clients = []
+        for i in range(1, num_clients+1):
+            host = self.net.addHost(f'h{i}', ip=f'172.16.{i}.100')
+            self.clients.append(host)
+            self.net.addLink(self.e2, host)
+        self.net.build()
+
+        # Initialize statistics
+        self.primary_ifaces = ['h0-eth0', 'p1-eth0', 'p1-eth1']
+        self.iface_to_host = {
+            'h0-eth0': self.server,
+            'p1-eth0': self.p1,
+            'p1-eth1': self.p1,
+            'e1-eth0': self.e1,
+            'e1-eth1': self.e1,
+            'e2-eth0': self.e2,
+            'e2-eth1': self.e2,
+        }
+        for i, host in enumerate(self.clients):
+            iface = f'{host.name}-eth0'
+            self.primary_ifaces.append(iface)
+            self.iface_to_host[iface] = host
+            self.iface_to_host[f'e2-eth{i+1}'] = self.e2
+        self.reset_statistics()
+
+        # Setup routing and forwarding (e2 acts as router)
+        self.setup_router_node(self.e2)
+        self.popen(self.server, 'ip route add default via 192.168.1.1')
+        for i, host in enumerate(self.clients):
+            self.popen(host, f'ip route add default via 172.16.{i+1}.1')
+
+        # Set up transparent bridging
+        if bridge_proxy:
+            self.setup_bridging_node(self.e1)
+            self.setup_bridging_node(self.p1)
+        else:
+            self.setup_bridging_node(self.e1)
+
+        # Configure IP addresses
+        if bridge_proxy:
+            # IP needs to be assigned to bridge; put on same subnet as h1
+            self.popen(self.p1, f"ip addr add 192.168.1.11/24 dev br0")
+            # Don't forward packets destined for the proxy
+            self.popen(self.p1, f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
+
+        # Setup multicast client host nodes
+        for host in self.clients:
+            self.setup_host_node(host)
+
+        # Configure link latency, delay, bandwidth, and queue size
+        # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
+        rtt = 2 * (delay1 + delay2)
+        bdp = self._calculate_bdp(delay1, delay2, bw1, bw2)
+        self._config_iface('h0-eth0', False, pacing)
+        self._config_iface('p1-eth0', False, pacing)
+        self._config_iface('p1-eth1', False, pacing)
+        for host in self.clients:
+            self._config_iface(f'{host.name}-eth0', False, pacing)
+        self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc)
+        self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc)
+        self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc)
+        for i in range(num_clients):
+            self._config_iface(f'e2-eth{i+1}', True, False, delay2, loss2, bw2, bdp, qdisc)
+
+        # Save network statistics
+        self.rtt = rtt
+        self.cwnd = self._calculate_cwnd(bdp)
+
+    def setup_router_node(self, node):
+        interfaces = []
+        self.popen(node, 'sysctl net.ipv4.ip_forward=1')
+        self.popen(node, f"ip addr add 192.168.1.1/24 dev {node.name}-eth0")
+        for i in range(1, len(self.clients)+1):
+            iface = f'{node.name}-eth{i}'
+            interfaces.append(iface)
+            self.popen(node, f"ip addr add 172.16.{i}.1/24 dev {iface}")
+
+        # Setup multicast
+        self.popen(node, f'/opt/smcroute/sbin/smcrouted -l debug -I smcroute-{node.name}')
+        self.popen(node, f'sleep 1')
+        self.popen(node, f'/opt/smcroute/sbin/smcroutectl -I smcroute-{node.name} '
+                 f'add {node.name}-eth0 239.0.0.1 {" ".join(interfaces)}')
+
+    def setup_host_node(self, node):
+        # Setup multicast
+        intfName = f'{node.name}-eth0'
+        self.popen(node, f'sysctl net.ipv4.icmp_echo_ignore_broadcasts=0')
+        self.popen(node, f'route add -net 224.0.0.0 netmask 240.0.0.0 dev {intfName}')
+        self.popen(node, f'/opt/smcroute/sbin/smcrouted -l debug -I smcroute-{node.name}')
+        self.popen(node, f'sleep 1')
+        self.popen(node, f'/opt/smcroute/sbin/smcroutectl -I smcroute-{node.name}'\
+                         f' join {intfName} 239.0.0.1')
+
+    def setup_bridging_node(self, node):
+        self.popen(node, "brctl addbr br0")
+        self.popen(node, f"brctl addif br0 {node.name}-eth0")
+        self.popen(node, f"brctl addif br0 {node.name}-eth1")
+        self.popen(node, "ip link set dev br0 up")
+
+
+"""
 Defines an emulated network in mininet that directly connects the client /
 data receiver (h1) to the server / data sender (h2) with a single link.
 The link has a node (e1) that emulates link properties (e.g., delay, loss,
