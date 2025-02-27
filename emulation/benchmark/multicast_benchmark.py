@@ -31,6 +31,8 @@ class MulticastBenchmark:
         frequency: int,
         logdir: str,
         num_clients: int,
+        num_quackers: int=0,
+        quacker: Optional[QuackerConfig]=None,
         port: int=5201,
         nack_delay: int=0,
         proxy_type: Optional[ProxyType]=None,
@@ -54,6 +56,9 @@ class MulticastBenchmark:
         - num_clients: Number of multicast clients in the group.
 
         Optional parameters:
+        - num_quackers: The number of quackers. Must be at most the number of
+          clients. (default: 0)
+        - quacker: If enabled, the quacker configuration.
         - port: The port to start the multicast server on (default: 5201).
         - nack_delay: Delay (ms) of the NACK signal to reduce spurious retxes.
         - proxy_type: The type of proxy on the p1 host, if any.
@@ -67,6 +72,8 @@ class MulticastBenchmark:
         self._logdir = logdir
         self.nack_delay = nack_delay
         self.num_clients = num_clients
+        self.num_quackers = num_quackers
+        self.quacker = quacker
 
     @property
     def clients(self) -> List[mininet.node.Host]:
@@ -166,13 +173,23 @@ class MulticastBenchmark:
                     results[client_id] = manager.dict()
                 results[client_id][key] = val
 
-        # Run all the client simultaneously
+        # Run all the clients simultaneously
         start = time.time()
         processes = []
         threads = []
+        quackers_remaining = self.num_quackers
         for i in range(self.num_clients):
             logfile = self.logfile(self.clients[i])
             client_cmd = f'{cmd} --client-id {i} '
+            if quackers_remaining > 0:
+                q = self.quacker
+                target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
+                client_cmd += f'--quacker '\
+                              f'--threshold {q.threshold} '\
+                              f'--frequency-pkts {q.freq_pkts} '\
+                              f'--frequency-ms {q.freq_ms} '\
+                              f'--target-addr {target_addr} '
+                quackers_remaining -= 1
             p, thread = self.net.popen(self.clients[i], client_cmd,
                 background=True, console_logger=DEBUG, logfile=logfile,
                 func=parse_result, raise_error=False)

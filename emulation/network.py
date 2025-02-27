@@ -419,6 +419,34 @@ class EmulatedNetwork:
             if not notified:
                 raise TimeoutError(f'start_sidekick timeout {SETUP_TIMEOUT}s')
 
+    def start_sidekick_multicast(
+        self, threshold: int, port: int, logfile: str, timeout=SETUP_TIMEOUT,
+    ):
+        condition = threading.Condition()
+        def notify_when_ready(line):
+            # print(line.strip())
+            if 'Ready' in line:
+                with condition:
+                    condition.notify()
+
+        # The cache capacity is currently set arbitrarily larger to 4*cwnd
+        # to avoid unnecessary dropping in tests, until we figure out the
+        # right value to set it at.
+        ifaces = [f'p1-eth{i}' for i in range(1, len(self.clients)+1)]
+        cmd = f'./proxy/target/release/sidekick_multicast '\
+              f'--server-interface p1-eth0 --client-interface p1-eth1 '\
+              f'--cache-capacity {4 * self.cwnd} '\
+              f'--quack-port {port} --quack-threshold {threshold} '
+
+        self.popen(self.p1, cmd,
+                   background=True, console_logger=DEBUG,
+                   logfile=logfile, func=notify_when_ready)
+
+        with condition:
+            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            if not notified:
+                raise TimeoutError(f'start_sidekick_multicast timeout {SETUP_TIMEOUT}s')
+
     def start_tcp_pep(self, logfile, timeout=SETUP_TIMEOUT):
         self.popen(self.p1, 'ip rule add fwmark 1 lookup 100')
         self.popen(self.p1, 'ip route add local 0.0.0.0/0 dev lo table 100')

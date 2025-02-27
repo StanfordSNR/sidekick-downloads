@@ -25,6 +25,7 @@ class ProxyType(Enum):
     PEPSAL = 'pepsal'
     BRIDGE = 'bridge'
     SIDEKICK = 'sidekick'
+    SIDEKICK_MULTICAST = 'sidekick-multicast'
 
 @dataclass(frozen=True)
 class QuackerConfig:
