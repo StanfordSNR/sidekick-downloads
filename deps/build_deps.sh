@@ -65,6 +65,8 @@ build_sidekick() {
 build_media() {
 	cd $SIDEKICK_HOME/media
 	cargo build --release --bin endpoint
+	cargo build --release --bin multicast_server
+	cargo build --release --bin multicast_client
 }
 
 if [ $1 == "all" ]; then
