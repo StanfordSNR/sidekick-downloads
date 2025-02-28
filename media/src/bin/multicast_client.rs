@@ -10,8 +10,13 @@ use tokio::sync::Mutex;
 use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
 
+use quacker::{current_time_ms, Quacker, UdpQuacker};
+use sidekick_utils::buffer::AddrKey;
+use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
+
 use media::{Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
+use media::sidekick::{parse_addr_key, QuackerConfig};
 
 
 #[derive(Debug, Parser)]
@@ -37,16 +42,22 @@ struct Cli {
     /// Port to receive packets on.
     #[arg(long, default_value_t = 5202)]
     multicast_port: u16,
+    /// Whether to enable the client quacker.
+    #[arg(long, requires = "quacker_config")]
+    quacker: bool,
+    #[command(flatten)]
+    quacker_config: Option<QuackerConfig>,
 }
 
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
-    sock: Sockets, nack_frequency: Duration, nack_delay: Option<Duration>,
-    timeout: Duration, client_id: String,
+    sock: Sockets, quacker: Option<Arc<Mutex<UdpQuacker>>>, client_id: String,
+    nack_frequency: Duration, nack_delay: Option<Duration>, timeout: Duration,
 ) -> io::Result<()> {
     let mut buf1 = [0u8; PAYLOAD_SIZE];
     let mut buf2 = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
+    let mut discovery_sent = current_time_ms();
     let start = Instant::now();
     loop {
         let (len, addr, is_multicast) = sock.recv_from(&mut buf1, &mut buf2).await;
@@ -71,6 +82,32 @@ async fn listen_incoming(
         }
         let (from_addr, ref mut stats, ref mut buffer) = connection.as_mut().unwrap();
         assert_eq!(*from_addr, addr);
+
+        if let Some(ref quacker) = quacker {
+            let mut quacker = quacker.lock().await;
+            let current_time = current_time_ms();
+
+            // Send <NUM_DISCOVERY_PKTS> packets if
+            // (1) The quacker is enabled.
+            // (2a) We haven't sent them already OR
+            // (2b) More than <DISCOVERY_FREQ_MS> have elapsed since we
+            //      last sent them, and we're awaiting a disc ACK.
+            // (3) The base connection has bound to a local addr.
+            if quacker.base_stoc.is_none() ||
+               (quacker.awaiting_disc_ack && current_time >= discovery_sent + DISCOVERY_FREQ_MS * 1000)
+            {
+                let addr_key = sock.multicast_addr_key();
+                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
+                discovery_sent = current_time;
+            }
+
+            // Insert the received packet into the quACK.
+            else
+            {
+                debug!("insert {}", data.identifier);
+                quacker.insert(current_time, data.identifier);
+            }
+        }
 
         // Add the data packet to the dejitter buffer and try to play data.
         assert_ne!(data.seqno, TIMEOUT_SEQNO);
@@ -199,6 +236,12 @@ impl Sockets {
     async fn send_to_server(&self, payload: &[u8]) -> usize {
         self.unicast.send_to(payload, self.server_addr).await.unwrap()
     }
+
+    fn multicast_addr_key(&self) -> AddrKey {
+        let multicast_addr = SocketAddr::from(
+            (self.multicast_ip, self.multicast_port));
+        parse_addr_key(&self.server_addr, &multicast_addr).unwrap()
+    }
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -207,6 +250,13 @@ async fn main() -> io::Result<()> {
     let args = Cli::parse();
     let nack_frequency = Duration::from_millis(args.nack_frequency);
     let mut sock = Sockets::new(args.multicast_ip, args.multicast_port, args.addr).await?;
+
+    // Initialize the client quacker if enabled.
+    let quacker = if args.quacker {
+        Some(args.quacker_config.unwrap().init_udp_quacker())
+    } else {
+        None
+    };
 
     // Initialize the connection.
     {
@@ -224,8 +274,10 @@ async fn main() -> io::Result<()> {
             None
         };
         listen_incoming(
-            sock, nack_frequency, nack_delay, timeout, args.client_id,
+            sock, quacker, args.client_id, nack_frequency, nack_delay, timeout,
         ).await?;
     }
-    Ok(())
+
+    // Abort any sidekick tasks
+    std::process::exit(0);
 }
