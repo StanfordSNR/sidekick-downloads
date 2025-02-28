@@ -62,6 +62,9 @@ class EmulatedNetwork:
         self.popen(host, f'ethtool -K {iface} gso off tso off')
         self.popen(host, f'ethtool -K {iface} tx-udp-segmentation off')
 
+        # Turn off checksum offloading for sidekick proxy
+        self.popen(host, f'ethtool -K {iface} tx off rx off')
+
         # Configure the end-host or proxy
         if not netem:
             # BBR requires fq (with pacing) for kernel versions <v4.20
@@ -138,9 +141,6 @@ class EmulatedNetwork:
             else:
                 raise NotImplementedError(qdisc)
             self.popen(host, queue_cmd)
-
-        # Turn off checksum offloading for sidekick proxy
-        self.popen(host, f'ethtool -K {iface} tx off rx off')
 
     def set_tcp_congestion_control(self, cca):
         version = get_linux_version()
@@ -649,6 +649,12 @@ class MulticastNetwork(EmulatedNetwork):
             self.popen(self.p1, f"ip addr add 192.168.1.11/24 dev br0")
             # Don't forward packets destined for the proxy
             self.popen(self.p1, f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
+        else:
+            self.popen(self.p1, "ifconfig p1-eth0 0")
+            self.popen(self.p1, "ifconfig p1-eth1 0")
+            self.popen(self.p1, 'ip addr add 192.168.1.11/24 dev p1-eth0')
+            self.popen(self.p1, 'ip addr add 192.168.1.12/24 dev p1-eth1')
+            self.popen(self.p1, 'ip route add default via 192.168.1.1 dev p1-eth1')
 
         # Setup multicast client host nodes
         for host in self.clients:

@@ -103,7 +103,7 @@ class CLITestCase(unittest.TestCase):
         self.assertIn('outputs', line)
         outputs = line['outputs']
         self.assertEqual(len(outputs), 1)
-        self.assertTrue(outputs[0].get('success'))
+        self.assertTrue(outputs[0].get('success'), outputs[0])
         return outputs
 
 
@@ -201,6 +201,9 @@ class TestNetworkOptions(CLITestCase):
 
     def test_udp_benchmark_with_sidekick(self):
         self.execute_command_and_check('picoquic', ['--proxy', 'sidekick'])
+
+    def test_multicast_benchmark_with_bridge(self):
+        self.execute_command_and_check('multicast', ['--proxy', 'bridge'])
 
     def test_tcpdump(self):
         self.assertEqual(len(os.listdir(self.logdir)), 0)
