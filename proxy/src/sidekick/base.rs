@@ -157,6 +157,12 @@ impl Sidekick {
                 if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
                     let base = disc.base_connection_stoc;
                     assert!(disc.op == DiscoveryOp::Discover);
+                    assert!(self.base_connection_stoc.is_none() ||
+                        self.base_connection_stoc == Some(base),
+                        "expect one base connection");
+                    assert!(self.sidekick_connection.is_none() ||
+                        self.sidekick_connection == Some(addr_key),
+                        "expect one sidekick connection");
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
                           fmt_hex!(addr_key), fmt_hex!(base),
                           self.sidekick_connection.is_some());
