@@ -5,13 +5,18 @@
 //! the packet is a NACK. Four bytes at a given offset indicate a random
 //! identifier to be parsed by the sidekicks.
 use rand::{self, Rng};
-use crate::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, PAYLOAD_ID_OFFSET, TIMEOUT_SEQNO};
+use crate::{
+    PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, PAYLOAD_ID_OFFSET, TIMEOUT_SEQNO,
+    INITIAL_SEQNO,
+};
 
 
 #[derive(Debug, Clone)]
 pub struct Packet {
     pub seqno: u32,
     pub is_nack: bool,
+    pub is_init: bool,
+    pub is_init_ack: bool,
     pub identifier: u32,
 }
 
@@ -20,6 +25,8 @@ impl Packet {
         Packet {
             seqno,
             is_nack: false,
+            is_init: false,
+            is_init_ack: false,
             identifier: rand::thread_rng().gen(),
         }
     }
@@ -28,6 +35,28 @@ impl Packet {
         Packet {
             seqno,
             is_nack: true,
+            is_init: false,
+            is_init_ack: false,
+            identifier: rand::thread_rng().gen(),
+        }
+    }
+
+    pub fn new_init() -> Self {
+        Packet {
+            seqno: INITIAL_SEQNO,
+            is_nack: false,
+            is_init: true,
+            is_init_ack: false,
+            identifier: rand::thread_rng().gen(),
+        }
+    }
+
+    pub fn new_init_ack() -> Self {
+        Packet {
+            seqno: INITIAL_SEQNO,
+            is_nack: false,
+            is_init: false,
+            is_init_ack: true,
             identifier: rand::thread_rng().gen(),
         }
     }
@@ -35,13 +64,15 @@ impl Packet {
     pub fn from_payload(buf: &[u8; PAYLOAD_SIZE]) -> Self {
         let seqno = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
         let is_nack = buf[5] == 1;
+        let is_init = buf[6] == 1;
+        let is_init_ack = buf[7] == 1;
         let identifier = u32::from_be_bytes([
             buf[PAYLOAD_ID_OFFSET],
             buf[PAYLOAD_ID_OFFSET + 1],
             buf[PAYLOAD_ID_OFFSET + 2],
             buf[PAYLOAD_ID_OFFSET + 3],
         ]);
-        Self { seqno, is_nack, identifier }
+        Self { seqno, is_nack, is_init, is_init_ack, identifier }
     }
 
     pub fn fill_payload(&self, buf: &mut [u8; PAYLOAD_SIZE]) -> usize {
@@ -52,8 +83,10 @@ impl Packet {
         buf[2] = seqno_bytes[2];
         buf[3] = seqno_bytes[3];
 
-        // Set the next byte to whether the packet is a NACK.
+        // Set the next byte to flags.
         buf[5] = if self.is_nack { 1 } else { 0 };
+        buf[6] = if self.is_init { 1 } else { 0 };
+        buf[7] = if self.is_init_ack { 1 } else { 0 };
 
         // Set the random packet identifier at the QUIC offset.
         let id_bytes = self.identifier.to_be_bytes();
@@ -62,7 +95,7 @@ impl Packet {
         buf[PAYLOAD_ID_OFFSET + 2] = id_bytes[2];
         buf[PAYLOAD_ID_OFFSET + 3] = id_bytes[3];
 
-        if self.is_nack {
+        if self.is_nack || self.is_init || self.is_init_ack {
             NACK_PAYLOAD_SIZE
         } else {
             PAYLOAD_SIZE
@@ -138,5 +171,37 @@ mod tests {
         assert!(p2.is_nack);
         assert_eq!(p1.seqno, p2.seqno);
         assert_eq!(p1.identifier, p2.identifier);
+    }
+
+    #[test]
+    fn test_new_init() {
+        let p1 = Packet::new_init();
+        assert_eq!(p1.seqno, INITIAL_SEQNO);
+        assert!(!p1.is_nack);
+        assert!(p1.is_init);
+        assert!(!p1.is_init_ack);
+        let mut payload = [0u8; PAYLOAD_SIZE];
+        assert_eq!(p1.fill_payload(&mut payload), NACK_PAYLOAD_SIZE);
+        let p2 = Packet::from_payload(&payload);
+        assert_eq!(p2.seqno, p1.seqno);
+        assert_eq!(p2.is_nack, p1.is_nack);
+        assert_eq!(p2.is_init, p1.is_init);
+        assert_eq!(p2.is_init_ack, p1.is_init_ack);
+    }
+
+    #[test]
+    fn test_new_init_ack() {
+        let p1 = Packet::new_init_ack();
+        assert_eq!(p1.seqno, INITIAL_SEQNO);
+        assert!(!p1.is_nack);
+        assert!(!p1.is_init);
+        assert!(p1.is_init_ack);
+        let mut payload = [0u8; PAYLOAD_SIZE];
+        assert_eq!(p1.fill_payload(&mut payload), NACK_PAYLOAD_SIZE);
+        let p2 = Packet::from_payload(&payload);
+        assert_eq!(p2.seqno, p1.seqno);
+        assert_eq!(p2.is_nack, p1.is_nack);
+        assert_eq!(p2.is_init, p1.is_init);
+        assert_eq!(p2.is_init_ack, p1.is_init_ack);
     }
 }

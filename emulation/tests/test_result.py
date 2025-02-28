@@ -5,7 +5,7 @@ import unittest
 import json
 from abc import ABC, abstractmethod
 
-from benchmark import HTTPBenchmarkResult, MediaBenchmarkResult
+from benchmark import *
 
 class TestBenchmarkResult(ABC, unittest.TestCase):
     DEFAULT_TIME_S = 100
@@ -246,3 +246,39 @@ class TestMediaBenchmarkResult(TestBenchmarkResult):
         self.assertEqual(output.get('client_latencies'), [1, 2, 3])
         self.assertEqual(output.get('server_latencies'), [4, 5, 6])
         self.assertEqual(output.get('client_num_spurious'), 7)
+
+
+class TestMulticastBenchmarkResult(TestBenchmarkResult):
+    def connectionOutput(self, res_json: str, n_trial: int, n_conn: int) -> str:
+        return res_json['outputs'][n_trial]
+
+    def trialOutput(self, res_json: str, n: int) -> str:
+        return res_json['outputs'][n]
+
+    def test_initialize_result(self):
+        res = MulticastBenchmarkResult(self.label, self.proxy_type)
+        inputs = super()._test_initialize_result(res)
+        self.assertEqual(inputs.get('protocol'), 'multicast')
+
+    def test_base_class_functions(self):
+        res = MulticastBenchmarkResult(self.label, self.proxy_type)
+        self._test_append_one_output(res)
+        res = MulticastBenchmarkResult(self.label, self.proxy_type)
+        self._test_append_multiple_outputs(res)
+        res = MulticastBenchmarkResult(self.label, self.proxy_type)
+        self._test_additional_data(res)
+
+    def test_set_multicast_result_fields(self):
+        res = MulticastBenchmarkResult(self.label, self.proxy_type)
+        res.append_new_output()
+        res.set_success(True)
+        res.set_client_ids(['A', 'B', 'C'])
+        res.set_latencies([10, 20, 30])
+        res.set_num_spurious([0, 1, 0])
+        x = json.loads(res.json())
+        self.assertIn('outputs', x)
+        self.assertEqual(len(x['outputs']), 1)
+        output = x['outputs'][0]
+        self.assertEqual(output.get('client_ids'), ['A', 'B', 'C'])
+        self.assertEqual(output.get('latencies'), [10, 20, 30])
+        self.assertEqual(output.get('num_spurious'), [0, 1, 0])

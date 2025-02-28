@@ -155,7 +155,7 @@ async fn listen_incoming(
                 continue;
             }
             let stats = Statistics::new();
-            let buffer = BufferedPackets::new();
+            let buffer = BufferedPackets::new(1);
             let send_task = if should_loop {
                 let tx = tx.clone();
                 let send_task = task::spawn(async move {
@@ -209,7 +209,7 @@ async fn listen_incoming(
 
         // Otherwise it's a data packet. Timeout packets end the connection.
         if data.seqno == TIMEOUT_SEQNO {
-            stats.print_statistics();
+            stats.print_statistics(None);
             if should_loop {
                 send_task.as_mut().unwrap().abort();
                 gen_timeout_packets(tx.clone(), from_addr.clone()).await.unwrap();

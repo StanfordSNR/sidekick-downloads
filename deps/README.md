@@ -194,3 +194,26 @@ See the section on generating certificates under "TCP Benchmarks".
 cd $SIDEKICK_HOME/deps
 ./build_deps.sh 6
 ```
+
+## Multicast Benchmark
+
+### Install dependencies
+
+Adapted from [https://github.com/jimpick/mininet-multicast-routing/](https://github.com/jimpick/mininet-multicast-routing/).
+
+```
+cd $SIDEKICK_HOME/deps
+git clone git@github.com:troglobit/smcroute.git
+cd smcroute
+./autogen.sh
+./configure --prefix=/opt/smcroute --sysconfdir=/etc --localstatedir=/var
+make
+sudo make install
+```
+
+### Build the endpoint binary
+
+```
+cd $SIDEKICK_HOME/deps
+./build_deps.sh 6
+```

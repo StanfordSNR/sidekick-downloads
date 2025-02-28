@@ -21,6 +21,7 @@ impl Seqno {
 }
 
 pub struct BufferedPackets {
+    first_seqno: u32,
     /// Next seqno to play, and the seqno of the first packet in the buffer
     /// if the buffer is non-empty.
     next_seqno: u32,
@@ -28,20 +29,22 @@ pub struct BufferedPackets {
 }
 
 impl BufferedPackets {
-    pub fn new() -> Self {
+    pub fn new(first_seqno: u32) -> Self {
         Self {
-            next_seqno: 1,
+            first_seqno,
+            next_seqno: first_seqno,
             buffer: VecDeque::new(),
         }
     }
 
     /// Receive a packet with this sequence number.
     ///
-    /// Returns whether the seqno was already received.
+    /// Returns whether the seqno was already received and is in the range of
+    /// seqnos we expect to receive.
     pub fn recv_seqno(&mut self, new_seqno: u32, now: Instant) -> bool {
         // Ignore the seqno if it has already been received.
         if new_seqno < self.next_seqno {
-            return true;
+            return new_seqno >= self.first_seqno;
         }
 
         // Add packets to the buffer until the seqno is guaranteed to be there.
@@ -129,7 +132,7 @@ mod tests {
 
     #[test]
     fn test_pop_consecutive_seqno() {
-        let mut buffer = BufferedPackets::new();
+        let mut buffer = BufferedPackets::new(1);
         let now = Instant::now();
         buffer.recv_seqno(1, now);
         buffer.recv_seqno(2, now);
@@ -141,8 +144,23 @@ mod tests {
     }
 
     #[test]
+    fn test_new_with_first_seqno() {
+        let mut buffer = BufferedPackets::new(10);
+        let now = Instant::now();
+        assert!(!buffer.recv_seqno(9, now));
+        assert!(!buffer.recv_seqno(10, now));
+        assert!(!buffer.recv_seqno(12, now));
+        assert!(buffer.pop_seqno().is_some());
+        assert!(buffer.pop_seqno().is_none());
+        assert!(!buffer.recv_seqno(11, now));
+        assert!(buffer.pop_seqno().is_some());
+        assert!(buffer.pop_seqno().is_some());
+        assert!(buffer.pop_seqno().is_none());
+    }
+
+    #[test]
     fn test_pop_missing_seqno() {
-        let mut buffer = BufferedPackets::new();
+        let mut buffer = BufferedPackets::new(1);
         let now = Instant::now();
         buffer.recv_seqno(2, now);
         buffer.recv_seqno(3, now);
@@ -164,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_recv_seqno() {
-        let mut buffer = BufferedPackets::new();
+        let mut buffer = BufferedPackets::new(1);
         let now = Instant::now();
         assert!(!buffer.recv_seqno(1, now));
         assert!(buffer.recv_seqno(1, now));
@@ -180,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_nacks_to_send() {
-        let mut buffer = BufferedPackets::new();
+        let mut buffer = BufferedPackets::new(1);
         let now = Instant::now();
         let freq = Duration::from_millis(10);
         buffer.recv_seqno(2, now);
@@ -207,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_nacks_to_send_with_delay() {
-        let mut buffer = BufferedPackets::new();
+        let mut buffer = BufferedPackets::new(1);
         let now = Instant::now();
         let freq = Duration::from_millis(10);
         let delay = Duration::from_millis(30);
