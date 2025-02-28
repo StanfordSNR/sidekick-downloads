@@ -1,5 +1,5 @@
 use libc::c_uchar;
-use crate::BUFFER_SIZE;
+use crate::{fmt_hex, BUFFER_SIZE};
 use crate::identifier::{IdentifierFunc, Identifier};
 
 use pnet::packet::ethernet::{MutableEthernetPacket, EtherTypes};
@@ -179,10 +179,10 @@ impl UdpHeaders {
                 IP (NBO): {} -> {} \
                 UDP (HBO): {} -> {}",
                payload.len(),
-               self.src_mac.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-               self.dst_mac.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-               self.src_ip.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-               self.dst_ip.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+               fmt_hex!(self.src_mac),
+               fmt_hex!(self.dst_mac),
+               fmt_hex!(self.src_ip),
+               fmt_hex!(self.dst_ip),
                u16::from_be_bytes(self.src_port),
                u16::from_be_bytes(self.dst_port));
 

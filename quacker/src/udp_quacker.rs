@@ -7,6 +7,7 @@ use socket2::{Socket, Domain, Type, SockAddr};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 use crate::{Quacker, BaseQuacker};
 
+use sidekick_utils::fmt_hex;
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::reset::ResetPayload;
 use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
@@ -66,12 +67,8 @@ impl UdpQuacker {
                 }
             } else if self.base_stoc.is_some() {
                 error!("Received DiscoverACK from proxy for old data: {} (expected: {})",
-                        disc.base_connection_stoc.iter()
-                                                 .map(|b| format!("{:02x}", b))
-                                                 .collect::<String>(),
-                        self.base_stoc.unwrap().iter()
-                                             .map(|b| format!("{:02x}", b))
-                                             .collect::<String>());
+                        fmt_hex!(disc.base_connection_stoc),
+                        fmt_hex!(self.base_stoc.unwrap()));
             } else {
                 panic!("Received DiscoverACK from proxy before sending discovery");
             }
@@ -98,9 +95,7 @@ impl UdpQuacker {
                 return;
             } else {
                 info!("Sent discovery for sidekick base connection {}",
-                      base.iter()
-                          .map(|b| format!("{:02x}", b))
-                          .collect::<String>());
+                      fmt_hex!(base));
             }
         }
     }

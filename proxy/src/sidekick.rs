@@ -1,7 +1,7 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
 
-use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
+use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
@@ -169,12 +169,7 @@ impl Sidekick {
                     let base = disc.base_connection_stoc;
                     assert!(disc.op == DiscoveryOp::Discover);
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
-                          addr_key.iter()
-                                  .map(|b| format!("{:02x}", b))
-                                  .collect::<String>(),
-                          base.iter()
-                              .map(|b| format!("{:02x}", b))
-                              .collect::<String>(),
+                          fmt_hex!(addr_key), fmt_hex!(base),
                           self.sidekick_connection.is_some());
                     self.sidekick_connection = Some(addr_key);
                     self.base_connection_stoc = Some(base);
@@ -184,9 +179,7 @@ impl Sidekick {
                     match disc.build_ack_packet(&mut buf, &packet.data) {
                         Ok(len) => {
                             trace!("Sending ACK packet for discovery {}",
-                                   self.base_connection_stoc.unwrap().iter()
-                                                            .map(|b| format!("{:02x}", b))
-                                                            .collect::<String>());
+                                   fmt_hex!(self.base_connection_stoc.unwrap()));
                             self.stream.send(&buf, len, packet.iface);
                         }
                         Err(e) => error!("Failed to build ack packet: {}", e),
@@ -200,12 +193,7 @@ impl Sidekick {
                     }
                     Some(stored_key) => {
                         trace!("Unknown sidekick AddrKey: {} (expected: {})",
-                               addr_key.iter()
-                                       .map(|b| format!("{:02x}", b))
-                                       .collect::<String>(),
-                               stored_key.iter()
-                                         .map(|b| format!("{:02x}", b))
-                                         .collect::<String>());
+                               fmt_hex!(addr_key), fmt_hex!(stored_key));
                         return ConnectionType::None;
                     }
                     None => {
@@ -222,19 +210,12 @@ impl Sidekick {
                     },
                     Some(stored_key) => {
                         trace!("Unknown CTOS AddrKey (flipped): {} (expected: {})",
-                               flipped_key.iter()
-                                          .map(|b| format!("{:02x}", b))
-                                          .collect::<String>(),
-                               stored_key.iter()
-                                         .map(|b| format!("{:02x}", b))
-                                         .collect::<String>());
+                               fmt_hex!(flipped_key), fmt_hex!(stored_key));
                         return ConnectionType::None;
                     }
                     None => {
                         trace!("Received from ctos stream before discovery (flipped AddrKey: {})",
-                               flipped_key.iter()
-                                          .map(|b| format!("{:02x}", b))
-                                          .collect::<String>());
+                               fmt_hex!(flipped_key));
                         return ConnectionType::None;
                     }
                 }
@@ -246,19 +227,13 @@ impl Sidekick {
                 }
                 Some(stored_key) => {
                     trace!("Unknown STOC AddrKey: {} (expected: {})",
-                           addr_key.iter()
-                                   .map(|b| format!("{:02x}", b))
-                                   .collect::<String>(),
-                           stored_key.iter()
-                                     .map(|b| format!("{:02x}", b))
-                                     .collect::<String>());
+                           fmt_hex!(addr_key),
+                           fmt_hex!(stored_key));
                     return ConnectionType::None;
                 }
                 None => {
                     trace!("Received from stoc stream before discovery (AddrKey: {})",
-                           addr_key.iter()
-                                   .map(|b| format!("{:02x}", b))
-                                   .collect::<String>());
+                           fmt_hex!(addr_key));
                     return ConnectionType::None;
                 }
             }
