@@ -84,10 +84,22 @@ impl UdpQuacker {
     /// the chance that a discovery reaches the proxy in the presence of random loss
     /// (duplicate discovery packets are no-ops).
     pub fn send_discovery(&mut self, base: AddrKey, n: usize) {
+        self.send_discovery_base(base, n, false);
+    }
+
+    pub fn send_discovery_multicast(&mut self, base: AddrKey, n: usize) {
+        self.send_discovery_base(base, n, true);
+    }
+
+    fn send_discovery_base(&mut self, base: AddrKey, n: usize, multicast: bool) {
         self.base_stoc = Some(base);
         self.awaiting_disc_ack = true;
-        let bytes = bincode::serialize(
-            &DiscoveryPayload::new(base, DiscoveryOp::Discover)).unwrap();
+        let op = if multicast {
+            DiscoveryOp::DiscoverMulticast
+        } else {
+            DiscoveryOp::Discover
+        };
+        let bytes = bincode::serialize(&DiscoveryPayload::new(base, op)).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {
                 error!("Failed to send {}th discovery packet", i);

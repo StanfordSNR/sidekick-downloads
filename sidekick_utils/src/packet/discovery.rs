@@ -47,9 +47,10 @@ pub const NUM_DISCOVERY_PKTS: usize = 3;
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub enum DiscoveryOp {
     Discover = 0,
-    DiscoverAck = 1,
-    Teardown = 2,
-    TeardownAck = 3,
+    DiscoverMulticast = 1,
+    DiscoverAck = 2,
+    Teardown = 3,
+    TeardownAck = 4,
 }
 
 /// The first packet on a sidekick connection.

@@ -97,7 +97,7 @@ async fn listen_incoming(
                (quacker.awaiting_disc_ack && current_time >= discovery_sent + DISCOVERY_FREQ_MS * 1000)
             {
                 let addr_key = sock.multicast_addr_key();
-                quacker.send_discovery(addr_key, NUM_DISCOVERY_PKTS);
+                quacker.send_discovery_multicast(addr_key, NUM_DISCOVERY_PKTS);
                 discovery_sent = current_time;
             }
 

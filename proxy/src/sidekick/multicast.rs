@@ -157,7 +157,7 @@ impl SidekickMulticast {
                 // Check for discovery packet first
                 if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
                     let base = disc.base_connection_stoc;
-                    assert!(disc.op == DiscoveryOp::Discover);
+                    assert!(disc.op == DiscoveryOp::DiscoverMulticast);
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
                           fmt_hex!(addr_key), fmt_hex!(base),
                           self.sidekick_connection.is_some());
