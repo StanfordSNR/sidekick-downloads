@@ -190,7 +190,7 @@ async fn listen_incoming(
             // Insert the received packet into the quACK.
             else
             {
-                info!("insert {}", data.identifier);
+                debug!("insert {}", data.identifier);
                 quacker.insert(current_time, data.identifier);
             }
         }
