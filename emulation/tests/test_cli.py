@@ -9,6 +9,7 @@ import re
 import sys
 import tempfile
 
+from collections import defaultdict
 from typing import List, Tuple
 from unittest.mock import patch
 
@@ -69,15 +70,16 @@ class CLITestCase(unittest.TestCase):
                 continue
         return lines
 
-    def parse_quacks(self, lines: List[str]) -> List[int]:
-        quacks = []
-        pattern = r'DEBUG .* quack (\d+)'
+    def parse_quacks(self, lines: List[str]) -> dict[str, List[int]]:
+        quacks = defaultdict(lambda: [])
+        pattern = r'DEBUG .* quack (\d+)(?:.*Sidekick: ([a-f0-9]+))?'
         for line in lines:
             match = re.search(pattern, line)
             if not match:
                 continue
             num_packets = int(match.group(1))
-            quacks.append(num_packets)
+            sidekick_conn = match.group(2)
+            quacks[sidekick_conn].append(num_packets)
         return quacks
 
     def read_logfile(self, filename: str, lines: bool=True):
@@ -245,8 +247,8 @@ class TestPicoquicBenchmark(CLITestCase):
     def test_picoquic_client_does_not_quack_by_default(self):
         self.execute_command_and_check('picoquic', ['--debug', '--proxy', 'sidekick'])
         lines = self.read_logfile(ROUTER_LOGFILE)
-        quacks = self.parse_quacks(lines)
-        self.assertEqual(quacks, [], 'no quacks are received')
+        quack_map = self.parse_quacks(lines)
+        self.assertEqual(len(quack_map), 0, 'no quacks are received')
 
 
 class TestMediaBenchmark(CLITestCase):
@@ -330,7 +332,9 @@ class TestSidekickProtocolBasic(CLITestCase):
         # Parse debug output related to the quacker for lines that describe
         # the number of packets in the sent quacks
         lines = self.read_logfile(client_logfile)
-        quacks = self.parse_quacks(lines)
+        quack_map = self.parse_quacks(lines)
+        self.assertEqual(len(quack_map), 1, 'expected one client')
+        quacks = next(iter(quack_map.values()))
 
         # The number of packets in each sent quack is increasing
         self.assertGreater(len(quacks), 0, 'sent at least 1 quack')

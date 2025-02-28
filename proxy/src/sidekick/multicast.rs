@@ -72,9 +72,10 @@ impl SidekickMulticast {
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
         match self.cache.decode(&quack) {
             Ok(result) => {
-                debug!("quack {} cache_len={} last_index={} missing={:?}",
+                debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), self.cache.len(),
-                    result.last_index, result.missing_indexes);
+                    result.last_index, result.missing_indexes,
+                    fmt_hex!(self.sidekick_connection.unwrap()));
                 for index in result.missing_indexes {
                     let retx = self.cache.get(index).unwrap();
                     self.num_retx += 1;
