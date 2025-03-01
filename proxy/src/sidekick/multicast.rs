@@ -6,7 +6,8 @@ use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::packet::{
-    DiscoveryPayload, DiscoveryOp, ResetPayload, RESET_FREQ_MS,
+    RetransmitPayload, DiscoveryPayload, ResetPayload,
+    DiscoveryOp, RESET_FREQ_MS,
 };
 
 use std::collections::HashMap;
@@ -77,12 +78,18 @@ impl SidekickMulticast {
                 debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), self.cache.len(),
                     result.last_index, result.missing_indexes, fmt_hex!(sidekick_conn));
+                let mut buf = [0u8; BUFFER_SIZE];
                 for index in result.missing_indexes {
                     let retx = self.cache.get(index).unwrap();
                     self.num_retx += 1;
                     debug!("retransmit {}/{}", self.num_retx, self.num_tx);
-                    self.stream.forward_packet(&retx, retx.nbytes as usize);
-                    self.cache.add(retx.clone()); // TODO: avoid clone
+                    let payload = RetransmitPayload::new(UdpParser::payload(&retx.data));
+                    match payload.build_packet(&mut buf, &packet.data) {
+                        Ok(len) => {
+                            self.stream.send(&buf, len, packet.iface);
+                        }
+                        Err(e) => error!("Failed to build retransmit packet: {}", e),
+                    }
                 }
                 self.cache.evict();
             }

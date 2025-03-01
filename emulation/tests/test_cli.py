@@ -605,3 +605,21 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
         )
         client_logfile = f'{CLIENT_LOGFILE}.1'
         self._test_quacker_receives_resets(client_logfile)
+
+    def test_sidekick_sends_unicast_retransmissions(self):
+        outputs = self.execute_command_and_check(
+            'multicast',
+            network_options=self.NETWORK + [
+                '--proxy', 'sidekick-multicast',
+                '--loss2', '10', '--freq-ms', '8', '--freq-pkts', '2',
+            ],
+            protocol_options=[
+                '--num-clients', '3', '--client-quacker', '3',
+                '--ack-delay', '50',  # reduce the effect of end-to-end nacks
+            ],
+        )
+        # Multicast retransmissions from the proxy would get broadcasted to
+        # all clients, increasing the number of spurious retransmissions.
+        num_spurious_output = outputs[0].get('num_spurious')
+        for i, num_spurious in enumerate(num_spurious_output):
+            self.assertLess(num_spurious, 10, i)
