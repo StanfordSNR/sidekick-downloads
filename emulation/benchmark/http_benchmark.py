@@ -38,6 +38,7 @@ class HTTPDownloadBenchmark(ABC):
         certfile: str,
         keyfile: str,
         logdir: str,
+        server_port: int,
         proxy_type: Optional[ProxyType]=None,
     ):
         """
@@ -71,6 +72,7 @@ class HTTPDownloadBenchmark(ABC):
         self._keyfile = keyfile
         self._logdir = logdir
         self._proxy_type = proxy_type
+        self._server_port = server_port
 
     @property
     def client(self) -> mininet.node.Host:
@@ -147,6 +149,12 @@ class HTTPDownloadBenchmark(ABC):
         """The type of proxy to start on the p1 host, if any.
         """
         return self._proxy_type
+
+    @property
+    def server_port(self) -> int:
+        """The port that the server is listening on.
+        """
+        return self._server_port
 
     @abstractmethod
     def start_server(self, timeout: int=SETUP_TIMEOUT):
@@ -280,12 +288,12 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         - proxy: The type of network proxy (default: None).
         """
         self.ack_delay = ack_delay
-        self.port = port
         self.quacker = quacker
         super().__init__(
             protocol=Protocol.PICOQUIC,
             net=net, label=label, data_size=data_size, cca=cca,
             certfile=certfile, keyfile=keyfile, logdir=logdir,
+            server_port=port,
             proxy_type=proxy_type
         )
 
@@ -302,7 +310,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'server '\
-              f'{self.port} '\
+              f'{self.server_port} '\
               f'{self.certfile} '\
               f'{self.keyfile} '\
               f'. '\
@@ -345,7 +353,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         cmd = f'./{base}/picoquic_sample '\
               f'client '\
               f'{self.server.IP()} '\
-              f'{self.port} '\
+              f'{self.server_port} '\
               f'/tmp '\
               f'{self.cca} '\
               f'{self.ack_delay} '
@@ -416,11 +424,11 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
         - port: The port to start the HTTP server on.
         - proxy: The type of network proxy.
         """
-        self.port = port
         super().__init__(
             protocol=Protocol.CLOUDFLARE_QUIC,
             net=net, label=label, data_size=data_size, cca=cca,
             certfile=certfile, keyfile=keyfile, logdir=logdir,
+            server_port=port,
             proxy_type=proxy_type
         )
 
@@ -438,7 +446,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
               f'--cert={self.certfile} '\
               f'--key={self.keyfile} '\
               f'--cc-algorithm {self.cca} ' \
-              f'--listen {self.server.IP()}:{self.port}'
+              f'--listen {self.server.IP()}:{self.server_port}'
 
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -468,7 +476,7 @@ class CloudflareQUICBenchmark(HTTPDownloadBenchmark):
               f'--no-verify '\
               f'--method GET '\
               f'--cc-algorithm {self.cca} ' \
-              f'-- https://{self.server.IP()}:{self.port}/{self.data_size}'
+              f'-- https://{self.server.IP()}:{self.server_port}/{self.data_size}'
 
         result = []
         timed_out = False
@@ -543,6 +551,7 @@ class GoogleQUICBenchmark(HTTPDownloadBenchmark):
             protocol=Protocol.GOOGLE_QUIC,
             net=net, label=label, data_size=data_size, cca=cca,
             certfile=certfile, keyfile=keyfile, logdir=logdir,
+            server_port=0, # N/A
             proxy_type=proxy_type
         )
 
@@ -651,7 +660,8 @@ class TCPBenchmark(HTTPDownloadBenchmark):
         super().__init__(
             protocol=Protocol.TCP,
             net=net, label=label, data_size=data_size, cca=cca, logdir=logdir,
-            certfile=certfile, keyfile=keyfile, proxy_type=proxy_type,
+            certfile=certfile, keyfile=keyfile, server_port=8443,
+            proxy_type=proxy_type,
         )
         net.set_tcp_congestion_control(cca)
 
