@@ -217,6 +217,13 @@ class HTTPDownloadBenchmark(ABC):
         """
         self.start_server()
 
+        if self.proxy_type == ProxyType.PICOQUIC:
+            self.net.start_picoquic_splitter(PROXY_PORT, self.certfile, self.keyfile, self.cca,
+                                            self.server_port, self.server.IP(),
+                                            logfile=self.logfile(self.proxy))
+        print(f"Start benchmark: server {self.server.IP()}:{self.server_port}, client {self.client.IP()}, " \
+              f"proxy {self.proxy.IP() if self.proxy is not None else 'none'}")
+
         # Initialize the benchmark result
         result = HTTPBenchmarkResult(
             label=self.label,
@@ -349,11 +356,13 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
     def run_client(
         self, timeout: Optional[int]=None,
     ) -> Optional[HTTPClientOutput]:
+        target_ip = self.server.IP() if self.proxy_type != ProxyType.PICOQUIC else self.proxy.IP()
+        target_port = self.server_port if self.proxy_type != ProxyType.PICOQUIC else PROXY_PORT
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'client '\
-              f'{self.server.IP()} '\
-              f'{self.server_port} '\
+              f'{target_ip} '\
+              f'{target_port} '\
               f'/tmp '\
               f'{self.cca} '\
               f'{self.ack_delay} '

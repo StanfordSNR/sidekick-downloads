@@ -455,6 +455,7 @@ def main(args):
         elif args.proxy == ProxyType.SIDEKICK_MULTICAST:
             net.start_sidekick_multicast(args.threshold, args.quackee_port,
                 logfile=proxy_logfile)
+        # PicoQUIC proxy must be started within the benchmark after server.
 
         # Start the packet trace collector
         if args.tcpdump:

@@ -470,6 +470,35 @@ class EmulatedNetwork:
             if not notified:
                 raise TimeoutError(f'start_tcp_pep timeout {timeout}s')
 
+    def start_picoquic_splitter(self, proxy_port, certfile, keyfile,
+                                cca, server_port, server_ip,
+                                logfile, timeout=SETUP_TIMEOUT):
+
+        condition = threading.Condition()
+        def notify_when_ready(line):
+            if 'Starting Picoquic' in line:
+                with condition:
+                    condition.notify()
+
+        base = 'deps/picoquic'
+        cmd = f'./{base}/picoquic_sample '\
+              f'proxy '\
+              f'{proxy_port} '\
+              f'{certfile} '\
+              f'{keyfile} '\
+              f'{cca} '\
+              f'{server_port} '\
+              f'{server_ip}'
+        self.popen(self.p1,
+                   cmd,
+                   background=True,
+                   console_logger=DEBUG, logfile=logfile,
+                   func=notify_when_ready)
+        with condition:
+            notified = condition.wait(timeout=timeout)
+            if not notified:
+                raise TimeoutError(f'start_picoquic_splitter timeout {timeout}s')
+
 
 """
 Defines an emulated network in mininet with one intermediate hop between the
