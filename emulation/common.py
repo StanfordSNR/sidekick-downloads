@@ -21,11 +21,15 @@ LOG_CHUNK_TIME = 300
 
 DEFAULT_DELAY_CORR = 40
 
+# If proxy needs to listen on a port, use this one.
+PROXY_PORT = 10800
+
 class ProxyType(Enum):
     PEPSAL = 'pepsal'
     BRIDGE = 'bridge'
     SIDEKICK = 'sidekick'
     SIDEKICK_MULTICAST = 'sidekick-multicast'
+    PICOQUIC = 'picoquic'
 
 @dataclass(frozen=True)
 class QuackerConfig:
