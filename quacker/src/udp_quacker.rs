@@ -9,7 +9,9 @@ use crate::{Quacker, BaseQuacker};
 
 use sidekick_utils::fmt_hex;
 use sidekick_utils::buffer::AddrKey;
-use sidekick_utils::packet::{ResetPayload, DiscoveryPayload, DiscoveryOp};
+use sidekick_utils::packet::{
+    ResetPayload, DiscoveryPayload, RetransmitPayload, DiscoveryOp,
+};
 
 
 #[derive(Clone)]
@@ -39,15 +41,19 @@ impl UdpQuacker {
     }
 
     /// Handle an incoming sidekick packet from the proxy.
-    pub fn handle_sidekick_payload(&mut self, udp_payload: &[u8]) {
+    pub fn handle_sidekick_payload(&mut self, udp_payload: &[u8]) -> Option<Vec<u8>> {
         if let Some(disc) = DiscoveryPayload::from_payload(udp_payload) {
             self.handle_discover_ack(disc);
         } else if let Some(_) = ResetPayload::from_payload(udp_payload) {
             info!("Received Reset, count={}", self.quacker.get_quack().count());
             self.reset();
+        } else if let Some(retx) = RetransmitPayload::from_payload(udp_payload) {
+            debug!("Received Retransmit");
+            return Some(retx.data);
         } else {
             warn!("Received unknown packet from proxy");
         }
+        None
     }
 
     /// Handle discovery packets from the proxy.

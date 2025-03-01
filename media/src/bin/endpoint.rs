@@ -256,7 +256,7 @@ async fn main() -> io::Result<()> {
 
     // Initialize the client quacker if enabled.
     let quacker = if args.quacker {
-        Some(args.quacker_config.unwrap().init_udp_quacker())
+        Some(args.quacker_config.unwrap().init_udp_quacker(None))
     } else {
         None
     };

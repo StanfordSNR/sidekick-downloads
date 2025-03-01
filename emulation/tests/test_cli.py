@@ -607,14 +607,16 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
         self._test_quacker_receives_resets(client_logfile)
 
     def test_sidekick_sends_unicast_retransmissions(self):
+        num_clients = 3
         outputs = self.execute_command_and_check(
             'multicast',
             network_options=self.NETWORK + [
-                '--proxy', 'sidekick-multicast',
+                '--proxy', 'sidekick-multicast', '--debug',
                 '--loss2', '10', '--freq-ms', '8', '--freq-pkts', '2',
             ],
             protocol_options=[
-                '--num-clients', '3', '--client-quacker', '3',
+                '--num-clients', str(num_clients),
+                '--client-quacker', str(num_clients),
                 '--ack-delay', '50',  # reduce the effect of end-to-end nacks
             ],
         )
@@ -626,3 +628,9 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
         # Retransmissions successfully sent through sidekick connectiono
         output = self.read_logfile(ROUTER_LOGFILE, lines=False)
         self.assertNotIn('Failed to build retransmit packet', output)
+        # Retransmissions successfully sent through sidekick connection
+        for i in range(num_clients):
+            logfile = f'{CLIENT_LOGFILE}.{i+1}'
+            output = self.read_logfile(logfile, lines=False)
+            self.assertNotIn('Received unknown packet from proxy', output)
+            self.assertIn('Received Retransmit', output)

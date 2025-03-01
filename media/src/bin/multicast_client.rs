@@ -6,7 +6,7 @@ use clap::Parser;
 use log::{debug, info};
 use tokio::task;
 use tokio::select;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
 
@@ -17,6 +17,9 @@ use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 use media::{Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
 use media::sidekick::{parse_addr_key, QuackerConfig};
+
+
+const MPSC_CHANNEL_SIZE: usize = 100;
 
 
 #[derive(Debug, Parser)]
@@ -53,6 +56,7 @@ struct Cli {
 async fn listen_incoming(
     sock: Sockets, quacker: Option<Arc<Mutex<UdpQuacker>>>, client_id: String,
     nack_frequency: Duration, nack_delay: Option<Duration>, timeout: Duration,
+    mut sidekick_rx: mpsc::Receiver<Vec<u8>>,
 ) -> io::Result<()> {
     let mut buf1 = [0u8; PAYLOAD_SIZE];
     let mut buf2 = [0u8; PAYLOAD_SIZE];
@@ -60,7 +64,8 @@ async fn listen_incoming(
     let mut discovery_sent = current_time_ms();
     let start = Instant::now();
     loop {
-        let (len, addr, is_multicast) = sock.recv_from(&mut buf1, &mut buf2).await;
+        let (len, addr, is_multicast) =
+            sock.recv_from(&mut sidekick_rx, &mut buf1, &mut buf2).await;
         let mut buf = if is_multicast { buf2 } else { buf1 };
         let data = Packet::from_payload(&buf);
 
@@ -224,14 +229,23 @@ impl Sockets {
 
     /// Returns the number of bytes received, the socket address of the packet
     /// sender, and whether the packet is from the multicast socket.
-    async fn recv_from(&self, payload_unicast: &mut [u8], payload_multicast: &mut [u8]) -> (usize, SocketAddr, bool) {
+    async fn recv_from(
+        &self, sidekick_rx: &mut mpsc::Receiver<Vec<u8>>,
+        payload_unicast: &mut [u8], payload_multicast: &mut [u8],
+    ) -> (usize, SocketAddr, bool) {
         select! {
             Ok((len, addr)) = {
                 self.unicast.recv_from(payload_unicast)
             } => (len, addr, false),
             Ok((len, addr)) = {
                 self.multicast.as_ref().unwrap().recv_from(payload_multicast)
-            } => (len, addr, true)
+            } => (len, addr, true),
+            Some(data) = {
+                sidekick_rx.recv()
+            } => {
+                payload_multicast.copy_from_slice(&data);
+                (data.len(), self.server_addr, true)
+            },
         }
     }
 
@@ -258,8 +272,9 @@ async fn main() -> io::Result<()> {
     let mut sock = Sockets::new(args.multicast_ip, args.multicast_port, args.addr).await?;
 
     // Initialize the client quacker if enabled.
+    let (sidekick_tx, sidekick_rx) = mpsc::channel(MPSC_CHANNEL_SIZE);
     let quacker = if args.quacker {
-        Some(args.quacker_config.unwrap().init_udp_quacker())
+        Some(args.quacker_config.unwrap().init_udp_quacker(Some(sidekick_tx)))
     } else {
         None
     };
@@ -281,6 +296,7 @@ async fn main() -> io::Result<()> {
         };
         listen_incoming(
             sock, quacker, args.client_id, nack_frequency, nack_delay, timeout,
+            sidekick_rx,
         ).await?;
     }
 

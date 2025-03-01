@@ -3,7 +3,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use clap::Parser;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::time::Duration;
 
 use quacker::{current_time_ms, Quacker, UdpQuacker};
@@ -29,7 +29,9 @@ pub struct QuackerConfig {
 }
 
 impl QuackerConfig {
-    pub fn init_udp_quacker(&self) -> Arc<Mutex<UdpQuacker>> {
+    pub fn init_udp_quacker(
+        &self, tx: Option<mpsc::Sender<Vec<u8>>>,
+    ) -> Arc<Mutex<UdpQuacker>> {
         let quacker = Arc::new(Mutex::new(UdpQuacker::new(
             self.threshold,
             self.frequency_pkts,
@@ -50,7 +52,9 @@ impl QuackerConfig {
         {
             let quacker = quacker.clone();
             tokio::task::spawn(async move {
-                listen_incoming_sidekick(quacker.clone()).await.unwrap()
+                listen_incoming_sidekick(
+                    quacker.clone(), tx,
+                ).await.unwrap()
             });
         }
         quacker
@@ -77,13 +81,18 @@ pub fn parse_addr_key(src: &SocketAddr, dst: &SocketAddr) -> Option<AddrKey> {
 }
 
 /// Listen for incoming packets on the sidekick connection and handle.
-async fn listen_incoming_sidekick(quacker: Arc<Mutex<UdpQuacker>>) -> io::Result<()> {
+async fn listen_incoming_sidekick(
+    quacker: Arc<Mutex<UdpQuacker>>, tx: Option<mpsc::Sender<Vec<u8>>>,
+) -> io::Result<()> {
     let sock = quacker.lock().await.src_sock();
     let mut buf = [0u8; BUFFER_SIZE];
     loop {
         // NOTE: This is a blocking UDP socket!
-        let _len = sock.recv(&mut buf);
-        quacker.lock().await.handle_sidekick_payload(&buf);
+        let len = sock.recv(&mut buf)?;
+        let res = quacker.lock().await.handle_sidekick_payload(&buf[..len]);
+        if tx.is_some() && res.is_some() {
+            tx.as_ref().unwrap().send(res.unwrap()).await.unwrap();
+        }
     }
 }
 
