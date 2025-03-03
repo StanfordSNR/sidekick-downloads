@@ -147,7 +147,6 @@ class MulticastBenchmark:
         """
         cmd = f'./media/target/release/multicast_client '\
               f'--nack-frequency {self.net.rtt} '\
-              f'--nack-delay {self.nack_delay} '\
               f'--addr {self.server.IP()}:{self.port} '\
               f'--timeout {self.duration} '
 
@@ -184,6 +183,8 @@ class MulticastBenchmark:
             if quackers_remaining > 0:
                 q = self.quacker
                 target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
+                # Only clients using the quacker use the nack delay feature
+                client_cmd += f'--nack-delay {self.nack_delay} '
                 client_cmd += f'--quacker '\
                               f'--threshold {q.threshold} '\
                               f'--frequency-pkts {q.freq_pkts} '\
