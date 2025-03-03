@@ -63,10 +63,7 @@ def LOG(val, level):
 
 def init_logdir(path):
     os.system(f'mkdir -p {path}')
-    for filename in [SERVER_LOGFILE, CLIENT_LOGFILE, ROUTER_LOGFILE]:
-        filename = f'{path}/{filename}'
-        with open(filename, 'w') as _:
-            pass
+    os.system(f'rm {path}/*')
 
 def read_subprocess_pipe(p):
     streams = [p.stdout, p.stderr]
