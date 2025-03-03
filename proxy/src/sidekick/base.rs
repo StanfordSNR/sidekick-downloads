@@ -1,5 +1,6 @@
 use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
+use crate::sidekick::ConnectionType;
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
@@ -11,6 +12,7 @@ use sidekick_utils::packet::{
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};
 use quack::{PowerSumQuack, PowerSumQuackU32};
+
 
 /// The sidekick provides in-network assistance to a single base connection
 /// identified by a UDP 4-tuple. It also participates in a separate sidekick
@@ -25,20 +27,6 @@ pub struct Sidekick {
     num_retx: usize,
     num_tx: usize,
     last_reset: Instant,
-}
-
-/// Identifies the connection as base or sidekick
-enum ConnectionType {
-    /// Base connection from client to server
-    BaseCtos,
-    /// Base connection from server to client
-    BaseStoc,
-    /// Sidekick connection
-    Sidekick,
-    /// Sidekick configuration packet
-    Discovery,
-    /// Some other connection (forward only)
-    None
 }
 
 impl Sidekick {
