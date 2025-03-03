@@ -1,5 +1,5 @@
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
@@ -11,12 +11,11 @@ use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
 
 use quacker::{current_time_ms, Quacker, UdpQuacker};
-use sidekick_utils::BUFFER_SIZE;
-use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
 use media::{Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
+use media::sidekick::{parse_addr_key, QuackerConfig};
 
 
 const MPSC_CHANNEL_SIZE: usize = 100;
@@ -47,23 +46,6 @@ struct Cli {
     quacker_config: Option<QuackerConfig>,
 }
 
-#[derive(Debug, Parser, Clone)]
-struct QuackerConfig {
-    /// The threshold number of missing packets.
-    #[arg(long, short = 't', default_value_t = 20)]
-    threshold: usize,
-    /// Frequency at which to quack, in ms.
-    #[arg(long = "frequency-ms", default_value_t = 0)]
-    frequency_ms: u64,
-    /// Frequency at which to quack, in packets.
-    #[arg(long = "frequency-pkts", default_value_t = 0)]
-    frequency_pkts: u32,
-    /// Address of the UDP socket to quack to e.g., <IP:PORT>. If missing,
-    /// goes to stdout.
-    #[arg(long = "target-addr", default_value = "172.16.2.10:5252")]
-    target_addr: SocketAddr,
-}
-
 #[derive(Debug, Subcommand, PartialEq, Eq)]
 enum Mode {
     /// Listen for incoming connections.
@@ -84,50 +66,6 @@ impl Mode {
         match self {
             Mode::Server => { false }
             Mode::Client { timeout: _, addr: _ } => { true }
-        }
-    }
-}
-
-/// Parse `base_stoc` for the sidekick connection.
-fn parse_addr_key(src: &SocketAddr, dst: &SocketAddr) -> Option<AddrKey> {
-    match (src, dst) {
-        (SocketAddr::V4(src), SocketAddr::V4(dst)) => {
-            if *dst.ip() == Ipv4Addr::new(0, 0, 0, 0) {
-                None
-            } else {
-                let mut key = [0u8; 12];
-                key[..4].copy_from_slice(&src.ip().octets());
-                key[4..6].copy_from_slice(&src.port().to_be_bytes());
-                key[6..10].copy_from_slice(&dst.ip().octets());
-                key[10..12].copy_from_slice(&dst.port().to_be_bytes());
-                Some(key)
-            }
-        }
-        _ => panic!("IPv6 not supported"),
-    }
-}
-
-/// Listen for incoming packets on the sidekick connection and handle.
-async fn listen_incoming_sidekick(quacker: Arc<Mutex<UdpQuacker>>) -> io::Result<()> {
-    let sock = quacker.lock().await.src_sock();
-    let mut buf = [0u8; BUFFER_SIZE];
-    loop {
-        // NOTE: This is a blocking UDP socket!
-        let _len = sock.recv(&mut buf);
-        quacker.lock().await.handle_sidekick_payload(&buf);
-    }
-}
-
-/// Send quacks at a specified frequency if there aren't many incoming packets.
-async fn send_quacks(quacker: Arc<Mutex<UdpQuacker>>, frequency: Duration) {
-    let mut interval = tokio::time::interval(frequency);
-    loop {
-        interval.tick().await;
-        // Not exactly the algorithm but close enough.
-        {
-            let mut q = quacker.lock().await;
-            let time_ms = current_time_ms();
-            q.update_time(time_ms);
         }
     }
 }
@@ -318,31 +256,7 @@ async fn main() -> io::Result<()> {
 
     // Initialize the client quacker if enabled.
     let quacker = if args.quacker {
-        let config = args.quacker_config.unwrap();
-        let quacker = Arc::new(Mutex::new(UdpQuacker::new(
-            config.threshold,
-            config.frequency_pkts,
-            config.frequency_ms,
-            config.target_addr,
-        )));
-
-        // Ensure quACKs are sent at a time interval if specified.
-        if config.frequency_ms > 0 {
-            let quacker = quacker.clone();
-            let quack_frequency = Duration::from_millis(config.frequency_ms);
-            tokio::task::spawn(async move {
-                send_quacks(quacker, quack_frequency).await;
-            });
-        }
-
-        // Monitor packets on the sidekick connection.
-        {
-            let quacker = quacker.clone();
-            task::spawn(async move {
-                listen_incoming_sidekick(quacker.clone()).await.unwrap()
-            });
-        }
-        Some(quacker)
+        Some(args.quacker_config.unwrap().init_udp_quacker())
     } else {
         None
     };

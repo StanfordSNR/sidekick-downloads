@@ -3,6 +3,7 @@ use sidekick_utils::{ID_OFFSET, UDP_PAYLOAD_OFFSET};
 mod statistics;
 mod buffer;
 mod packet;
+pub mod sidekick;
 
 pub const PAYLOAD_SIZE: usize = 240;
 pub const PAYLOAD_ID_OFFSET: usize = ID_OFFSET - UDP_PAYLOAD_OFFSET;
