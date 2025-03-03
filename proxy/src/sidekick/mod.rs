@@ -1,6 +1,8 @@
 mod base;
+mod multicast;
 
 pub use base::Sidekick;
+pub use multicast::SidekickMulticast;
 
 /// Identifies the connection as base or sidekick
 pub enum ConnectionType {

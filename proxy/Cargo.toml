@@ -24,3 +24,6 @@ name = "bridge"
 
 [[bin]]
 name = "sidekick"
+
+[[bin]]
+name = "sidekick_multicast"

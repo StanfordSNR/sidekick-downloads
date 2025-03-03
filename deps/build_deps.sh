@@ -58,6 +58,7 @@ build_sidekick() {
 	cd $SIDEKICK_HOME/proxy
 	cargo build --release --bin bridge
 	cargo build --release --bin sidekick
+	cargo build --release --bin sidekick_multicast
 	cd $SIDEKICK_HOME/quacker
 	cargo build --release --bin quacker
 }

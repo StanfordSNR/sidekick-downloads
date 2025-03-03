@@ -1,6 +1,8 @@
 mod base;
+mod multicast;
 
 pub use base::QuackCache;
+pub use multicast::QuackCacheMulticast;
 
 use std::fmt;
 use std::error::Error;
