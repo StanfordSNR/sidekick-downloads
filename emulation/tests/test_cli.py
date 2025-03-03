@@ -306,11 +306,12 @@ class TestMulticastBenchmark(CLITestCase):
 
 
 class TestSidekickProtocolBasic(CLITestCase):
-    def _test_discovery(self):
+    def _test_sidekick_receives_discovery(self):
         # Proxy receives discovery packet from client
         pattern = 'Received discovery packet from client'
         self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
 
+    def _test_quacker_receives_discover_ack(self):
         # Client quacks only after receiving discover ack
         received_discover_ack = False
         quacked_after_discover_ack = False
@@ -356,7 +357,8 @@ class TestSidekickProtocolBasic(CLITestCase):
             ['--debug', '--proxy', 'sidekick'] + add_network_options,
             add_protocol_options,
         )
-        self._test_discovery()
+        self._test_sidekick_receives_discovery()
+        self._test_quacker_receives_discover_ack()
         self._test_quacker_sends_quacks()
         self._test_sidekick_receives_quacks()
 
