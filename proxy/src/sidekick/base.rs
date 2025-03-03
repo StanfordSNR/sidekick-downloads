@@ -4,8 +4,9 @@ use crate::stream::{Packet, PacketStream};
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
-use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
-use sidekick_utils::reset::{ResetPayload, RESET_FREQ_MS};
+use sidekick_utils::packet::{
+    DiscoveryPayload, DiscoveryOp, ResetPayload, RESET_FREQ_MS,
+};
 
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};

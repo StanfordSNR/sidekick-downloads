@@ -9,8 +9,7 @@ use crate::{Quacker, BaseQuacker};
 
 use sidekick_utils::fmt_hex;
 use sidekick_utils::buffer::AddrKey;
-use sidekick_utils::reset::ResetPayload;
-use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
+use sidekick_utils::packet::{ResetPayload, DiscoveryPayload, DiscoveryOp};
 
 
 #[derive(Clone)]

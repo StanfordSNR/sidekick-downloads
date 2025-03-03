@@ -13,7 +13,7 @@ use tokio::time::{Instant, Duration};
 use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::BUFFER_SIZE;
 use sidekick_utils::buffer::AddrKey;
-use sidekick_utils::discovery::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
+use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
 use media::{Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
