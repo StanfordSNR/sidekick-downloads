@@ -83,6 +83,7 @@ async fn listen_incoming(
         let (from_addr, ref mut stats, ref mut buffer) = connection.as_mut().unwrap();
         assert_eq!(*from_addr, addr);
 
+        let mut inserted = false;
         if let Some(ref quacker) = quacker {
             let mut quacker = quacker.lock().await;
             let current_time = current_time_ms();
@@ -104,8 +105,8 @@ async fn listen_incoming(
             // Insert the received packet into the quACK.
             else
             {
-                debug!("insert {}", data.identifier);
                 quacker.insert(current_time, data.identifier);
+                inserted = true;
             }
         }
 
@@ -115,20 +116,25 @@ async fn listen_incoming(
         if buffer.recv_seqno(data.seqno, now) {
             stats.add_spurious();
         }
-        debug!("receive data {} <- {:?}", data.seqno, addr);
         while let Some(time_recv) = buffer.pop_seqno() {
             stats.add_value(now - time_recv);
         }
 
         // Send NACKs for missing data.
-        for seqno in buffer.nacks_to_send(now, nack_frequency, nack_delay) {
-            debug!("nack {}", seqno);
+        let nacks_to_send = buffer.nacks_to_send(now, nack_frequency, nack_delay);
+        for &seqno in &nacks_to_send {
             let nack = Packet::new_nack(seqno);
             let len = nack.fill_payload(&mut buf);
             sock.send_to_server(&buf[..len]).await;
         }
 
         // Check for timeout.
+        debug!(
+            "receive data {}{}{}",
+            data.seqno,
+            if inserted { format!(" insert {}", data.identifier) } else { "".to_string() },
+            if !nacks_to_send.is_empty() { format!(" nack {:?}", nacks_to_send) } else { "".to_string() },
+        );
         if now >= start + timeout {
             let prefix = format!("[ID{}] ", client_id);
             stats.print_statistics(Some(prefix));
