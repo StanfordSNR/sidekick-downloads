@@ -522,9 +522,13 @@ class TestMediaSidekickProtocol(SidekickProtocolTestCase):
 
 
 class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
+    # The links are flipped in the multicast network
+    NETWORK = ['--delay1', '25', '--delay2', '1', '--bw1', '10', '--bw2', '100']
+
     def test_multicast_client_quacker_default_one(self):
         self.execute_sidekick_command_and_check(
             'multicast',
+            add_network_options=self.NETWORK,
             add_protocol_options=[
                 '--num-clients', '1',
                 '--client-quacker', '1',
@@ -535,6 +539,7 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
     def test_multicast_client_quacker_default_all(self):
         self.execute_sidekick_command_and_check(
             'multicast',
+            add_network_options=self.NETWORK,
             add_protocol_options=[
                 '--num-clients', '2',
                 '--client-quacker', '2',
@@ -545,6 +550,7 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
     def test_multicast_client_quacker_default_mixed(self):
         self.execute_sidekick_command_and_check(
             'multicast',
+            add_network_options=self.NETWORK,
             add_protocol_options=[
                 '--num-clients', '3',
                 '--client-quacker', '2',
@@ -556,7 +562,7 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
         def test(freq_ms, freq_pkts, freq_media_ms):
             self.execute_sidekick_command_and_check(
                 'multicast',
-                add_network_options=[
+                add_network_options=self.NETWORK + [
                     '--freq-ms', str(freq_ms), '--freq-pkts', str(freq_pkts),
                     '--threshold', '8',
                     '--quackee-port', '5250',
@@ -577,7 +583,7 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
             'multicast',
             # In the multicast network, the client is on the second link instead
             # of the first, so the loss needs to be on *that* path segment.
-            network_options=[
+            network_options=self.NETWORK + [
                 '--proxy', 'sidekick-multicast', '--loss2', '10',
                 '--threshold', '1', '--freq-ms', '0', '--freq-pkts', '50',
             ],
