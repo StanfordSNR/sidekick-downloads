@@ -51,7 +51,7 @@ impl UdpQuacker {
             debug!("Received Retransmit");
             return Some(retx.data);
         } else {
-            warn!("Received unknown packet from proxy");
+            warn!("Received unknown packet from proxy {} bytes", udp_payload.len());
         }
         None
     }
