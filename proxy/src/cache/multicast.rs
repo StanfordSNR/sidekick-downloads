@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::cmp::min;
 
 use log::{trace, error};
 use sidekick_utils::buffer::AddrKey;
@@ -165,7 +166,23 @@ impl QuackCacheMulticast {
     ///
     /// Returns the number of evicted packets.
     pub fn evict(&mut self) -> usize {
-        unimplemented!()
+        // Find the number of packets to evict.
+        // All of the packets have been received by all current connections.
+        let n = {
+            let mut n = self.total();
+            for buffer in self.conns.values().map(|state| &state.buffer) {
+                n = min(n, buffer.next);
+                n = min(n, buffer.insertions.iter().map(|(_, idx)| *idx)
+                                            .min().unwrap_or(n));
+            }
+            n - self.num_evicted
+        };
+
+        // Remove these packets from the cache
+        self.id_cache.drain(0..n);
+        self.packet_cache.drain(0..n);
+        self.num_evicted += n;
+        n
     }
 
     /// Reset the state for this connection.
