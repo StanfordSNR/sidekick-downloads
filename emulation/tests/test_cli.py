@@ -558,6 +558,17 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
             client_logfiles=[f'{CLIENT_LOGFILE}.{i+1}' for i in range(2)]
         )
 
+    def test_multicast_client_quacker_default_ten_clients(self):
+        self.execute_sidekick_command_and_check(
+            'multicast',
+            add_network_options=self.NETWORK,
+            add_protocol_options=[
+                '--num-clients', '10',
+                '--client-quacker', '10',
+            ],
+            client_logfiles=[f'{CLIENT_LOGFILE}.{i+1}' for i in range(10)]
+        )
+
     def test_multicast_client_quacker_different_configs(self):
         def test(freq_ms, freq_pkts, freq_media_ms):
             self.execute_sidekick_command_and_check(
