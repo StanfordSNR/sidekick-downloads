@@ -308,10 +308,16 @@ class TestMulticastBenchmark(CLITestCase):
 
 
 class TestSidekickProtocolBasic(CLITestCase):
-    def _test_sidekick_receives_discovery(self):
+    def _test_sidekick_receives_discovery(self, num_clients):
         # Proxy receives discovery packet from client
-        pattern = 'Received discovery packet from client'
-        self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
+        sidekick_conns = set()
+        lines = self.read_logfile(ROUTER_LOGFILE)
+        pattern = r'Received discovery packet .* Sidekick: ([a-f0-9]+)'
+        for line in lines:
+            match = re.search(pattern, line)
+            if match:
+                sidekick_conns.add(match.group(1))
+        self.assertEqual(len(sidekick_conns), num_clients)
 
     def _test_quacker_receives_discover_ack(self, client_logfile):
         # Client quacks only after receiving discover ack
@@ -342,16 +348,18 @@ class TestSidekickProtocolBasic(CLITestCase):
         for i in range(len(quacks) - 1):
             self.assertLessEqual(quacks[i], quacks[i+1], quacks)
 
-    def _test_sidekick_receives_quacks(self):
+    def _test_sidekick_receives_quacks(self, num_clients):
         # Parse router logfile for number of packets in the received quACKs
         lines = self.read_logfile(ROUTER_LOGFILE)
-        quacks = self.parse_quacks(lines)
+        quack_map = self.parse_quacks(lines)
+        self.assertEqual(len(quack_map), num_clients)
 
         # The number of packets in each received quack is increasing
-        self.assertGreater(len(quacks), 0, 'received at least 1 quack')
-        self.assertGreaterEqual(len(quacks), 2, 'should receive more at this freq')
-        for i in range(len(quacks) - 1):
-            self.assertLessEqual(quacks[i], quacks[i+1], quacks)
+        for quacks in quack_map.values():
+            self.assertGreater(len(quacks), 0, 'received at least 1 quack')
+            self.assertGreaterEqual(len(quacks), 2, 'should receive more at this freq')
+            for i in range(len(quacks) - 1):
+                self.assertLessEqual(quacks[i], quacks[i+1], quacks)
 
     def execute_sidekick_command_and_check(
         self, protocol, add_network_options=[], add_protocol_options=[],
@@ -367,11 +375,12 @@ class TestSidekickProtocolBasic(CLITestCase):
         )
 
         # Verify results in logfiles
-        self._test_sidekick_receives_discovery()
+        num_clients = len(client_logfiles)
+        self._test_sidekick_receives_discovery(num_clients)
         for client_logfile in client_logfiles:
             self._test_quacker_receives_discover_ack(client_logfile)
             self._test_quacker_sends_quacks(client_logfile)
-        self._test_sidekick_receives_quacks()
+        self._test_sidekick_receives_quacks(num_clients)
 
     def test_sniffing_quacker_default(self):
         self.execute_sidekick_command_and_check(
