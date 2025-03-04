@@ -623,3 +623,6 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
         num_spurious_output = outputs[0].get('num_spurious')
         for i, num_spurious in enumerate(num_spurious_output):
             self.assertLess(num_spurious, 10, i)
+        # Retransmissions successfully sent through sidekick connectiono
+        output = self.read_logfile(ROUTER_LOGFILE, lines=False)
+        self.assertNotIn('Failed to build retransmit packet', output)

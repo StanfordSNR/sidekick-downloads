@@ -71,7 +71,7 @@ impl SidekickMulticast {
     fn handle_sidekick_packet_from_client(
         &mut self, packet: Packet, sidekick_conn: AddrKey,
     ) {
-        let payload = UdpParser::payload(&packet.data);
+        let payload = UdpParser::payload(&packet.data, packet.nbytes);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
         match self.cache.decode(&quack, &sidekick_conn) {
             Ok(result) => {
@@ -83,7 +83,7 @@ impl SidekickMulticast {
                     let retx = self.cache.get(index).unwrap();
                     self.num_retx += 1;
                     debug!("retransmit {}/{}", self.num_retx, self.num_tx);
-                    let payload = RetransmitPayload::new(UdpParser::payload(&retx.data));
+                    let payload = RetransmitPayload::new(UdpParser::payload(&retx.data, retx.nbytes));
                     match payload.build_packet(&mut buf, &packet.data) {
                         Ok(len) => {
                             self.stream.send(&buf, len, packet.iface);
@@ -168,7 +168,7 @@ impl SidekickMulticast {
             // We expect this to be a quACK
             if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
                 // Check for discovery packet first
-                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
+                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data, packet.nbytes)) {
                     let base = disc.base_connection_stoc;
                     assert!(disc.op == DiscoveryOp::DiscoverMulticast);
                     assert!(self.base_connection_stoc.is_none() ||

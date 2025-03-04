@@ -68,7 +68,7 @@ impl Sidekick {
     /// from the cache. If the quACK can't be decoded, send a Reset packet
     /// back to the client on the sidekick connection.
     fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
-        let payload = UdpParser::payload(&packet.data);
+        let payload = UdpParser::payload(&packet.data, packet.nbytes);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
         match self.cache.decode(&quack) {
             Ok(result) => {
@@ -155,7 +155,7 @@ impl Sidekick {
             // We expect this to be a quACK
             if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
                 // Check for discovery packet first
-                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
+                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data, packet.nbytes)) {
                     let base = disc.base_connection_stoc;
                     assert!(disc.op == DiscoveryOp::Discover);
                     assert!(self.base_connection_stoc.is_none() ||
