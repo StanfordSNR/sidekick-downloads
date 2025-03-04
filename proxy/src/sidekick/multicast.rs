@@ -72,7 +72,7 @@ impl SidekickMulticast {
     ) {
         let payload = UdpParser::payload(&packet.data);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
-        match self.cache.decode(&quack) {
+        match self.cache.decode(&quack, &sidekick_conn) {
             Ok(result) => {
                 debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), self.cache.len(),
@@ -84,7 +84,7 @@ impl SidekickMulticast {
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
                     self.cache.add(retx.clone()); // TODO: avoid clone
                 }
-                self.cache.evict(result.last_index).unwrap();
+                self.cache.evict();
             }
             Err(e) => {
                 error!("Failed to decode quACK: {:?}", e);
@@ -99,7 +99,7 @@ impl SidekickMulticast {
                         Ok(len) => {
                             info!("Sending reset packet");
                             self.stream.send(&buf, len, packet.iface);
-                            self.cache.reset();
+                            self.cache.reset(&sidekick_conn);
                             self.sidekick_connections.insert(sidekick_conn, Instant::now());
                         }
                         Err(e) => error!("Failed to build reset packet: {}", e),
