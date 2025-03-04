@@ -74,6 +74,9 @@ class MulticastBenchmark:
         self.num_clients = num_clients
         self.num_quackers = num_quackers
         self.quacker = quacker
+        self.client_ids = {}
+        for i, client in enumerate(self.clients):
+            self.client_ids[client] = i + 1
 
     @property
     def clients(self) -> List[mininet.node.Host]:
@@ -104,7 +107,8 @@ class MulticastBenchmark:
         if host == self.server:
             return f'{self._logdir}/{SERVER_LOGFILE}'
         elif host in self.clients:
-            return f'{self._logdir}/{CLIENT_LOGFILE}'
+            client_id = self.client_ids[host]
+            return f'{self._logdir}/{CLIENT_LOGFILE}.{client_id}'
         elif host == self.proxy and self.proxy is not None:
             return f'{self._logdir}/{ROUTER_LOGFILE}'
 
@@ -177,9 +181,9 @@ class MulticastBenchmark:
         processes = []
         threads = []
         quackers_remaining = self.num_quackers
-        for i in range(self.num_clients):
-            logfile = self.logfile(self.clients[i])
-            client_cmd = f'{cmd} --client-id {i} '
+        for host in self.clients:
+            logfile = self.logfile(host)
+            client_cmd = f'{cmd} --client-id {self.client_ids[host]} '
             if quackers_remaining > 0:
                 q = self.quacker
                 target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
@@ -191,7 +195,7 @@ class MulticastBenchmark:
                               f'--frequency-ms {q.freq_ms} '\
                               f'--target-addr {target_addr} '
                 quackers_remaining -= 1
-            p, thread = self.net.popen(self.clients[i], client_cmd,
+            p, thread = self.net.popen(host, client_cmd,
                 background=True, console_logger=DEBUG, logfile=logfile,
                 func=parse_result, raise_error=False)
             processes.append(p)

@@ -80,9 +80,9 @@ class TestConstructor(MulticastTestCase):
         self.assertEqual(bm.clients, self.net.clients)
         self.assertEqual(bm.server, self.net.server)
         self.assertEqual(bm.proxy, self.net.p1)
-        self.assertEqual(bm.logfile(bm.clients[0]), f'{self.logdir}/{CLIENT_LOGFILE}')
-        self.assertEqual(bm.logfile(bm.clients[1]), f'{self.logdir}/{CLIENT_LOGFILE}')
-        self.assertEqual(bm.logfile(bm.clients[2]), f'{self.logdir}/{CLIENT_LOGFILE}')
+        self.assertEqual(bm.logfile(bm.clients[0]), f'{self.logdir}/{CLIENT_LOGFILE}.1')
+        self.assertEqual(bm.logfile(bm.clients[1]), f'{self.logdir}/{CLIENT_LOGFILE}.2')
+        self.assertEqual(bm.logfile(bm.clients[2]), f'{self.logdir}/{CLIENT_LOGFILE}.3')
         self.assertEqual(bm.logfile(bm.server), f'{self.logdir}/{SERVER_LOGFILE}')
         self.assertEqual(bm.logfile(bm.proxy), f'{self.logdir}/{ROUTER_LOGFILE}')
 

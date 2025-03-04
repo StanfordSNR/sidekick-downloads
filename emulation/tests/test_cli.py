@@ -311,11 +311,11 @@ class TestSidekickProtocolBasic(CLITestCase):
         pattern = 'Received discovery packet from client'
         self.assertIn(pattern, self.read_logfile(ROUTER_LOGFILE, lines=False))
 
-    def _test_quacker_receives_discover_ack(self):
+    def _test_quacker_receives_discover_ack(self, client_logfile):
         # Client quacks only after receiving discover ack
         received_discover_ack = False
         quacked_after_discover_ack = False
-        lines = self.read_logfile(CLIENT_LOGFILE)
+        lines = self.read_logfile(client_logfile)
         for line in lines:
             if 'Received DiscoverACK from proxy' in line:
                 received_discover_ack = True
@@ -326,10 +326,10 @@ class TestSidekickProtocolBasic(CLITestCase):
         self.assertTrue(received_discover_ack, lines)
         self.assertTrue(quacked_after_discover_ack, lines)
 
-    def _test_quacker_sends_quacks(self):
+    def _test_quacker_sends_quacks(self, client_logfile):
         # Parse debug output related to the quacker for lines that describe
         # the number of packets in the sent quacks
-        lines = self.read_logfile(CLIENT_LOGFILE)
+        lines = self.read_logfile(client_logfile)
         quacks = self.parse_quacks(lines)
 
         # The number of packets in each sent quack is increasing
@@ -351,6 +351,7 @@ class TestSidekickProtocolBasic(CLITestCase):
 
     def execute_sidekick_command_and_check(
         self, protocol, add_network_options=[], add_protocol_options=[],
+        client_logfiles=[CLIENT_LOGFILE],
     ):
         network_options = add_network_options + ['--debug']
         if protocol == 'multicast':
@@ -360,9 +361,12 @@ class TestSidekickProtocolBasic(CLITestCase):
         self.execute_command_and_check(
             protocol, network_options, add_protocol_options,
         )
+
+        # Verify results in logfiles
         self._test_sidekick_receives_discovery()
-        self._test_quacker_receives_discover_ack()
-        self._test_quacker_sends_quacks()
+        for client_logfile in client_logfiles:
+            self._test_quacker_receives_discover_ack(client_logfile)
+            self._test_quacker_sends_quacks(client_logfile)
         self._test_sidekick_receives_quacks()
 
     def test_sniffing_quacker_default(self):
@@ -390,6 +394,7 @@ class TestSidekickProtocolBasic(CLITestCase):
                 '--num-clients', '1',
                 '--client-quacker', '1',
             ],
+            client_logfiles=[f'{CLIENT_LOGFILE}.1']
         )
 
     def test_multicast_client_quacker_default_all(self):
@@ -399,6 +404,7 @@ class TestSidekickProtocolBasic(CLITestCase):
                 '--num-clients', '2',
                 '--client-quacker', '2',
             ],
+            client_logfiles=[f'{CLIENT_LOGFILE}.{i+1}' for i in range(2)]
         )
 
     def test_multicast_client_quacker_default_mixed(self):
@@ -408,6 +414,7 @@ class TestSidekickProtocolBasic(CLITestCase):
                 '--num-clients', '3',
                 '--client-quacker', '2',
             ],
+            client_logfiles=[f'{CLIENT_LOGFILE}.{i+1}' for i in range(2)]
         )
 
     def test_sniffing_picoquic_quacker_different_frequencies(self):
@@ -469,6 +476,7 @@ class TestSidekickProtocolBasic(CLITestCase):
                     '--client-quacker', '1',
                     '--frequency', str(freq_media_ms),
                 ],
+                client_logfiles=[f'{CLIENT_LOGFILE}.1'],
             )
         test(100, 0, 20)
         test(0, 8, 10)
@@ -504,9 +512,9 @@ class TestSidekickProtocolBasic(CLITestCase):
 
 
 class TestSidekickProtocolReset(CLITestCase):
-    def _test_quacker_receives_resets(self):
+    def _test_quacker_receives_resets(self, client_logfile=CLIENT_LOGFILE):
         self.assertIn('ExceededThreshold', self.read_logfile(ROUTER_LOGFILE, lines=False))
-        self.assertIn('Received Reset', self.read_logfile(CLIENT_LOGFILE, lines=False))
+        self.assertIn('Received Reset', self.read_logfile(client_logfile, lines=False))
 
     def test_sniffing_picoquic_quacker_receives_resets(self):
         self.execute_command(
@@ -559,4 +567,5 @@ class TestSidekickProtocolReset(CLITestCase):
                 '--client-quacker', '1', '--num-clients', '1',
             ],
         )
-        self._test_quacker_receives_resets()
+        client_logfile = f'{CLIENT_LOGFILE}.1'
+        self._test_quacker_receives_resets(client_logfile)
