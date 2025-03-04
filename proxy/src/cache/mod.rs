@@ -37,6 +37,12 @@ pub enum DecodeError {
     /// The last value the client received is not an identifier of a known
     /// packet that is currently or was previously in our cache.
     MissingLastValue { identifier: Identifier },
+    /// Received more packets than were sent.
+    NotASubset {
+        num_recv: u32,
+        num_send: u32,
+        last_value: u32,
+    },
 }
 
 impl fmt::Display for DecodeError {
@@ -58,6 +64,10 @@ impl fmt::Display for DecodeError {
             ),
             DecodeError::MissingLastValue { identifier } => {
                 write!(f, "Missing last value {}", identifier)
+            }
+            DecodeError::NotASubset { num_recv, num_send, last_value } => {
+                write!(f, "Received more than sent {} > {}: last value {}",
+                    num_recv, num_send, last_value)
             }
         }
     }

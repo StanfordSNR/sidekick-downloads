@@ -152,6 +152,15 @@ impl QuackCache {
             });
         }
 
+        // Check that we have sent more packets than were received.
+        if proxy_quack.count() < client_quack.count() {
+            return Err(DecodeError::NotASubset {
+                num_recv: client_quack.count(),
+                num_send: proxy_quack.count(),
+                last_value: proxy_quack.last_value().unwrap(),
+            });
+        }
+
         // Check that the number of missing packets is within the threshold.
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
