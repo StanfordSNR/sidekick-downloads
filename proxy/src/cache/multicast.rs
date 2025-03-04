@@ -1,4 +1,6 @@
-use log::trace;
+use std::collections::HashMap;
+
+use log::{trace, error};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
 use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
@@ -7,54 +9,101 @@ use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
 
 
+/// Requires the insertion indexes in insertions >= next.
+/// The indexes that are being inserted must be < the insertion index.
+#[derive(Debug)]
+struct VirtualBuffer {
+    // The first received index in the base buffer
+    _start: usize,
+    // *One after* the last received index in the base buffer
+    // (the next index to receive)
+    next: usize,
+    // The first value is at which index in the base buffer to insert.
+    // The second value is the index in the base buffer of the inserted id.
+    // The insertion indexes are in sorted order.
+    insertions: Vec<(usize, usize)>,
+}
+
+impl VirtualBuffer {
+    fn new(start: usize) -> Self {
+        Self {
+            _start: start,
+            next: start,
+            insertions: Vec::new(),
+        }
+    }
+}
+
+/// Per-sidekick connection state in the multicast cache.
+#[derive(Debug)]
+struct ConnState {
+    quack: PowerSumQuackU32,
+    buffer: VirtualBuffer,
+}
+
+impl ConnState {
+    fn new(quack: PowerSumQuackU32, start: usize) -> Self {
+        Self {
+            quack,
+            buffer: VirtualBuffer::new(start),
+        }
+    }
+}
+
 /// A cache of packets that is able to decode quACKs.
 ///
 /// The quACKs represent all packets that have ever been added to the cache,
 /// including those that have already been evicted.
 pub struct QuackCacheMulticast {
+    /// Number of evicted packets previously in the cache
+    num_evicted: usize,
     /// The same length as `identifiers`.
     packet_cache: Vec<Packet>,
     /// The same length as `packets`.
     id_cache: Vec<Identifier>,
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
-
-    quack: PowerSumQuackU32,
-    last_decode_result: DecodeResult,
-
     /// Cache capacity. Incoming packets >= this capacity will be dropped.
     capacity: usize,
+    /// QuACK threshold
+    threshold: usize,
+    /// Per-connection state
+    conns: HashMap<AddrKey, ConnState>,
 }
 
 impl QuackCacheMulticast {
     /// Initialize a new multicast cache.
     pub fn new(id_func: IdentifierFunc, quack_threshold: usize, capacity: usize) -> Self {
         Self {
+            num_evicted: 0,
             packet_cache: vec![],
             id_cache: vec![],
             id_func,
-            quack: PowerSumQuackU32::new(quack_threshold),
-            last_decode_result: DecodeResult::default(),
-            capacity
+            capacity,
+            threshold: quack_threshold,
+            conns: HashMap::new(),
         }
     }
 
     /// Initialize a new sidekick connection subscribed to this multicast
     /// base connection.
     pub fn init_conn(&mut self, conn: &AddrKey) {
-        unimplemented!()
+        let start = self.total();
+        let quack = PowerSumQuackU32::new(self.threshold);
+        self.conns.insert(*conn, ConnState::new(quack, start));
     }
 
     /// The number of packets currently in the cache.
     pub fn len(&self) -> usize {
         debug_assert!(self.packet_cache.len() <= self.capacity);
+        debug_assert!(self.packet_cache.len() == self.id_cache.len());
         self.packet_cache.len()
     }
 
     /// The total number of packets that have ever been in the cache, including
     /// those that were evicted.
     pub fn total(&self) -> usize {
-        unimplemented!()
+        self.num_evicted + self.len()
     }
 
     /// Return a read-only view of packets in the cache that have not been
@@ -82,13 +131,23 @@ impl QuackCacheMulticast {
     /// Get the i-th packet (0-indexing) in the cache, including those that
     /// were evicted.
     pub fn get(&self, i: usize) -> Option<&Packet> {
-        unimplemented!()
+        if i >= self.num_evicted {
+            self.packet_cache.get(i - self.num_evicted)
+        } else {
+            error!("tried to get evicted packet index={}", i);
+            None
+        }
     }
 
     /// Get the i-th packet identifier (0-indexing) in the cache, including
     /// those that were evicted.
     pub fn get_id(&self, i: usize) -> Option<u32> {
-        unimplemented!()
+        if i >= self.num_evicted {
+            self.id_cache.get(i - self.num_evicted).copied()
+        } else {
+            error!("tried to get evicted packet index={}", i);
+            None
+        }
     }
 
     /// Evict the recently decoded packets from the cache.
@@ -111,8 +170,7 @@ impl QuackCacheMulticast {
 
     /// Reset the state for this connection.
     pub fn reset(&mut self, conn: &AddrKey) {
-        self.id_cache = vec![];
-        self.packet_cache = vec![];
+        self.init_conn(conn);
     }
 
     /// Given a quACK from the client, determines which packets the proxy has
@@ -138,19 +196,23 @@ impl QuackCacheMulticast {
         }
 
         // Check invalid threshold
-        if self.quack.threshold() != client_quack.threshold() {
+        if self.threshold != client_quack.threshold() {
             return Err(DecodeError::InvalidThreshold {
-                expected: self.quack.threshold(),
+                expected: self.threshold,
                 actual: client_quack.threshold(),
             });
         }
 
+        // Get the state for this connection.
+        let state = self.conns.get_mut(conn).unwrap();
+
+        /*
         // Insert ids in the id cache up to the last id received by the client.
         // Assuming the client receives a subset of packets in the cache, if
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
         let mut last_index = 0;
-        let mut proxy_quack = self.quack.clone();
+        let mut proxy_quack = proxy_quack.clone();
         for &id in &self.id_cache {
             if proxy_quack.last_value() == client_quack.last_value() {
                 break;
@@ -205,10 +267,9 @@ impl QuackCacheMulticast {
                 missing_indexes,
             }
         };
-
-        // Cache the result.
-        self.last_decode_result = result.clone();
         Ok(result)
+        */
+        unimplemented!()
     }
 }
 
