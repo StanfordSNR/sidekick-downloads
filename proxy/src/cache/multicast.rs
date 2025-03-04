@@ -33,6 +33,50 @@ impl VirtualBuffer {
             insertions: Vec::new(),
         }
     }
+
+    fn iter(&self, end: usize) -> VirtualBufferIter {
+        assert!(end >= self.next);
+        VirtualBufferIter {
+            index: self.next,
+            base_end: end,
+            insertion_idx: 0,
+            insertions: &self.insertions,
+        }
+    }
+}
+
+struct VirtualBufferIter<'a> {
+    index: usize,
+    base_end: usize,
+    insertion_idx: usize,
+    insertions: &'a [(usize, usize)],
+}
+
+impl<'a> Iterator for VirtualBufferIter<'a> {
+    /// Base buffer index + is_missing
+    type Item = (usize, bool);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.base_end {
+            return None;
+        }
+
+        // If there is an insertion at the current index, handle that first.
+        // Each insertion that we return, we should delete it. We may need to
+        // reinsert the same base index at the end if it is still missing.
+        if self.insertion_idx < self.insertions.len()
+            && self.insertions[self.insertion_idx].0 == self.index
+        {
+            let missing_idx = self.insertions[self.insertion_idx].1;
+            self.insertion_idx += 1;
+            return Some((missing_idx, true));
+        }
+
+        // Otherwise, increment the current base index
+        let current = self.index;
+        self.index += 1;
+        return Some((current, false));
+    }
 }
 
 /// Per-sidekick connection state in the multicast cache.
