@@ -103,7 +103,7 @@ async fn listen_incoming(
             }
 
             // Insert the received packet into the quACK.
-            else
+            else if is_multicast
             {
                 quacker.insert(current_time, data.identifier);
                 inserted = true;
