@@ -265,21 +265,28 @@ impl QuackCacheMulticast {
         }
 
         // Get the state for this connection.
+        let end = self.total();
         let state = self.conns.get_mut(conn).unwrap();
 
-        /*
         // Insert ids in the id cache up to the last id received by the client.
         // Assuming the client receives a subset of packets in the cache, if
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
-        let mut last_index = 0;
-        let mut proxy_quack = proxy_quack.clone();
-        for &id in &self.id_cache {
+        let proxy_quack = &mut state.quack;
+        let mut num_acked = 0;
+        let indexes = state.buffer.iter(end).collect::<Vec<_>>();
+        for &(index, is_insertion) in &indexes {
             if proxy_quack.last_value() == client_quack.last_value() {
                 break;
             }
+            let id = self.id_cache[index - self.num_evicted];
             proxy_quack.insert(id);
-            last_index += 1;
+            if is_insertion {
+                state.buffer.insertions.remove(0);
+            } else {
+                state.buffer.next += 1;
+            }
+            num_acked += 1;
         }
         if proxy_quack.last_value() != client_quack.last_value() {
             return Err(DecodeError::MissingLastValue {
@@ -299,6 +306,7 @@ impl QuackCacheMulticast {
         // Check that the number of missing packets is within the threshold.
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
+        let proxy_quack = proxy_quack.clone();
         let difference_quack = proxy_quack.sub(client_quack.clone());
         if (difference_quack.count() as usize) > difference_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
@@ -310,27 +318,28 @@ impl QuackCacheMulticast {
         // Decode the quACK using the identifier cache.
         let result = if difference_quack.count() == 0 {
             DecodeResult {
-                last_index,
+                last_index: state.buffer.next,
                 missing_indexes: vec![],
             }
         } else {
             let coeffs = difference_quack.to_coeffs();
-            let missing_indexes = self
-                .id_cache
+            let missing_indexes = indexes
                 .iter()
-                .take(last_index)
-                .enumerate()
-                .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
+                .take(num_acked)
+                .map(|&(index, _)| (index, self.id_cache[index - self.num_evicted]))
+                .filter(|(_, id)| quack::arithmetic::eval(&coeffs, *id).value() == 0)
                 .map(|(index, _)| index)
-                .collect();
+                .collect::<Vec<_>>();
+            for &index in &missing_indexes {
+                state.buffer.insertions.push((end, index));
+                state.quack.remove(self.id_cache[index - self.num_evicted]);
+            }
             DecodeResult {
-                last_index,
+                last_index: state.buffer.next,
                 missing_indexes,
             }
         };
         Ok(result)
-        */
-        unimplemented!()
     }
 }
 
