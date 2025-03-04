@@ -179,6 +179,7 @@ impl SidekickMulticast {
                             trace!("Sending ACK packet for discovery {}",
                                    fmt_hex!(self.base_connection_stoc.unwrap()));
                             self.stream.send(&buf, len, packet.iface);
+                            self.cache.init_conn(&addr_key);
                         }
                         Err(e) => error!("Failed to build ack packet: {}", e),
                     }
