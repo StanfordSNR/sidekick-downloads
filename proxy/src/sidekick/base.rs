@@ -136,7 +136,7 @@ impl Sidekick {
                 trace!("Received base packet from server");
                 self.handle_base_packet_from_server(packet);
             }
-            ConnectionType::Sidekick => {
+            ConnectionType::Sidekick(_) => {
                 trace!("Received sidekick packet from client");
                 self.handle_sidekick_packet_from_client(packet);
             }
@@ -185,7 +185,7 @@ impl Sidekick {
                 // Match against sidekick connection
                 match self.sidekick_connection {
                     Some(stored_key) if stored_key == addr_key => {
-                        return ConnectionType::Sidekick;
+                        return ConnectionType::Sidekick(addr_key);
                     }
                     Some(stored_key) => {
                         trace!("Unknown sidekick AddrKey: {} (expected: {})",
