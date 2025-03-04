@@ -88,10 +88,11 @@ async fn listen_incoming(
         let (from_addr, ref mut stats, ref mut buffer) = connection.as_mut().unwrap();
         assert_eq!(*from_addr, addr);
 
+        let current_time = current_time_ms();
+        let mut sent_quack = false;
         let mut inserted = false;
         if let Some(ref quacker) = quacker {
             let mut quacker = quacker.lock().await;
-            let current_time = current_time_ms();
 
             // Send <NUM_DISCOVERY_PKTS> packets if
             // (1) The quacker is enabled.
@@ -110,7 +111,7 @@ async fn listen_incoming(
             // Insert the received packet into the quACK.
             else if is_multicast
             {
-                quacker.insert(current_time, data.identifier);
+                sent_quack = quacker.insert(current_time, data.identifier);
                 inserted = true;
             }
         }
@@ -126,11 +127,18 @@ async fn listen_incoming(
         }
 
         // Send NACKs for missing data.
-        let nacks_to_send = buffer.nacks_to_send(now, nack_frequency, nack_delay);
+        let (nacks_to_send, missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
         for &seqno in &nacks_to_send {
             let nack = Packet::new_nack(seqno);
             let len = nack.fill_payload(&mut buf);
             sock.send_to_server(&buf[..len]).await;
+        }
+
+        // Explicitly send a quACK when missing data.
+        if missing && !sent_quack {
+            if let Some(ref quacker) = quacker {
+                quacker.lock().await.send_quack(current_time);
+            }
         }
 
         // Check for timeout.

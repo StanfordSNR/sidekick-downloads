@@ -106,9 +106,10 @@ async fn listen_incoming(
             connection = Some((addr, stats, buffer, send_task));
         }
 
+        let current_time = current_time_ms();
+        let mut sent_quack = false;
         if let Some(ref quacker) = quacker {
             let mut quacker = quacker.lock().await;
-            let current_time = current_time_ms();
 
             // Send <NUM_DISCOVERY_PKTS> packets if
             // (1) The quacker is enabled.
@@ -129,7 +130,7 @@ async fn listen_incoming(
             else
             {
                 debug!("insert {}", data.identifier);
-                quacker.insert(current_time, data.identifier);
+                sent_quack = quacker.insert(current_time, data.identifier);
             }
         }
 
@@ -169,10 +170,18 @@ async fn listen_incoming(
         }
 
         // Send NACKs for missing data.
-        for seqno in buffer.nacks_to_send(now, nack_frequency, nack_delay) {
+        let (nacks_to_send, missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
+        for seqno in nacks_to_send {
             debug!("nack {}", seqno);
             let nack = Packet::new_nack(seqno);
             tx.send((nack, addr.clone())).await.unwrap();
+        }
+
+        // Explicitly send a quACK when missing data.
+        if missing && !sent_quack {
+            if let Some(ref quacker) = quacker {
+                quacker.lock().await.send_quack(current_time);
+            }
         }
     }
     Ok(())
