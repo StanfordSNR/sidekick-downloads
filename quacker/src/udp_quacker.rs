@@ -7,7 +7,7 @@ use socket2::{Socket, Domain, Type, SockAddr};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 use crate::{Quacker, BaseQuacker};
 
-use sidekick_utils::fmt_hex;
+use sidekick_utils::{fmt_hex, ID_OFFSET, UDP_PAYLOAD_OFFSET};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::packet::{
     ResetPayload, DiscoveryPayload, RetransmitPayload, DiscoveryOp,
@@ -97,7 +97,9 @@ impl UdpQuacker {
         self.send_discovery_base(base, n, true);
     }
 
-    fn send_discovery_base(&mut self, base: AddrKey, n: usize, multicast: bool) {
+    fn send_discovery_base(
+    &mut self, base: AddrKey, n: usize, multicast: bool,
+    ) {
         self.base_stoc = Some(base);
         self.awaiting_disc_ack = true;
         let op = if multicast {
@@ -105,7 +107,11 @@ impl UdpQuacker {
         } else {
             DiscoveryOp::Discover
         };
-        let bytes = bincode::serialize(&DiscoveryPayload::new(base, op)).unwrap();
+        let id_offset: u16 = (ID_OFFSET - UDP_PAYLOAD_OFFSET).try_into().unwrap();
+        let threshold: u8 = self.quacker.threshold().try_into().unwrap();
+        let bytes = bincode::serialize(
+            &DiscoveryPayload::new(base, op, id_offset, threshold),
+        ).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {
                 error!("Failed to send {}th discovery packet", i);

@@ -43,6 +43,10 @@ impl BaseQuacker {
             last_quack_time: 0,
         }
     }
+
+    pub fn threshold(&self) -> usize {
+        self.quack.threshold()
+    }
 }
 
 impl Quacker for BaseQuacker {
