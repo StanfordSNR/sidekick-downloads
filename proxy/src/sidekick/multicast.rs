@@ -2,7 +2,7 @@ use crate::cache::QuackCacheMulticast;
 use crate::stream::{Packet, PacketStream};
 use crate::sidekick::ConnectionType;
 
-use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, fmt_hex};
+use sidekick_utils::{BUFFER_SIZE, UDP_PAYLOAD_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::packet::{
@@ -23,11 +23,12 @@ use quack::{PowerSumQuack, PowerSumQuackU32};
 /// are identified by different UDP 4-tuples.
 pub struct SidekickMulticast {
     stream: PacketStream,
-    cache: QuackCacheMulticast,
     quack_port: u16,
+    cache: Option<QuackCacheMulticast>,
     base_connection_stoc: Option<AddrKey>,
     // Last reset times of each sidekick connection
     sidekick_connections: HashMap<AddrKey, Instant>,
+    cache_capacity: usize,
     num_retx: usize,
     num_tx: usize,
 }
@@ -42,21 +43,16 @@ impl SidekickMulticast {
         client_interface: &str,
         server_interface: &str,
         quack_port: u16,
-        quack_threshold: usize,
         cache_capacity: usize,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
-        let cache = QuackCacheMulticast::new(
-            IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
-            quack_threshold,
-            cache_capacity
-        );
         Self {
             stream,
-            cache,
             quack_port,
+            cache: None,
             base_connection_stoc: None,
             sidekick_connections: HashMap::new(),
+            cache_capacity,
             num_retx: 0,
             num_tx: 0,
         }
@@ -73,25 +69,28 @@ impl SidekickMulticast {
     ) {
         let payload = UdpParser::payload(&packet.data, packet.nbytes);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
-        match self.cache.decode(&quack, &sidekick_conn) {
+        let cache = self.cache.as_mut().unwrap();
+        match cache.decode(&quack, &sidekick_conn) {
             Ok(result) => {
-                debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
-                    quack.count(), self.cache.len(),
+                debug!("quack {} cache_len={} {:?} last_index={} missing={:?}, Sidekick: {}",
+                    quack.count(), cache.view().len(), cache.view_ids(),
                     result.last_index, result.missing_indexes, fmt_hex!(sidekick_conn));
                 let mut buf = [0u8; BUFFER_SIZE];
                 for index in result.missing_indexes {
-                    let retx = self.cache.get(index).unwrap();
+                    let retx = cache.get(index).unwrap();
                     self.num_retx += 1;
                     debug!("retransmit {}/{}", self.num_retx, self.num_tx);
                     let payload = RetransmitPayload::new(UdpParser::payload(&retx.data, retx.nbytes));
                     match payload.build_packet(&mut buf, &packet.data) {
                         Ok(len) => {
+                            debug!("retransmit original payload {} {}", retx.nbytes, len);
                             self.stream.send(&buf, len, packet.iface);
                         }
                         Err(e) => error!("Failed to build retransmit packet: {}", e),
                     }
                 }
-                self.cache.evict();
+                let num_evicted = cache.evict();
+                trace!("evicting {}", num_evicted);
             }
             Err(e) => {
                 error!("Failed to decode quACK: {:?}", e);
@@ -106,7 +105,7 @@ impl SidekickMulticast {
                         Ok(len) => {
                             info!("Sending reset packet");
                             self.stream.send(&buf, len, packet.iface);
-                            self.cache.reset(&sidekick_conn);
+                            cache.reset(&sidekick_conn);
                             self.sidekick_connections.insert(sidekick_conn, Instant::now());
                         }
                         Err(e) => error!("Failed to build reset packet: {}", e),
@@ -128,7 +127,7 @@ impl SidekickMulticast {
     /// Add it to the cache and forward normally.
     fn handle_base_packet_from_server(&mut self, packet: Packet) {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
-        self.cache.add(packet);
+        self.cache.as_mut().unwrap().add(packet);
         self.num_tx += 1;
     }
 
@@ -174,19 +173,29 @@ impl SidekickMulticast {
                     assert!(self.base_connection_stoc.is_none() ||
                         self.base_connection_stoc == Some(base),
                         "expect one base connection");
+                    let id_func = IdentifierFunc::FixedOffset(UDP_PAYLOAD_OFFSET + disc.id_offset as usize);
+                    assert!(self.cache.is_none() ||
+                        self.cache.as_ref().unwrap().id_func() == id_func,
+                        "expect same id func");
                     self.base_connection_stoc = Some(base);
+                    if self.cache.is_none() {
+                        self.cache = Some(QuackCacheMulticast::new(
+                            id_func, self.cache_capacity,
+                        ));
+                    }
                     let new_conn = self.sidekick_connections.insert(addr_key, Instant::now()).is_none();
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. New: {}.",
                           fmt_hex!(addr_key), fmt_hex!(base), new_conn);
 
                     // Acknowledge the discovery packet
                     let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+                    let threshold = disc.threshold;
                     match disc.build_ack_packet(&mut buf, &packet.data) {
                         Ok(len) => {
                             trace!("Sending ACK packet for discovery {}",
                                    fmt_hex!(self.base_connection_stoc.unwrap()));
                             self.stream.send(&buf, len, packet.iface);
-                            self.cache.init_conn(&addr_key);
+                            self.cache.as_mut().unwrap().init_conn(&addr_key, threshold as usize);
                         }
                         Err(e) => error!("Failed to build ack packet: {}", e),
                     }

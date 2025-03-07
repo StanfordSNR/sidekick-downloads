@@ -2,7 +2,7 @@ use crate::cache::QuackCache;
 use crate::stream::{Packet, PacketStream};
 use crate::sidekick::ConnectionType;
 
-use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, fmt_hex};
+use sidekick_utils::{BUFFER_SIZE, UDP_PAYLOAD_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::packet::{
@@ -20,10 +20,11 @@ use quack::{PowerSumQuack, PowerSumQuackU32};
 /// 4-tuple.
 pub struct Sidekick {
     stream: PacketStream,
-    cache: QuackCache,
     quack_port: u16,
+    cache: Option<QuackCache>,
     base_connection_stoc: Option<AddrKey>,
     sidekick_connection: Option<AddrKey>,
+    cache_capacity: usize,
     num_retx: usize,
     num_tx: usize,
     last_reset: Instant,
@@ -40,21 +41,16 @@ impl Sidekick {
         client_interface: &str,
         server_interface: &str,
         quack_port: u16,
-        quack_threshold: usize,
         cache_capacity: usize,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
-        let cache = QuackCache::new(
-            IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
-            quack_threshold,
-            cache_capacity
-        );
         Self {
             stream,
-            cache,
             quack_port,
+            cache: None,
             base_connection_stoc: None,
             sidekick_connection: None,
+            cache_capacity,
             num_retx: 0,
             num_tx: 0,
             last_reset: Instant::now(),
@@ -70,20 +66,21 @@ impl Sidekick {
     fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
         let payload = UdpParser::payload(&packet.data, packet.nbytes);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
-        match self.cache.decode(&quack) {
+        let cache = self.cache.as_mut().unwrap();
+        match cache.decode(&quack) {
             Ok(result) => {
                 debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
-                    quack.count(), self.cache.len(),
+                    quack.count(), cache.len(),
                     result.last_index, result.missing_indexes,
                     fmt_hex!(self.sidekick_connection.unwrap()));
                 for index in result.missing_indexes {
-                    let retx = self.cache.get(index).unwrap();
+                    let retx = cache.get(index).unwrap();
                     self.num_retx += 1;
                     debug!("retransmit {}/{}", self.num_retx, self.num_tx);
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
-                    self.cache.add(retx.clone()); // TODO: avoid clone
+                    cache.add(retx.clone()); // TODO: avoid clone
                 }
-                self.cache.evict(result.last_index).unwrap();
+                cache.evict(result.last_index).unwrap();
             }
             Err(e) => {
                 error!("Failed to decode quACK: {:?}", e);
@@ -93,7 +90,7 @@ impl Sidekick {
                         Ok(len) => {
                             info!("Sending reset packet");
                             self.stream.send(&buf, len, packet.iface);
-                            self.cache.reset();
+                            cache.reset();
                             self.last_reset = Instant::now();
                         }
                         Err(e) => error!("Failed to build reset packet: {}", e),
@@ -115,7 +112,7 @@ impl Sidekick {
     /// Add it to the cache and forward normally.
     fn handle_base_packet_from_server(&mut self, packet: Packet) {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
-        self.cache.add(packet);
+        self.cache.as_mut().unwrap().add(packet);
         self.num_tx += 1;
     }
 
@@ -167,6 +164,13 @@ impl Sidekick {
                     info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
                           fmt_hex!(addr_key), fmt_hex!(base),
                           self.sidekick_connection.is_some());
+                    if self.cache.is_none() {
+                        self.cache = Some(QuackCache::new(
+                            IdentifierFunc::FixedOffset(UDP_PAYLOAD_OFFSET + disc.id_offset as usize),
+                            disc.threshold as usize,
+                            self.cache_capacity,
+                        ));
+                    }
                     self.sidekick_connection = Some(addr_key);
                     self.base_connection_stoc = Some(base);
 

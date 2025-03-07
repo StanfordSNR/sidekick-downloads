@@ -393,7 +393,7 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick(
-        self, threshold: int, port: int, logfile: str, timeout=SETUP_TIMEOUT,
+        self, port: int, logfile: str, timeout=SETUP_TIMEOUT,
         executable='./proxy/target/release/sidekick',
     ):
         condition = threading.Condition()
@@ -408,7 +408,7 @@ class EmulatedNetwork:
         # right value to set it at.
         cmd = f'{executable} --client-interface p1-eth0 '\
               f'--server-interface p1-eth1 --cache-capacity {4 * self.cwnd} '\
-              f'--quack-port {port} --quack-threshold {threshold} '
+              f'--quack-port {port} '
 
         self.popen(self.p1, cmd,
                    background=True, console_logger=DEBUG,
@@ -420,7 +420,7 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_sidekick timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick_multicast(
-        self, threshold: int, port: int, logfile: str, timeout=SETUP_TIMEOUT,
+        self, port: int, logfile: str, timeout=SETUP_TIMEOUT,
     ):
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -436,7 +436,7 @@ class EmulatedNetwork:
         cmd = f'./proxy/target/release/sidekick_multicast '\
               f'--server-interface p1-eth0 --client-interface p1-eth1 '\
               f'--cache-capacity {4 * self.cwnd} '\
-              f'--quack-port {port} --quack-threshold {threshold} '
+              f'--quack-port {port} '
 
         self.popen(self.p1, cmd,
                    background=True, console_logger=DEBUG,
