@@ -1,12 +1,12 @@
 use clap::Parser;
-use log::{trace, debug, info};
+use log::{trace, debug, info, warn};
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{self, Instant, Duration};
 
-use sidekick_utils::{BUFFER_SIZE, ID_OFFSET};
-use sidekick_utils::discovery::{NUM_DISCOVERY_PKTS, DISCOVERY_FREQ_MS};
+use sidekick_utils::{BUFFER_SIZE, ID_BUFFER_SIZE, ID_OFFSET};
+use sidekick_utils::packet::{NUM_DISCOVERY_PKTS, DISCOVERY_FREQ_MS};
 use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
@@ -87,7 +87,7 @@ async fn start_sniffer(
         // If this is an incoming sidekick packet from the proxy, handle it.
         if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
            u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
-            quacker.lock().await.handle_sidekick_payload(UdpParser::payload(&buf));
+            quacker.lock().await.handle_sidekick_payload(UdpParser::payload(&buf, n));
             continue; // skip packets from proxy
         }
 
@@ -118,8 +118,8 @@ async fn start_sniffer(
         }
 
         // Otherwise parse the identifier and insert it into the quack.
-        if n != (BUFFER_SIZE as _) {
-            trace!("underfilled buffer: {} < {}", n, BUFFER_SIZE);
+        if n < (ID_BUFFER_SIZE as _) {
+            warn!("underfilled buffer: {} < {}", n, ID_BUFFER_SIZE);
             continue;
         }
         let id = UdpParser::parse_identifier(&buf, identifier_func.clone());

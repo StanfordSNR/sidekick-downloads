@@ -1,52 +1,43 @@
-use crate::cache::QuackCache;
+use crate::cache::QuackCacheMulticast;
 use crate::stream::{Packet, PacketStream};
+use crate::sidekick::ConnectionType;
 
 use sidekick_utils::{BUFFER_SIZE, ID_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
-use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
-use sidekick_utils::reset::{ResetPayload, RESET_FREQ_MS};
+use sidekick_utils::packet::{
+    RetransmitPayload, DiscoveryPayload, ResetPayload,
+    DiscoveryOp, RESET_FREQ_MS,
+};
 
+use std::collections::HashMap;
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};
 use quack::{PowerSumQuack, PowerSumQuackU32};
 
-/// The sidekick provides in-network assistance to a single base connection
-/// identified by a UDP 4-tuple. It also participates in a separate sidekick
-/// connection between the client and proxy, identified by a different UDP
-/// 4-tuple.
-pub struct Sidekick {
+
+/// The sidekick provides in-network assistance to a single multicast base
+/// connection identified by a UDP 4-tuple. It also participates in multiple
+/// separate sidekick connections between the proxy and different clients, each
+/// of which is registered to the multicast address. The sidekick connections
+/// are identified by different UDP 4-tuples.
+pub struct SidekickMulticast {
     stream: PacketStream,
-    cache: QuackCache,
+    cache: QuackCacheMulticast,
     quack_port: u16,
     base_connection_stoc: Option<AddrKey>,
-    sidekick_connection: Option<AddrKey>,
+    // Last reset times of each sidekick connection
+    sidekick_connections: HashMap<AddrKey, Instant>,
     num_retx: usize,
     num_tx: usize,
-    last_reset: Instant,
 }
 
-/// Identifies the connection as base or sidekick
-enum ConnectionType {
-    /// Base connection from client to server
-    BaseCtos,
-    /// Base connection from server to client
-    BaseStoc,
-    /// Sidekick connection
-    Sidekick,
-    /// Sidekick configuration packet
-    Discovery,
-    /// Some other connection (forward only)
-    None
-}
-
-impl Sidekick {
-    /// Initialize a sidekick.
+impl SidekickMulticast {
+    /// Initialize a multicast sidekick.
     ///
-    /// The base connection 4-tuple is determined by the first UDP packet it
-    /// observes on either interface. The sidekick connection 4-tuple is
-    /// determined by the first UDP packet it receives destined to its own IP
-    /// address and the given quACK port.
+    /// The base connection 4-tuple is determined by the first discovery
+    /// packet it receives. The sidekick connection 4-tuples are determined by
+    /// subsequent discovery packets for the same base connection 4-tuple.
     pub fn new(
         client_interface: &str,
         server_interface: &str,
@@ -55,7 +46,7 @@ impl Sidekick {
         cache_capacity: usize,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
-        let cache = QuackCache::new(
+        let cache = QuackCacheMulticast::new(
             IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
             quack_threshold,
             cache_capacity
@@ -65,10 +56,9 @@ impl Sidekick {
             cache,
             quack_port,
             base_connection_stoc: None,
-            sidekick_connection: None,
+            sidekick_connections: HashMap::new(),
             num_retx: 0,
             num_tx: 0,
-            last_reset: Instant::now(),
         }
     }
 
@@ -78,33 +68,46 @@ impl Sidekick {
     /// then to retransmit missing packets and delete acknowledged packets
     /// from the cache. If the quACK can't be decoded, send a Reset packet
     /// back to the client on the sidekick connection.
-    fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
-        let payload = UdpParser::payload(&packet.data);
+    fn handle_sidekick_packet_from_client(
+        &mut self, packet: Packet, sidekick_conn: AddrKey,
+    ) {
+        let payload = UdpParser::payload(&packet.data, packet.nbytes);
         let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
-        match self.cache.decode(&quack) {
+        match self.cache.decode(&quack, &sidekick_conn) {
             Ok(result) => {
-                debug!("quack {} cache_len={} last_index={} missing={:?}",
+                debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), self.cache.len(),
-                    result.last_index, result.missing_indexes);
+                    result.last_index, result.missing_indexes, fmt_hex!(sidekick_conn));
+                let mut buf = [0u8; BUFFER_SIZE];
                 for index in result.missing_indexes {
                     let retx = self.cache.get(index).unwrap();
                     self.num_retx += 1;
                     debug!("retransmit {}/{}", self.num_retx, self.num_tx);
-                    self.stream.forward_packet(&retx, retx.nbytes as usize);
-                    self.cache.add(retx.clone()); // TODO: avoid clone
+                    let payload = RetransmitPayload::new(UdpParser::payload(&retx.data, retx.nbytes));
+                    match payload.build_packet(&mut buf, &packet.data) {
+                        Ok(len) => {
+                            self.stream.send(&buf, len, packet.iface);
+                        }
+                        Err(e) => error!("Failed to build retransmit packet: {}", e),
+                    }
                 }
-                self.cache.evict(result.last_index).unwrap();
+                self.cache.evict();
             }
             Err(e) => {
                 error!("Failed to decode quACK: {:?}", e);
-                if self.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
+                if self.sidekick_connections
+                    .get(&sidekick_conn)
+                    .map(|last_reset| {
+                        last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS)
+                    }).unwrap_or(true)
+                {
                     let mut buf = [0u8; BUFFER_SIZE];
                     match ResetPayload::build_packet(&mut buf, &packet.data) {
                         Ok(len) => {
                             info!("Sending reset packet");
                             self.stream.send(&buf, len, packet.iface);
-                            self.cache.reset();
-                            self.last_reset = Instant::now();
+                            self.cache.reset(&sidekick_conn);
+                            self.sidekick_connections.insert(sidekick_conn, Instant::now());
                         }
                         Err(e) => error!("Failed to build reset packet: {}", e),
                     }
@@ -146,9 +149,9 @@ impl Sidekick {
                 trace!("Received base packet from server");
                 self.handle_base_packet_from_server(packet);
             }
-            ConnectionType::Sidekick => {
+            ConnectionType::Sidekick(conn) => {
                 trace!("Received sidekick packet from client");
-                self.handle_sidekick_packet_from_client(packet);
+                self.handle_sidekick_packet_from_client(packet, conn);
             }
             ConnectionType::None => {
                 trace!("Forwarding packet from unknown four-tuple");
@@ -165,14 +168,16 @@ impl Sidekick {
             // We expect this to be a quACK
             if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
                 // Check for discovery packet first
-                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data)) {
+                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data, packet.nbytes)) {
                     let base = disc.base_connection_stoc;
-                    assert!(disc.op == DiscoveryOp::Discover);
-                    info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
-                          fmt_hex!(addr_key), fmt_hex!(base),
-                          self.sidekick_connection.is_some());
-                    self.sidekick_connection = Some(addr_key);
+                    assert!(disc.op == DiscoveryOp::DiscoverMulticast);
+                    assert!(self.base_connection_stoc.is_none() ||
+                        self.base_connection_stoc == Some(base),
+                        "expect one base connection");
                     self.base_connection_stoc = Some(base);
+                    let new_conn = self.sidekick_connections.insert(addr_key, Instant::now()).is_none();
+                    info!("Received discovery packet from client. Sidekick: {}, Base: {}. New: {}.",
+                          fmt_hex!(addr_key), fmt_hex!(base), new_conn);
 
                     // Acknowledge the discovery packet
                     let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
@@ -181,25 +186,13 @@ impl Sidekick {
                             trace!("Sending ACK packet for discovery {}",
                                    fmt_hex!(self.base_connection_stoc.unwrap()));
                             self.stream.send(&buf, len, packet.iface);
+                            self.cache.init_conn(&addr_key);
                         }
                         Err(e) => error!("Failed to build ack packet: {}", e),
                     }
                     return ConnectionType::Discovery;
-                }
-                // Match against sidekick connection
-                match self.sidekick_connection {
-                    Some(stored_key) if stored_key == addr_key => {
-                        return ConnectionType::Sidekick;
-                    }
-                    Some(stored_key) => {
-                        trace!("Unknown sidekick AddrKey: {} (expected: {})",
-                               fmt_hex!(addr_key), fmt_hex!(stored_key));
-                        return ConnectionType::None;
-                    }
-                    None => {
-                        trace!("ctos packet received before discovery packet");
-                        return ConnectionType::None;
-                    }
+                } else {
+                    return ConnectionType::Sidekick(addr_key);
                 }
             } else {
                 // Convert ctos 4-tuple to stoc 4-tuple

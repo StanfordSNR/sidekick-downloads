@@ -6,12 +6,20 @@ use clap::Parser;
 use log::{debug, info};
 use tokio::task;
 use tokio::select;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::time::{Instant, Duration};
 
+use quacker::{current_time_ms, Quacker, UdpQuacker};
+use sidekick_utils::buffer::AddrKey;
+use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
+
 use media::{Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
+use media::sidekick::{parse_addr_key, QuackerConfig};
+
+
+const MPSC_CHANNEL_SIZE: usize = 100;
 
 
 #[derive(Debug, Parser)]
@@ -37,19 +45,27 @@ struct Cli {
     /// Port to receive packets on.
     #[arg(long, default_value_t = 5202)]
     multicast_port: u16,
+    /// Whether to enable the client quacker.
+    #[arg(long, requires = "quacker_config")]
+    quacker: bool,
+    #[command(flatten)]
+    quacker_config: Option<QuackerConfig>,
 }
 
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
-    sock: Sockets, nack_frequency: Duration, nack_delay: Option<Duration>,
-    timeout: Duration, client_id: String,
+    sock: Sockets, quacker: Option<Arc<Mutex<UdpQuacker>>>, client_id: String,
+    nack_frequency: Duration, nack_delay: Option<Duration>, timeout: Duration,
+    mut sidekick_rx: mpsc::Receiver<Vec<u8>>,
 ) -> io::Result<()> {
     let mut buf1 = [0u8; PAYLOAD_SIZE];
     let mut buf2 = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
+    let mut discovery_sent = current_time_ms();
     let start = Instant::now();
     loop {
-        let (len, addr, is_multicast) = sock.recv_from(&mut buf1, &mut buf2).await;
+        let (len, addr, is_multicast) =
+            sock.recv_from(&mut sidekick_rx, &mut buf1, &mut buf2).await;
         let mut buf = if is_multicast { buf2 } else { buf1 };
         let data = Packet::from_payload(&buf);
 
@@ -72,26 +88,66 @@ async fn listen_incoming(
         let (from_addr, ref mut stats, ref mut buffer) = connection.as_mut().unwrap();
         assert_eq!(*from_addr, addr);
 
+        let current_time = current_time_ms();
+        let mut sent_quack = false;
+        let mut inserted = false;
+        if let Some(ref quacker) = quacker {
+            let mut quacker = quacker.lock().await;
+
+            // Send <NUM_DISCOVERY_PKTS> packets if
+            // (1) The quacker is enabled.
+            // (2a) We haven't sent them already OR
+            // (2b) More than <DISCOVERY_FREQ_MS> have elapsed since we
+            //      last sent them, and we're awaiting a disc ACK.
+            // (3) The base connection has bound to a local addr.
+            if quacker.base_stoc.is_none() ||
+               (quacker.awaiting_disc_ack && current_time >= discovery_sent + DISCOVERY_FREQ_MS * 1000)
+            {
+                let addr_key = sock.multicast_addr_key();
+                quacker.send_discovery_multicast(addr_key, NUM_DISCOVERY_PKTS);
+                discovery_sent = current_time;
+            }
+
+            // Insert the received packet into the quACK.
+            else if is_multicast
+            {
+                sent_quack = quacker.insert(current_time, data.identifier);
+                inserted = true;
+            }
+        }
+
         // Add the data packet to the dejitter buffer and try to play data.
         assert_ne!(data.seqno, TIMEOUT_SEQNO);
         let now = Instant::now();
         if buffer.recv_seqno(data.seqno, now) {
             stats.add_spurious();
         }
-        debug!("receive data {} <- {:?}", data.seqno, addr);
         while let Some(time_recv) = buffer.pop_seqno() {
             stats.add_value(now - time_recv);
         }
 
         // Send NACKs for missing data.
-        for seqno in buffer.nacks_to_send(now, nack_frequency, nack_delay) {
-            debug!("nack {}", seqno);
+        let (nacks_to_send, missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
+        for &seqno in &nacks_to_send {
             let nack = Packet::new_nack(seqno);
             let len = nack.fill_payload(&mut buf);
             sock.send_to_server(&buf[..len]).await;
         }
 
+        // Explicitly send a quACK when missing data.
+        if missing && !sent_quack {
+            if let Some(ref quacker) = quacker {
+                quacker.lock().await.send_quack(current_time);
+            }
+        }
+
         // Check for timeout.
+        debug!(
+            "receive data {}{}{}",
+            data.seqno,
+            if inserted { format!(" insert {}", data.identifier) } else { "".to_string() },
+            if !nacks_to_send.is_empty() { format!(" nack {:?}", nacks_to_send) } else { "".to_string() },
+        );
         if now >= start + timeout {
             let prefix = format!("[ID{}] ", client_id);
             stats.print_statistics(Some(prefix));
@@ -181,14 +237,23 @@ impl Sockets {
 
     /// Returns the number of bytes received, the socket address of the packet
     /// sender, and whether the packet is from the multicast socket.
-    async fn recv_from(&self, payload_unicast: &mut [u8], payload_multicast: &mut [u8]) -> (usize, SocketAddr, bool) {
+    async fn recv_from(
+        &self, sidekick_rx: &mut mpsc::Receiver<Vec<u8>>,
+        payload_unicast: &mut [u8], payload_multicast: &mut [u8],
+    ) -> (usize, SocketAddr, bool) {
         select! {
             Ok((len, addr)) = {
                 self.unicast.recv_from(payload_unicast)
             } => (len, addr, false),
             Ok((len, addr)) = {
                 self.multicast.as_ref().unwrap().recv_from(payload_multicast)
-            } => (len, addr, true)
+            } => (len, addr, true),
+            Some(data) = {
+                sidekick_rx.recv()
+            } => {
+                payload_multicast.copy_from_slice(&data);
+                (data.len(), self.server_addr, true)
+            },
         }
     }
 
@@ -199,6 +264,12 @@ impl Sockets {
     async fn send_to_server(&self, payload: &[u8]) -> usize {
         self.unicast.send_to(payload, self.server_addr).await.unwrap()
     }
+
+    fn multicast_addr_key(&self) -> AddrKey {
+        let multicast_addr = SocketAddr::from(
+            (self.multicast_ip, self.multicast_port));
+        parse_addr_key(&self.server_addr, &multicast_addr).unwrap()
+    }
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -207,6 +278,14 @@ async fn main() -> io::Result<()> {
     let args = Cli::parse();
     let nack_frequency = Duration::from_millis(args.nack_frequency);
     let mut sock = Sockets::new(args.multicast_ip, args.multicast_port, args.addr).await?;
+
+    // Initialize the client quacker if enabled.
+    let (sidekick_tx, sidekick_rx) = mpsc::channel(MPSC_CHANNEL_SIZE);
+    let quacker = if args.quacker {
+        Some(args.quacker_config.unwrap().init_udp_quacker(Some(sidekick_tx)))
+    } else {
+        None
+    };
 
     // Initialize the connection.
     {
@@ -224,8 +303,11 @@ async fn main() -> io::Result<()> {
             None
         };
         listen_incoming(
-            sock, nack_frequency, nack_delay, timeout, args.client_id,
+            sock, quacker, args.client_id, nack_frequency, nack_delay, timeout,
+            sidekick_rx,
         ).await?;
     }
-    Ok(())
+
+    // Abort any sidekick tasks
+    std::process::exit(0);
 }

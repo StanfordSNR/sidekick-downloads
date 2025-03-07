@@ -125,6 +125,13 @@ def benchmark_media(net, args):
 
 
 def benchmark_multicast(net, args):
+    # Generate the config for the client quacker, if enabled
+    if args.client_quacker > 0:
+        quacker = QuackerConfig.from_args(args)
+    else:
+        quacker = None
+
+    # Create the benchmark and run it
     bm = MulticastBenchmark(
         net,
         label=args.label,
@@ -133,6 +140,8 @@ def benchmark_multicast(net, args):
         frequency=args.frequency,
         nack_delay=args.ack_delay,
         num_clients=args.num_clients,
+        num_quackers=args.client_quacker,
+        quacker=quacker,
         proxy_type=args.proxy,
     )
     result = bm.run_benchmark(
@@ -371,8 +380,11 @@ def parse_args(argv=None):
     multicast.add_argument('--frequency', type=int, default=20, metavar='MS',
         help='Frequency at which the server sends data packets. The payload '\
              'size is 240 bytes.')
-    multicast.add_argument('--num-clients', type=int, default=3,
+    multicast.add_argument('--num-clients', type=int, default=1,
         help='Number of multicast clients who are receiving data.')
+    multicast.add_argument('--client-quacker', type=int, default=0,
+        help='Enable an in-line quacker with the client to quack to the '\
+             'proxy. Must be at most the number of clients.')
     multicast.add_argument('--ack-delay', type=int, default=0, metavar='MS',
         help='Delay (ms) of client NACK signal to reduce spurious retransmissions')
 
@@ -439,6 +451,9 @@ def main(args):
             net.start_bridge(proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
             net.start_sidekick(args.threshold, args.quackee_port,
+                logfile=proxy_logfile)
+        elif args.proxy == ProxyType.SIDEKICK_MULTICAST:
+            net.start_sidekick_multicast(args.threshold, args.quackee_port,
                 logfile=proxy_logfile)
 
         # Start the packet trace collector

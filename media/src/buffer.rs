@@ -92,13 +92,17 @@ impl BufferedPackets {
     /// than <nack_frequency> since a missing seqno was last NACKed. If there
     /// is a NACK delay, doesn't NACK the packet until it has been lost for at
     /// least that length of time.
+    ///
+    /// Also returns if any packets are missing even if there are no NACKs to
+    /// send.
     pub fn nacks_to_send(
         &mut self, now: Instant, nack_frequency: Duration,
         nack_delay: Option<Duration>,
-    ) -> Vec<u32> {
+    ) -> (Vec<u32>, bool) {
         let mut nacks = vec![];
+        let mut missing = false;
         if self.buffer.is_empty() {
-            return nacks;
+            return (nacks, missing);
         }
         for packet in self.buffer.iter_mut() {
             if packet.time_recv.is_some() {
@@ -107,6 +111,7 @@ impl BufferedPackets {
             if packet.time_lost.is_none() {
                 packet.time_lost = Some(now);
             }
+            missing = true;
             if let Some(nack_delay) = nack_delay {
                 if now < packet.time_lost.unwrap() + nack_delay {
                     continue;
@@ -122,7 +127,7 @@ impl BufferedPackets {
                 packet.time_nack = Some(now);
             }
         }
-        nacks
+        (nacks, missing)
     }
 }
 
@@ -201,26 +206,36 @@ mod tests {
         let mut buffer = BufferedPackets::new(1);
         let now = Instant::now();
         let freq = Duration::from_millis(10);
+
+        // nothing missing to start
+        let (nacks, missing) = buffer.nacks_to_send(now, freq, None);
+        assert_eq!(nacks.len(), 0);
+        assert!(!missing);
+
+        // receive some packets
         buffer.recv_seqno(2, now);
         buffer.recv_seqno(3, now);
         buffer.recv_seqno(5, now);
 
         // nack the holes
-        let nacks = buffer.nacks_to_send(now, freq, None);
+        let (nacks, missing) = buffer.nacks_to_send(now, freq, None);
         assert_eq!(nacks.len(), 2);
         assert_eq!(nacks[0], 1);
         assert_eq!(nacks[1], 4);
+        assert!(missing);
 
         // nacked too soon after
-        let nacks = buffer.nacks_to_send(now, freq, None);
+        let (nacks, missing) = buffer.nacks_to_send(now, freq, None);
         assert_eq!(nacks.len(), 0);
+        assert!(missing);
 
         // nack after freq time has elapsed
         let now = now + freq + Duration::from_millis(1);
-        let nacks = buffer.nacks_to_send(now, freq, None);
+        let (nacks, missing) = buffer.nacks_to_send(now, freq, None);
         assert_eq!(nacks.len(), 2);
         assert_eq!(nacks[0], 1);
         assert_eq!(nacks[1], 4);
+        assert!(missing);
     }
 
     #[test]
@@ -234,19 +249,22 @@ mod tests {
         buffer.recv_seqno(5, now);
 
         // too soon to nack
-        let nacks = buffer.nacks_to_send(now, freq, Some(delay));
+        let (nacks, missing) = buffer.nacks_to_send(now, freq, Some(delay));
         assert_eq!(nacks.len(), 0);
+        assert!(missing);
 
         // still too soon to nack
         let now = now + delay - Duration::from_millis(1);
-        let nacks = buffer.nacks_to_send(now, freq, Some(delay));
+        let (nacks, missing) = buffer.nacks_to_send(now, freq, Some(delay));
         assert_eq!(nacks.len(), 0);
+        assert!(missing);
 
         // we can nack now
         let now = now + Duration::from_millis(2);
-        let nacks = buffer.nacks_to_send(now, freq, Some(delay));
+        let (nacks, missing) = buffer.nacks_to_send(now, freq, Some(delay));
         assert_eq!(nacks.len(), 2);
         assert_eq!(nacks[0], 1);
         assert_eq!(nacks[1], 4);
+        assert!(missing);
     }
 }

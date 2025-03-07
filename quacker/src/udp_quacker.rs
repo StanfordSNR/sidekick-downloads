@@ -9,8 +9,9 @@ use crate::{Quacker, BaseQuacker};
 
 use sidekick_utils::fmt_hex;
 use sidekick_utils::buffer::AddrKey;
-use sidekick_utils::reset::ResetPayload;
-use sidekick_utils::discovery::{DiscoveryPayload, DiscoveryOp};
+use sidekick_utils::packet::{
+    ResetPayload, DiscoveryPayload, RetransmitPayload, DiscoveryOp,
+};
 
 
 #[derive(Clone)]
@@ -40,15 +41,19 @@ impl UdpQuacker {
     }
 
     /// Handle an incoming sidekick packet from the proxy.
-    pub fn handle_sidekick_payload(&mut self, udp_payload: &[u8]) {
+    pub fn handle_sidekick_payload(&mut self, udp_payload: &[u8]) -> Option<Vec<u8>> {
         if let Some(disc) = DiscoveryPayload::from_payload(udp_payload) {
             self.handle_discover_ack(disc);
         } else if let Some(_) = ResetPayload::from_payload(udp_payload) {
             info!("Received Reset, count={}", self.quacker.get_quack().count());
             self.reset();
+        } else if let Some(retx) = RetransmitPayload::from_payload(udp_payload) {
+            debug!("Received Retransmit");
+            return Some(retx.data);
         } else {
-            warn!("Received unknown packet from proxy");
+            warn!("Received unknown packet from proxy {} bytes", udp_payload.len());
         }
+        None
     }
 
     /// Handle discovery packets from the proxy.
@@ -85,10 +90,22 @@ impl UdpQuacker {
     /// the chance that a discovery reaches the proxy in the presence of random loss
     /// (duplicate discovery packets are no-ops).
     pub fn send_discovery(&mut self, base: AddrKey, n: usize) {
+        self.send_discovery_base(base, n, false);
+    }
+
+    pub fn send_discovery_multicast(&mut self, base: AddrKey, n: usize) {
+        self.send_discovery_base(base, n, true);
+    }
+
+    fn send_discovery_base(&mut self, base: AddrKey, n: usize, multicast: bool) {
         self.base_stoc = Some(base);
         self.awaiting_disc_ack = true;
-        let bytes = bincode::serialize(
-            &DiscoveryPayload::new(base, DiscoveryOp::Discover)).unwrap();
+        let op = if multicast {
+            DiscoveryOp::DiscoverMulticast
+        } else {
+            DiscoveryOp::Discover
+        };
+        let bytes = bincode::serialize(&DiscoveryPayload::new(base, op)).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {
                 error!("Failed to send {}th discovery packet", i);
