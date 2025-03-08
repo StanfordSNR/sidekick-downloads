@@ -4,7 +4,7 @@ use bincode;
 use log::{debug, info, error, warn};
 use socket2::{Socket, Domain, Type, SockAddr};
 
-use quack::{Quack, PowerSumQuackU32};
+use quack::{Quack, QuackWrapper};
 use crate::{Quacker, BaseQuacker};
 
 use sidekick_utils::{fmt_hex, ID_OFFSET, UDP_PAYLOAD_OFFSET};
@@ -152,7 +152,7 @@ impl Quacker for UdpQuacker {
         self.quacker.freq_ms()
     }
 
-    fn get_quack(&self) -> &PowerSumQuackU32 {
+    fn get_quack(&self) -> &QuackWrapper {
         self.quacker.get_quack()
     }
 
@@ -184,7 +184,7 @@ impl Quacker for UdpQuacker {
         self.quacker.send_quack(time_ms);
         let quack = self.get_quack();
         debug!("quack {}", quack.count());
-        let bytes = bincode::serialize(&quack).unwrap();
+        let bytes = quack.serialize();
         self.src_sock.send_to(&bytes, self.dst_addr).unwrap();
     }
 }

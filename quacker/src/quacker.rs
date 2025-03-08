@@ -1,4 +1,4 @@
-use quack::{Quack, PowerSumQuackU32};
+use quack::{Quack, QuackWrapper, PowerSumQuackU32, IBLTQuackU32};
 
 /// Basic interface for a quACK sender.
 ///
@@ -12,7 +12,7 @@ pub trait Quacker {
     /// determined by <freq_pkts>.
     fn freq_ms(&self) -> u64;
     /// Snapshot the quack.
-    fn get_quack(&self) -> &PowerSumQuackU32;
+    fn get_quack(&self) -> &QuackWrapper;
     /// Reset the quACK.
     fn reset(&mut self);
     /// Insert an identifier into the quACK. Return whether we quack.
@@ -25,7 +25,7 @@ pub trait Quacker {
 
 #[derive(Clone)]
 pub struct BaseQuacker {
-    quack: PowerSumQuackU32,
+    quack: QuackWrapper,
     freq_pkts: u32,
     freq_ms: u64,
 
@@ -37,8 +37,13 @@ impl BaseQuacker {
     pub fn new(
         riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
     ) -> Self {
+        let quack = if riblt {
+            QuackWrapper::IBLT(IBLTQuackU32::new(threshold))
+        } else {
+            QuackWrapper::PowerSum(PowerSumQuackU32::new(threshold))
+        };
         Self {
-            quack: PowerSumQuackU32::new(threshold),
+            quack,
             freq_pkts,
             freq_ms: freq_ms,
             last_quack_count: 0,
@@ -60,12 +65,19 @@ impl Quacker for BaseQuacker {
         self.freq_ms
     }
 
-    fn get_quack(&self) -> &PowerSumQuackU32 {
+    fn get_quack(&self) -> &QuackWrapper {
         &self.quack
     }
 
     fn reset(&mut self) {
-        self.quack = PowerSumQuackU32::new(self.quack.threshold());
+        self.quack = match &self.quack {
+            QuackWrapper::IBLT(q) => {
+                QuackWrapper::IBLT(IBLTQuackU32::new(q.threshold()))
+            }
+            QuackWrapper::PowerSum(q) => {
+                QuackWrapper::PowerSum(PowerSumQuackU32::new(q.threshold()))
+            }
+        };
         self.last_quack_count = 0;
         self.last_quack_time = 0;
     }
