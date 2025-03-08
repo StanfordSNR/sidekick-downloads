@@ -69,6 +69,8 @@ pub struct DiscoveryPayload {
     pub id_offset: u16,
     /// Power sum quACK threshold, or number of coded symbols in the IBLT quACK.
     pub threshold: u8,
+    /// Whether to use the RIBLT quACK.
+    pub riblt: bool,
 }
 
 impl DiscoveryPayload {
@@ -77,6 +79,7 @@ impl DiscoveryPayload {
         op: DiscoveryOp,
         id_offset: u16,
         threshold: u8,
+        riblt: bool,
     ) -> Self {
         trace!("Creating new DiscoveryPayload for base connection {} id_offset {} threshold {}, {:?}",
                fmt_hex!(base_connection_stoc), id_offset, threshold, op);
@@ -86,6 +89,7 @@ impl DiscoveryPayload {
             base_connection_stoc,
             id_offset,
             threshold,
+            riblt,
         }
     }
 
@@ -107,7 +111,7 @@ impl DiscoveryPayload {
             DiscoveryOp::Teardown => DiscoveryOp::TeardownAck,
             _ => panic!("Invalid operation for ack"),
         };
-        Self::new(self.base_connection_stoc, op, 0, 0)
+        Self::new(self.base_connection_stoc, op, 0, 0, false)
     }
 
     /// Given a DISCOVER DiscoveryPayload, the full packet it came in, and an output buffer,

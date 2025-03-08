@@ -11,7 +11,7 @@ use sidekick_utils::packet::{
 
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};
-use quack::{Quack, PowerSumQuackU32};
+use quack::{Quack, QuackWrapper};
 
 
 /// The sidekick provides in-network assistance to a single base connection
@@ -65,7 +65,7 @@ impl Sidekick {
     /// back to the client on the sidekick connection.
     fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
         let payload = UdpParser::payload(&packet.data, packet.nbytes);
-        let quack: PowerSumQuackU32 = bincode::deserialize(payload).unwrap();
+        let quack = QuackWrapper::deserialize(payload);
         let cache = self.cache.as_mut().unwrap();
         match cache.decode(&quack) {
             Ok(result) => {
@@ -145,6 +145,44 @@ impl Sidekick {
         }
     }
 
+    fn handle_discovery_packet(
+        &mut self, disc: DiscoveryPayload, addr_key: AddrKey, packet: &Packet,
+    ) {
+        let base = disc.base_connection_stoc;
+
+        // Check that the discovery packet is well-formed
+        assert!(disc.op == DiscoveryOp::Discover);
+        assert!(self.base_connection_stoc.is_none() || self.base_connection_stoc == Some(base),
+            "expect one base connection");
+        assert!(self.sidekick_connection.is_none() || self.sidekick_connection == Some(addr_key),
+            "expect one sidekick connection");
+        info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
+              fmt_hex!(addr_key), fmt_hex!(base), self.sidekick_connection.is_some());
+
+        // Initialize the connection for this proxy if not already initialized
+        if self.cache.is_none() {
+            self.cache = Some(QuackCache::new(
+                disc.riblt,
+                IdentifierFunc::FixedOffset(UDP_PAYLOAD_OFFSET + disc.id_offset as usize),
+                disc.threshold as usize,
+                self.cache_capacity,
+            ));
+        }
+        self.sidekick_connection = Some(addr_key);
+        self.base_connection_stoc = Some(base);
+
+        // Acknowledge the discovery packet
+        let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        match disc.build_ack_packet(&mut buf, &packet.data) {
+            Ok(len) => {
+                trace!("Sending ACK packet for discovery {}",
+                       fmt_hex!(self.base_connection_stoc.unwrap()));
+                self.stream.send(&buf, len, packet.iface);
+            }
+            Err(e) => error!("Failed to build ack packet: {}", e),
+        }
+    }
+
     /// Returns whether this is a base or sidekick connection.
     fn connection_type(&mut self, packet: &Packet) -> ConnectionType {
         let addr_key = UdpParser::parse_addr_key(&packet.data);
@@ -153,37 +191,7 @@ impl Sidekick {
             if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
                 // Check for discovery packet first
                 if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data, packet.nbytes)) {
-                    let base = disc.base_connection_stoc;
-                    assert!(disc.op == DiscoveryOp::Discover);
-                    assert!(self.base_connection_stoc.is_none() ||
-                        self.base_connection_stoc == Some(base),
-                        "expect one base connection");
-                    assert!(self.sidekick_connection.is_none() ||
-                        self.sidekick_connection == Some(addr_key),
-                        "expect one sidekick connection");
-                    info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
-                          fmt_hex!(addr_key), fmt_hex!(base),
-                          self.sidekick_connection.is_some());
-                    if self.cache.is_none() {
-                        self.cache = Some(QuackCache::new(
-                            IdentifierFunc::FixedOffset(UDP_PAYLOAD_OFFSET + disc.id_offset as usize),
-                            disc.threshold as usize,
-                            self.cache_capacity,
-                        ));
-                    }
-                    self.sidekick_connection = Some(addr_key);
-                    self.base_connection_stoc = Some(base);
-
-                    // Acknowledge the discovery packet
-                    let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-                    match disc.build_ack_packet(&mut buf, &packet.data) {
-                        Ok(len) => {
-                            trace!("Sending ACK packet for discovery {}",
-                                   fmt_hex!(self.base_connection_stoc.unwrap()));
-                            self.stream.send(&buf, len, packet.iface);
-                        }
-                        Err(e) => error!("Failed to build ack packet: {}", e),
-                    }
+                    self.handle_discovery_packet(disc, addr_key, packet);
                     return ConnectionType::Discovery;
                 }
                 // Match against sidekick connection

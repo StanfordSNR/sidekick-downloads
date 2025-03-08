@@ -110,8 +110,9 @@ impl UdpQuacker {
         };
         let id_offset: u16 = (ID_OFFSET - UDP_PAYLOAD_OFFSET).try_into().unwrap();
         let threshold: u8 = self.quacker.threshold().try_into().unwrap();
+        let riblt = self.quacker.riblt();
         let bytes = bincode::serialize(
-            &DiscoveryPayload::new(base, op, id_offset, threshold),
+            &DiscoveryPayload::new(base, op, id_offset, threshold, riblt)
         ).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {

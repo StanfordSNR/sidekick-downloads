@@ -28,6 +28,7 @@ pub struct BaseQuacker {
     quack: QuackWrapper,
     freq_pkts: u32,
     freq_ms: u64,
+    riblt: bool,
 
     last_quack_count: u32,
     last_quack_time: u64,
@@ -37,15 +38,11 @@ impl BaseQuacker {
     pub fn new(
         riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
     ) -> Self {
-        let quack = if riblt {
-            QuackWrapper::IBLT(IBLTQuackU32::new(threshold))
-        } else {
-            QuackWrapper::PowerSum(PowerSumQuackU32::new(threshold))
-        };
         Self {
-            quack,
+            quack: QuackWrapper::new(threshold, riblt),
             freq_pkts,
             freq_ms: freq_ms,
+            riblt,
             last_quack_count: 0,
             last_quack_time: 0,
         }
@@ -53,6 +50,10 @@ impl BaseQuacker {
 
     pub fn threshold(&self) -> usize {
         self.quack.threshold()
+    }
+
+    pub fn riblt(&self) -> bool {
+        self.riblt
     }
 }
 
