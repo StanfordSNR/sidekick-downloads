@@ -34,7 +34,9 @@ pub struct BaseQuacker {
 }
 
 impl BaseQuacker {
-    pub fn new(threshold: usize, freq_pkts: u32, freq_ms: u64) -> Self {
+    pub fn new(
+        riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
+    ) -> Self {
         Self {
             quack: PowerSumQuackU32::new(threshold),
             freq_pkts,

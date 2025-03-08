@@ -26,6 +26,9 @@ pub struct QuackerConfig {
     /// goes to stdout.
     #[arg(long = "target-addr", default_value = "172.16.2.10:5252")]
     pub target_addr: SocketAddr,
+    /// Whether to use the RIBLT quACK.
+    #[arg(long)]
+    pub riblt: bool,
 }
 
 impl QuackerConfig {
@@ -37,6 +40,7 @@ impl QuackerConfig {
             self.frequency_pkts,
             self.frequency_ms,
             self.target_addr,
+            self.riblt,
         )));
 
         // Ensure quACKs are sent at a time interval if specified.

@@ -26,13 +26,14 @@ pub struct UdpQuacker {
 impl UdpQuacker {
     pub fn new(
         threshold: usize, freq_pkts: u32, freq_ms: u64, addr: SocketAddr,
+        riblt: bool,
     ) -> Self {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
         socket.set_reuse_address(true).unwrap();
         socket.bind(&SockAddr::from(
             "0.0.0.0:0".parse::<SocketAddr>().unwrap())).unwrap();
         Self {
-            quacker: BaseQuacker::new(threshold, freq_pkts, freq_ms),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms),
             src_sock: Arc::new(socket.into()),
             dst_addr: addr,
             base_stoc: None,

@@ -7,9 +7,11 @@ pub struct PrintQuacker {
 }
 
 impl PrintQuacker {
-    pub fn new(threshold: usize, freq_pkts: u32, freq_ms: u64) -> Self {
+    pub fn new(
+        riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
+    ) -> Self {
         Self {
-            quacker: BaseQuacker::new(threshold, freq_pkts, freq_ms),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms),
         }
     }
 }
