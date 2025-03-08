@@ -204,6 +204,9 @@ class TestNetworkOptions(CLITestCase):
     def test_udp_benchmark_with_sidekick(self):
         self.execute_command_and_check('picoquic', ['--proxy', 'sidekick'])
 
+    def test_udp_benchmark_with_picoquic(self):
+        self.execute_command_and_check('picoquic', ['--proxy', 'picoquic'])
+
     def test_multicast_benchmark_with_bridge(self):
         self.execute_command_and_check('multicast', ['--proxy', 'bridge'])
 

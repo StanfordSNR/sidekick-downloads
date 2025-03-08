@@ -145,10 +145,18 @@ class TestConstructors(HTTPDownloadTestCase):
         self._test_common_properties(bm)
         self.assertEqual(bm.protocol, Protocol.TCP)
         self.assertEqual(bm.proxy_type, ProxyType.PEPSAL)
+
         bm = self.setUpPicoQUICBenchmark(proxy_type=ProxyType.SIDEKICK)
         self._test_common_properties(bm)
         self.assertEqual(bm.protocol, Protocol.PICOQUIC)
         self.assertEqual(bm.proxy_type, ProxyType.SIDEKICK)
+
+        bm = self.setUpPicoQUICBenchmark(proxy_type=ProxyType.PICOQUIC)
+        self._test_common_properties(bm)
+        self.assertEqual(bm.protocol, Protocol.PICOQUIC)
+        self.assertEqual(bm.proxy_type, ProxyType.PICOQUIC)
+
+
 
 
 class TestStartServer(HTTPDownloadTestCase):
