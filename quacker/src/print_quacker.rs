@@ -1,4 +1,4 @@
-use quack::{PowerSumQuack, PowerSumQuackU32};
+use quack::{Quack, PowerSumQuackU32};
 use crate::{Quacker, BaseQuacker};
 
 #[derive(Clone)]

@@ -4,7 +4,7 @@ use std::cmp::min;
 use log::{debug, error};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
-use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
+use quack::{arithmetic::ModularArithmetic, Quack, PowerSumQuack, PowerSumQuackU32};
 
 use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
@@ -312,7 +312,7 @@ impl QuackCacheMulticast {
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
         let proxy_quack = proxy_quack.clone();
-        let difference_quack = proxy_quack.sub(client_quack.clone());
+        let difference_quack = proxy_quack.sub(&client_quack);
         if (difference_quack.count() as usize) > difference_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
                 num_missing: difference_quack.count() as usize,

@@ -1,4 +1,4 @@
-use quack::{PowerSumQuack, PowerSumQuackU32};
+use quack::{Quack, PowerSumQuackU32};
 
 /// Basic interface for a quACK sender.
 ///

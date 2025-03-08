@@ -4,7 +4,7 @@ use bincode;
 use log::{debug, info, error, warn};
 use socket2::{Socket, Domain, Type, SockAddr};
 
-use quack::{PowerSumQuack, PowerSumQuackU32};
+use quack::{Quack, PowerSumQuackU32};
 use crate::{Quacker, BaseQuacker};
 
 use sidekick_utils::{fmt_hex, ID_OFFSET, UDP_PAYLOAD_OFFSET};

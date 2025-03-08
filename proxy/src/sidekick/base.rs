@@ -11,7 +11,7 @@ use sidekick_utils::packet::{
 
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};
-use quack::{PowerSumQuack, PowerSumQuackU32};
+use quack::{Quack, PowerSumQuackU32};
 
 
 /// The sidekick provides in-network assistance to a single base connection
