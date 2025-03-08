@@ -43,6 +43,7 @@ class CLITestCase(unittest.TestCase):
         cmd += network_options
         cmd += [protocol]
         cmd += protocol_options
+        # print(' '.join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout, result.stderr
@@ -450,6 +451,10 @@ class TestSniffingSidekickProtocol(SidekickProtocolTestCase):
         )
         self._test_quacker_receives_resets()
 
+    def test_sniffing_riblt_quacker(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', add_network_options=['--quacker', '--riblt'])
+
 
 class TestPicoquicSidekickProtocol(SidekickProtocolTestCase):
     def test_picoquic_client_quacker_default(self):
@@ -523,6 +528,13 @@ class TestMediaSidekickProtocol(SidekickProtocolTestCase):
         )
         self._test_quacker_receives_resets()
 
+    def test_media_client_quacker_riblt(self):
+        self.execute_sidekick_command_and_check(
+            'media',
+            add_network_options=['--riblt'],
+            add_protocol_options=['--client-quacker'],
+        )
+
 
 class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
     # The links are flipped in the multicast network
@@ -532,6 +544,17 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
         self.execute_sidekick_command_and_check(
             'multicast',
             add_network_options=self.NETWORK,
+            add_protocol_options=[
+                '--num-clients', '1',
+                '--client-quacker', '1',
+            ],
+            client_logfiles=[f'{CLIENT_LOGFILE}.1']
+        )
+
+    def test_multicast_client_quacker_riblt(self):
+        self.execute_sidekick_command_and_check(
+            'multicast',
+            add_network_options=self.NETWORK + ['--riblt'],
             add_protocol_options=[
                 '--num-clients', '1',
                 '--client-quacker', '1',

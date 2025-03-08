@@ -194,6 +194,8 @@ class MulticastBenchmark:
                               f'--frequency-pkts {q.freq_pkts} '\
                               f'--frequency-ms {q.freq_ms} '\
                               f'--target-addr {target_addr} '
+                if q.riblt:
+                    client_cmd += '--riblt '
                 quackers_remaining -= 1
             p, thread = self.net.popen(host, client_cmd,
                 background=True, console_logger=DEBUG, logfile=logfile,

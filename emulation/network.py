@@ -368,7 +368,9 @@ class EmulatedNetwork:
               f'--threshold {config.threshold} '\
               f'--frequency-ms {config.freq_ms} '\
               f'--frequency-pkts {config.freq_pkts} '\
-              f'--target-addr {self.p1.IP()}:{config.quackee_port}'
+              f'--target-addr {self.p1.IP()}:{config.quackee_port} '
+        if config.riblt:
+            cmd += '--riblt '
 
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile)
