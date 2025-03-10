@@ -1,7 +1,8 @@
+use std::collections::HashSet;
 use std::error::Error;
 use log::trace;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
-use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
+use quack::{arithmetic::ModularArithmetic, Quack, PowerSumQuack, QuackWrapper};
 
 use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
@@ -19,7 +20,7 @@ pub struct QuackCache {
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
 
-    quack: PowerSumQuackU32,
+    quack: QuackWrapper,
     last_decode_result: DecodeResult,
 
     /// Cache capacity. Incoming packets >= this capacity will be dropped.
@@ -28,12 +29,15 @@ pub struct QuackCache {
 
 impl QuackCache {
     /// Initialize a new cache.
-    pub fn new(id_func: IdentifierFunc, quack_threshold: usize, capacity: usize) -> Self {
+    pub fn new(
+        riblt: bool, id_func: IdentifierFunc, quack_threshold: usize,
+        capacity: usize,
+    ) -> Self {
         Self {
             packet_cache: vec![],
             id_cache: vec![],
             id_func,
-            quack: PowerSumQuackU32::new(quack_threshold),
+            quack: QuackWrapper::new(quack_threshold, riblt),
             last_decode_result: DecodeResult::default(),
             capacity
         }
@@ -119,7 +123,7 @@ impl QuackCache {
     /// received or likely lost. On eviction, these decisions are made final.
     ///
     /// Returns an error if the quACK fails to decode.
-    pub fn decode(&mut self, client_quack: &PowerSumQuackU32) -> Result<DecodeResult, DecodeError> {
+    pub fn decode(&mut self, client_quack: &QuackWrapper) -> Result<DecodeResult, DecodeError> {
         // Check empty client quACK
         if client_quack.last_value().is_none() {
             return Err(DecodeError::EmptyClientQuack);
@@ -164,7 +168,7 @@ impl QuackCache {
         // Check that the number of missing packets is within the threshold.
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
-        let difference_quack = proxy_quack.sub(client_quack.clone());
+        let difference_quack = proxy_quack.sub(&client_quack);
         if (difference_quack.count() as usize) > difference_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
                 num_missing: difference_quack.count() as usize,
@@ -179,15 +183,32 @@ impl QuackCache {
                 missing_indexes: vec![],
             }
         } else {
-            let coeffs = difference_quack.to_coeffs();
-            let missing_indexes = self
-                .id_cache
-                .iter()
-                .take(last_index)
-                .enumerate()
-                .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
-                .map(|(index, _)| index)
-                .collect();
+            let missing_indexes = match difference_quack {
+                QuackWrapper::PowerSum(difference_quack) => {
+                    let coeffs = difference_quack.to_coeffs();
+                    self.id_cache
+                        .iter()
+                        .take(last_index)
+                        .enumerate()
+                        .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
+                        .map(|(index, _)| index)
+                        .collect()
+                }
+                QuackWrapper::IBLT(difference_quack) => {
+                    let missing = if let Some(missing) = difference_quack.decode() {
+                        missing.into_iter().collect::<HashSet<u32>>()
+                    } else {
+                        return Err(DecodeError::InvalidIBLT);
+                    };
+                    self.id_cache
+                        .iter()
+                        .take(last_index)
+                        .enumerate()
+                        .filter(|(_, id)| missing.contains(id))
+                        .map(|(index, _)| index)
+                        .collect()
+                }
+            };
             DecodeResult {
                 last_index,
                 missing_indexes,

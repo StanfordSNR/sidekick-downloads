@@ -256,6 +256,8 @@ def parse_args(argv=None):
     proxy_config.add_argument('--threshold', type=int, default=20,
         help='If --quacker is enabled, the threshold number of missing '\
              'packets that the quack can detect')
+    proxy_config.add_argument('--riblt', action='store_true',
+        help='Whether to enable the RIBLT quACK.')
     proxy_config.add_argument('--freq-ms', metavar='MS', type=int, default=50,
         help='The quacker quacks on the first insertion, AND if --freq-pkts '\
              'have been inserted or at least --freq-ms have elapsed since '\
@@ -450,11 +452,9 @@ def main(args):
         elif args.proxy == ProxyType.BRIDGE:
             net.start_bridge(proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
-            net.start_sidekick(args.threshold, args.quackee_port,
-                logfile=proxy_logfile)
+            net.start_sidekick(args.quackee_port, logfile=proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK_MULTICAST:
-            net.start_sidekick_multicast(args.threshold, args.quackee_port,
-                logfile=proxy_logfile)
+            net.start_sidekick_multicast(args.quackee_port, logfile=proxy_logfile)
         # PicoQUIC proxy must be started within the benchmark after server.
 
         # Start the packet trace collector

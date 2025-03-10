@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::cmp::min;
 
-use log::{trace, error};
+use log::{debug, error};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
-use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
+use quack::{arithmetic::ModularArithmetic, Quack, PowerSumQuack, QuackWrapper};
 
 use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
@@ -82,12 +82,12 @@ impl<'a> Iterator for VirtualBufferIter<'a> {
 /// Per-sidekick connection state in the multicast cache.
 #[derive(Debug)]
 struct ConnState {
-    quack: PowerSumQuackU32,
+    quack: QuackWrapper,
     buffer: VirtualBuffer,
 }
 
 impl ConnState {
-    fn new(quack: PowerSumQuackU32, start: usize) -> Self {
+    fn new(quack: QuackWrapper, start: usize) -> Self {
         Self {
             quack,
             buffer: VirtualBuffer::new(start),
@@ -110,31 +110,33 @@ pub struct QuackCacheMulticast {
     id_func: IdentifierFunc,
     /// Cache capacity. Incoming packets >= this capacity will be dropped.
     capacity: usize,
-    /// QuACK threshold
-    threshold: usize,
     /// Per-connection state
     conns: HashMap<AddrKey, ConnState>,
 }
 
 impl QuackCacheMulticast {
     /// Initialize a new multicast cache.
-    pub fn new(id_func: IdentifierFunc, quack_threshold: usize, capacity: usize) -> Self {
+    pub fn new(id_func: IdentifierFunc, capacity: usize) -> Self {
         Self {
             num_evicted: 0,
             packet_cache: vec![],
             id_cache: vec![],
             id_func,
             capacity,
-            threshold: quack_threshold,
             conns: HashMap::new(),
         }
     }
 
+    /// Identifier function used for the multicast connection.
+    pub fn id_func(&self) -> IdentifierFunc {
+        self.id_func
+    }
+
     /// Initialize a new sidekick connection subscribed to this multicast
     /// base connection.
-    pub fn init_conn(&mut self, conn: &AddrKey) {
+    pub fn init_conn(&mut self, conn: &AddrKey, threshold: usize, riblt: bool) {
         let start = self.total();
-        let quack = PowerSumQuackU32::new(self.threshold);
+        let quack = QuackWrapper::new(threshold, riblt);
         self.conns.insert(*conn, ConnState::new(quack, start));
     }
 
@@ -166,10 +168,12 @@ impl QuackCacheMulticast {
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) {
         if self.len() >= self.capacity {
-            trace!("At capacity {}; dropping packet", self.capacity);
+            debug!("At capacity {}; dropping packet", self.capacity);
             return;
         }
-        self.id_cache.push(self.id_func.to_id(&packet.data));
+        let id = self.id_func.to_id(&packet.data);
+        debug!("insert {}", id);
+        self.id_cache.push(id);
         self.packet_cache.push(packet);
     }
 
@@ -231,7 +235,8 @@ impl QuackCacheMulticast {
 
     /// Reset the state for this connection.
     pub fn reset(&mut self, conn: &AddrKey) {
-        self.init_conn(conn);
+        let q = &self.conns.get(conn).unwrap().quack;
+        self.init_conn(conn, q.threshold(), q.riblt());
     }
 
     /// Given a quACK from the client, determines which packets the proxy has
@@ -249,24 +254,24 @@ impl QuackCacheMulticast {
     ///
     /// Returns an error if the quACK fails to decode.
     pub fn decode(
-        &mut self, client_quack: &PowerSumQuackU32, conn: &AddrKey,
+        &mut self, client_quack: &QuackWrapper, conn: &AddrKey,
     ) -> Result<DecodeResult, DecodeError> {
         // Check empty client quACK
         if client_quack.last_value().is_none() {
             return Err(DecodeError::EmptyClientQuack);
         }
 
-        // Check invalid threshold
-        if self.threshold != client_quack.threshold() {
-            return Err(DecodeError::InvalidThreshold {
-                expected: self.threshold,
-                actual: client_quack.threshold(),
-            });
-        }
-
         // Get the state for this connection.
         let end = self.total();
         let state = self.conns.get_mut(conn).unwrap();
+
+        // Check invalid threshold
+        if state.quack.threshold() != client_quack.threshold() {
+            return Err(DecodeError::InvalidThreshold {
+                expected: state.quack.threshold(),
+                actual: client_quack.threshold(),
+            });
+        }
 
         // Insert ids in the id cache up to the last id received by the client.
         // Assuming the client receives a subset of packets in the cache, if
@@ -307,7 +312,7 @@ impl QuackCacheMulticast {
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
         let proxy_quack = proxy_quack.clone();
-        let difference_quack = proxy_quack.sub(client_quack.clone());
+        let difference_quack = proxy_quack.sub(&client_quack);
         if (difference_quack.count() as usize) > difference_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
                 num_missing: difference_quack.count() as usize,
@@ -322,14 +327,30 @@ impl QuackCacheMulticast {
                 missing_indexes: vec![],
             }
         } else {
-            let coeffs = difference_quack.to_coeffs();
-            let missing_indexes = indexes
-                .iter()
-                .take(num_acked)
-                .map(|&(index, _)| (index, self.id_cache[index - self.num_evicted]))
-                .filter(|(_, id)| quack::arithmetic::eval(&coeffs, *id).value() == 0)
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
+            let missing_indexes = match difference_quack {
+                QuackWrapper::PowerSum(difference_quack) => {
+                    let coeffs = difference_quack.to_coeffs();
+                    indexes.iter()
+                        .take(num_acked)
+                        .map(|&(index, _)| (index, self.id_cache[index - self.num_evicted]))
+                        .filter(|(_, id)| quack::arithmetic::eval(&coeffs, *id).value() == 0)
+                        .map(|(index, _)| index)
+                        .collect()
+                }
+                QuackWrapper::IBLT(difference_quack) => {
+                    let missing = if let Some(missing) = difference_quack.decode() {
+                        missing.into_iter().collect::<HashSet<u32>>()
+                    } else {
+                        return Err(DecodeError::InvalidIBLT);
+                    };
+                    indexes.iter()
+                        .take(num_acked)
+                        .map(|&(index, _)| (index, self.id_cache[index - self.num_evicted]))
+                        .filter(|(_, id)| missing.contains(id))
+                        .map(|(index, _)| index)
+                        .collect()
+                }
+            };
             for &index in &missing_indexes {
                 state.buffer.insertions.push((end, index));
                 state.quack.remove(self.id_cache[index - self.num_evicted]);
@@ -354,8 +375,7 @@ mod tests {
     const CONN3: AddrKey = [3u8; 12];
 
     fn new_cache() -> QuackCacheMulticast {
-        QuackCacheMulticast::new(
-            IdentifierFunc::FirstByte, DEFAULT_THRESHOLD, DEFAULT_CAPACITY)
+        QuackCacheMulticast::new(IdentifierFunc::FirstByte, DEFAULT_CAPACITY)
     }
 
     fn test_packet_view(ids: &[u8]) -> Vec<Packet> {
@@ -428,7 +448,7 @@ mod tests {
         let mut cache = new_cache();
 
         // connection joins at the start
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -467,7 +487,7 @@ mod tests {
         cache.add(test_packet(&[2]));
 
         // connection joins at the start
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         for i in 3..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -503,7 +523,7 @@ mod tests {
         let mut cache = new_cache();
 
         // connection joins at the start
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -548,7 +568,7 @@ mod tests {
         cache.add(test_packet(&[2]));
 
         // connection joins in the middle
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         for i in 3..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -590,7 +610,7 @@ mod tests {
         cache.add(test_packet(&[0]));
 
         // connection joins midway
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
@@ -625,7 +645,7 @@ mod tests {
         cache.add(test_packet(&[120]));
 
         // connection joins midway
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -656,7 +676,7 @@ mod tests {
         cache.add(test_packet(&[0]));
 
         // connection joins midway
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
 
         // send a packet before resetting the connection
         cache.add(test_packet(&[1]));
@@ -679,7 +699,7 @@ mod tests {
         cache.add(test_packet(&[0]));
 
         // connection joins midway
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
@@ -708,11 +728,11 @@ mod tests {
         cache.add(test_packet(&[0]));
         cache.add(test_packet(&[1]));
 
-        cache.init_conn(&CONN2);
-        cache.init_conn(&CONN3);
+        cache.init_conn(&CONN2, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN3, DEFAULT_THRESHOLD);
         cache.add(test_packet(&[2]));
 
-        cache.init_conn(&CONN1);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
         cache.add(test_packet(&[3]));
         cache.add(test_packet(&[4]));
         cache.add(test_packet(&[5]));

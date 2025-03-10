@@ -1,4 +1,4 @@
-use quack::{PowerSumQuack, PowerSumQuackU32};
+use quack::{Quack, QuackWrapper};
 use crate::{Quacker, BaseQuacker};
 
 #[derive(Clone)]
@@ -7,9 +7,11 @@ pub struct PrintQuacker {
 }
 
 impl PrintQuacker {
-    pub fn new(threshold: usize, freq_pkts: u32, freq_ms: u64) -> Self {
+    pub fn new(
+        riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
+    ) -> Self {
         Self {
-            quacker: BaseQuacker::new(threshold, freq_pkts, freq_ms),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms),
         }
     }
 }
@@ -23,7 +25,7 @@ impl Quacker for PrintQuacker {
         self.quacker.freq_ms()
     }
 
-    fn get_quack(&self) -> &PowerSumQuackU32 {
+    fn get_quack(&self) -> &QuackWrapper {
         self.quacker.get_quack()
     }
 

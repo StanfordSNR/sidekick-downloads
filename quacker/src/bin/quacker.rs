@@ -32,6 +32,9 @@ struct Cli {
     /// goes to stdout.
     #[arg(long = "target-addr")]
     target_addr: SocketAddr,
+    /// Whether to use the RIBLT quACK.
+    #[arg(long)]
+    riblt: bool,
 }
 
 async fn send_quacks(
@@ -145,7 +148,8 @@ async fn main() -> Result<(), String> {
         args.frequency_ms, args.frequency_pkts, args.target_addr
     );
     let quacker = Arc::new(Mutex::new(UdpQuacker::new(
-        args.threshold, args.frequency_pkts, args.frequency_ms, args.target_addr)));
+        args.threshold, args.frequency_pkts, args.frequency_ms,
+        args.target_addr, args.riblt)));
     if args.frequency_ms > 0 {
         let quacker = quacker.clone();
         tokio::task::spawn(async move {

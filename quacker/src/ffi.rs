@@ -13,7 +13,7 @@ pub extern "C" fn udp_quacker_new(
     debug_assert!(!addr.is_null());
     let addr = unsafe { CStr::from_ptr(addr) };
     let addr = addr.to_str().unwrap().parse::<SocketAddr>().unwrap();
-    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr);
+    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr, false);
     Box::into_raw(Box::new(quacker))
 }
 

@@ -161,6 +161,8 @@ class MediaBenchmark:
                    f'--frequency-pkts {q.freq_pkts} '\
                    f'--frequency-ms {q.freq_ms} '\
                    f'--target-addr {target_addr} '
+            if q.riblt:
+                cmd += '--riblt '
 
         # Add client parameters
         cmd += f'client --timeout {self.duration} '

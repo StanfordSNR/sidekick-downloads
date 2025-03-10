@@ -43,6 +43,8 @@ pub enum DecodeError {
         num_send: u32,
         last_value: u32,
     },
+    /// The IBLT doesn't have enough symbols to decode.
+    InvalidIBLT,
 }
 
 impl fmt::Display for DecodeError {
@@ -68,6 +70,9 @@ impl fmt::Display for DecodeError {
             DecodeError::NotASubset { num_recv, num_send, last_value } => {
                 write!(f, "Received more than sent {} > {}: last value {}",
                     num_recv, num_send, last_value)
+            }
+            DecodeError::InvalidIBLT => {
+                write!(f, "IBLT doesn't have enough symbols to decode")
             }
         }
     }

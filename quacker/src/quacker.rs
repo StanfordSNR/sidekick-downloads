@@ -1,4 +1,4 @@
-use quack::{PowerSumQuack, PowerSumQuackU32};
+use quack::{Quack, QuackWrapper, PowerSumQuackU32, IBLTQuackU32};
 
 /// Basic interface for a quACK sender.
 ///
@@ -12,7 +12,7 @@ pub trait Quacker {
     /// determined by <freq_pkts>.
     fn freq_ms(&self) -> u64;
     /// Snapshot the quack.
-    fn get_quack(&self) -> &PowerSumQuackU32;
+    fn get_quack(&self) -> &QuackWrapper;
     /// Reset the quACK.
     fn reset(&mut self);
     /// Insert an identifier into the quACK. Return whether we quack.
@@ -25,23 +25,35 @@ pub trait Quacker {
 
 #[derive(Clone)]
 pub struct BaseQuacker {
-    quack: PowerSumQuackU32,
+    quack: QuackWrapper,
     freq_pkts: u32,
     freq_ms: u64,
+    riblt: bool,
 
     last_quack_count: u32,
     last_quack_time: u64,
 }
 
 impl BaseQuacker {
-    pub fn new(threshold: usize, freq_pkts: u32, freq_ms: u64) -> Self {
+    pub fn new(
+        riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
+    ) -> Self {
         Self {
-            quack: PowerSumQuackU32::new(threshold),
+            quack: QuackWrapper::new(threshold, riblt),
             freq_pkts,
             freq_ms: freq_ms,
+            riblt,
             last_quack_count: 0,
             last_quack_time: 0,
         }
+    }
+
+    pub fn threshold(&self) -> usize {
+        self.quack.threshold()
+    }
+
+    pub fn riblt(&self) -> bool {
+        self.riblt
     }
 }
 
@@ -54,12 +66,19 @@ impl Quacker for BaseQuacker {
         self.freq_ms
     }
 
-    fn get_quack(&self) -> &PowerSumQuackU32 {
+    fn get_quack(&self) -> &QuackWrapper {
         &self.quack
     }
 
     fn reset(&mut self) {
-        self.quack = PowerSumQuackU32::new(self.quack.threshold());
+        self.quack = match &self.quack {
+            QuackWrapper::IBLT(q) => {
+                QuackWrapper::IBLT(IBLTQuackU32::new(q.threshold()))
+            }
+            QuackWrapper::PowerSum(q) => {
+                QuackWrapper::PowerSum(PowerSumQuackU32::new(q.threshold()))
+            }
+        };
         self.last_quack_count = 0;
         self.last_quack_time = 0;
     }

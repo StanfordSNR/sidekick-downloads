@@ -33,7 +33,7 @@
 //! Note that, as of now, each sidekick connection is tied to a single
 //! base connection.
 
-use crate::{buffer::{AddrKey, UdpHeaders}, BUFFER_SIZE};
+use crate::{fmt_hex, buffer::{AddrKey, UdpHeaders}, BUFFER_SIZE};
 use serde::{Deserialize, Serialize};
 use log::trace;
 
@@ -65,21 +65,31 @@ pub struct DiscoveryPayload {
     /// base connection from the perspective of the server (sender).
     /// Fields should be in NBO.
     pub base_connection_stoc: AddrKey,
+    /// Fixed offset of the UDP payload in the identifier function.
+    pub id_offset: u16,
+    /// Power sum quACK threshold, or number of coded symbols in the IBLT quACK.
+    pub threshold: u8,
+    /// Whether to use the RIBLT quACK.
+    pub riblt: bool,
 }
 
 impl DiscoveryPayload {
     pub fn new(
         base_connection_stoc: AddrKey,
-        op: DiscoveryOp
+        op: DiscoveryOp,
+        id_offset: u16,
+        threshold: u8,
+        riblt: bool,
     ) -> Self {
-        trace!("Creating new DiscoveryPayload for base connection {}, {:?}",
-               base_connection_stoc.iter()
-                                   .map(|b| format!("{:02x}", b))
-                                   .collect::<String>(), op);
+        trace!("Creating new DiscoveryPayload for base connection {} id_offset {} threshold {}, {:?}",
+               fmt_hex!(base_connection_stoc), id_offset, threshold, op);
         Self {
             magic: MAGIC,
             op,
             base_connection_stoc,
+            id_offset,
+            threshold,
+            riblt,
         }
     }
 
@@ -101,7 +111,7 @@ impl DiscoveryPayload {
             DiscoveryOp::Teardown => DiscoveryOp::TeardownAck,
             _ => panic!("Invalid operation for ack"),
         };
-        Self::new(self.base_connection_stoc, op)
+        Self::new(self.base_connection_stoc, op, 0, 0, false)
     }
 
     /// Given a DISCOVER DiscoveryPayload, the full packet it came in, and an output buffer,

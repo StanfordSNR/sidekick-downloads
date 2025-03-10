@@ -4,10 +4,10 @@ use bincode;
 use log::{debug, info, error, warn};
 use socket2::{Socket, Domain, Type, SockAddr};
 
-use quack::{PowerSumQuack, PowerSumQuackU32};
+use quack::{Quack, QuackWrapper};
 use crate::{Quacker, BaseQuacker};
 
-use sidekick_utils::fmt_hex;
+use sidekick_utils::{fmt_hex, ID_OFFSET, UDP_PAYLOAD_OFFSET};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::packet::{
     ResetPayload, DiscoveryPayload, RetransmitPayload, DiscoveryOp,
@@ -26,13 +26,14 @@ pub struct UdpQuacker {
 impl UdpQuacker {
     pub fn new(
         threshold: usize, freq_pkts: u32, freq_ms: u64, addr: SocketAddr,
+        riblt: bool,
     ) -> Self {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
         socket.set_reuse_address(true).unwrap();
         socket.bind(&SockAddr::from(
             "0.0.0.0:0".parse::<SocketAddr>().unwrap())).unwrap();
         Self {
-            quacker: BaseQuacker::new(threshold, freq_pkts, freq_ms),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms),
             src_sock: Arc::new(socket.into()),
             dst_addr: addr,
             base_stoc: None,
@@ -97,7 +98,9 @@ impl UdpQuacker {
         self.send_discovery_base(base, n, true);
     }
 
-    fn send_discovery_base(&mut self, base: AddrKey, n: usize, multicast: bool) {
+    fn send_discovery_base(
+    &mut self, base: AddrKey, n: usize, multicast: bool,
+    ) {
         self.base_stoc = Some(base);
         self.awaiting_disc_ack = true;
         let op = if multicast {
@@ -105,7 +108,12 @@ impl UdpQuacker {
         } else {
             DiscoveryOp::Discover
         };
-        let bytes = bincode::serialize(&DiscoveryPayload::new(base, op)).unwrap();
+        let id_offset: u16 = (ID_OFFSET - UDP_PAYLOAD_OFFSET).try_into().unwrap();
+        let threshold: u8 = self.quacker.threshold().try_into().unwrap();
+        let riblt = self.quacker.riblt();
+        let bytes = bincode::serialize(
+            &DiscoveryPayload::new(base, op, id_offset, threshold, riblt)
+        ).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {
                 error!("Failed to send {}th discovery packet", i);
@@ -145,7 +153,7 @@ impl Quacker for UdpQuacker {
         self.quacker.freq_ms()
     }
 
-    fn get_quack(&self) -> &PowerSumQuackU32 {
+    fn get_quack(&self) -> &QuackWrapper {
         self.quacker.get_quack()
     }
 
@@ -177,7 +185,7 @@ impl Quacker for UdpQuacker {
         self.quacker.send_quack(time_ms);
         let quack = self.get_quack();
         debug!("quack {}", quack.count());
-        let bytes = bincode::serialize(&quack).unwrap();
+        let bytes = quack.serialize();
         self.src_sock.send_to(&bytes, self.dst_addr).unwrap();
     }
 }
