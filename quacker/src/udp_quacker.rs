@@ -192,3 +192,14 @@ impl Quacker for UdpQuacker {
         self.src_sock.send_to(&buf[..len], self.dst_addr).unwrap();
     }
 }
+
+impl UdpQuacker {
+    pub fn send_quack_with_hint(&mut self, time_ms: u64, num_symbols: usize) {
+        self.quacker.send_quack(time_ms);
+        let mut buf = self.buf;
+        let quack = self.get_quack();
+        debug!("quack {}", quack.count());
+        let len = quack.serialize_with_hint(&mut buf[..], num_symbols);
+        self.src_sock.send_to(&buf[..len], self.dst_addr).unwrap();
+    }
+}
