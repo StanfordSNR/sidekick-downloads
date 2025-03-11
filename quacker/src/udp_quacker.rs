@@ -7,7 +7,7 @@ use socket2::{Socket, Domain, Type, SockAddr};
 use quack::{Quack, QuackWrapper};
 use crate::{Quacker, BaseQuacker};
 
-use sidekick_utils::{fmt_hex, ID_OFFSET, UDP_PAYLOAD_OFFSET};
+use sidekick_utils::{fmt_hex, BUFFER_SIZE, ID_OFFSET, UDP_PAYLOAD_OFFSET};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::packet::{
     ResetPayload, DiscoveryPayload, RetransmitPayload, DiscoveryOp,
@@ -19,6 +19,7 @@ pub struct UdpQuacker {
     quacker: BaseQuacker,
     src_sock: Arc<UdpSocket>,
     dst_addr: SocketAddr,
+    buf: [u8; BUFFER_SIZE],
     pub base_stoc: Option<AddrKey>, // base conn 4-tuple
     pub awaiting_disc_ack: bool, // requested discovery, awaiting ack
 }
@@ -36,6 +37,7 @@ impl UdpQuacker {
             quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms),
             src_sock: Arc::new(socket.into()),
             dst_addr: addr,
+            buf: [0u8; BUFFER_SIZE],
             base_stoc: None,
             awaiting_disc_ack: false,
         }
@@ -183,9 +185,10 @@ impl Quacker for UdpQuacker {
 
     fn send_quack(&mut self, time_ms: u64) {
         self.quacker.send_quack(time_ms);
+        let mut buf = self.buf;
         let quack = self.get_quack();
         debug!("quack {}", quack.count());
-        let bytes = quack.serialize();
-        self.src_sock.send_to(&bytes, self.dst_addr).unwrap();
+        let len = quack.serialize(&mut buf[..]);
+        self.src_sock.send_to(&buf[..len], self.dst_addr).unwrap();
     }
 }
