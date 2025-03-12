@@ -29,6 +29,9 @@ pub struct QuackerConfig {
     /// Whether to use the RIBLT quACK.
     #[arg(long)]
     pub riblt: bool,
+    /// Whether to send quACKs with a hint for the number of symbols.
+    #[arg(long)]
+    pub hint: bool,
 }
 
 impl QuackerConfig {

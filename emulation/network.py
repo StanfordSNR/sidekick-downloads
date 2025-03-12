@@ -363,6 +363,7 @@ class EmulatedNetwork:
             self.popen(host, cmd, background=True, console_logger=DEBUG)
 
     def start_client_quacker(self, config: QuackerConfig, logfile=None):
+        assert not config.hint
         cmd = f'./quacker/target/release/quacker '\
               f'--interface h1-eth0 '\
               f'--threshold {config.threshold} '\

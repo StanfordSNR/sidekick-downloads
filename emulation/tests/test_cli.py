@@ -535,6 +535,13 @@ class TestMediaSidekickProtocol(SidekickProtocolTestCase):
             add_protocol_options=['--client-quacker'],
         )
 
+    def test_media_client_quacker_with_hint(self):
+        self.execute_sidekick_command_and_check(
+            'media',
+            add_network_options=['--quack-hint'],
+            add_protocol_options=['--client-quacker'],
+        )
+
 
 class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
     # The links are flipped in the multicast network
@@ -555,6 +562,17 @@ class TestMulticastSidekickProtocol(SidekickProtocolTestCase):
         self.execute_sidekick_command_and_check(
             'multicast',
             add_network_options=self.NETWORK + ['--riblt'],
+            add_protocol_options=[
+                '--num-clients', '1',
+                '--client-quacker', '1',
+            ],
+            client_logfiles=[f'{CLIENT_LOGFILE}.1']
+        )
+
+    def test_multicast_client_quacker_with_hint(self):
+        self.execute_sidekick_command_and_check(
+            'multicast',
+            add_network_options=self.NETWORK + ['--quack-hint'],
             add_protocol_options=[
                 '--num-clients', '1',
                 '--client-quacker', '1',

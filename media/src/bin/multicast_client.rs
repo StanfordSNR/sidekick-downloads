@@ -54,9 +54,9 @@ struct Cli {
 
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
-    sock: Sockets, quacker: Option<Arc<Mutex<UdpQuacker>>>, client_id: String,
-    nack_frequency: Duration, nack_delay: Option<Duration>, timeout: Duration,
-    mut sidekick_rx: mpsc::Receiver<Vec<u8>>,
+    sock: Sockets, quacker: Option<(Arc<Mutex<UdpQuacker>>, QuackerConfig)>,
+    client_id: String, nack_frequency: Duration, nack_delay: Option<Duration>,
+    timeout: Duration, mut sidekick_rx: mpsc::Receiver<Vec<u8>>,
 ) -> io::Result<()> {
     let mut buf1 = [0u8; PAYLOAD_SIZE];
     let mut buf2 = [0u8; PAYLOAD_SIZE];
@@ -91,7 +91,7 @@ async fn listen_incoming(
         let current_time = current_time_ms();
         let mut sent_quack = false;
         let mut inserted = false;
-        if let Some(ref quacker) = quacker {
+        if let Some((ref quacker, _)) = quacker {
             let mut quacker = quacker.lock().await;
 
             // Send <NUM_DISCOVERY_PKTS> packets if
@@ -127,7 +127,7 @@ async fn listen_incoming(
         }
 
         // Send NACKs for missing data.
-        let (nacks_to_send, missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
+        let (nacks_to_send, num_missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
         for &seqno in &nacks_to_send {
             let nack = Packet::new_nack(seqno);
             let len = nack.fill_payload(&mut buf);
@@ -135,9 +135,16 @@ async fn listen_incoming(
         }
 
         // Explicitly send a quACK when missing data.
-        if missing && !sent_quack {
-            if let Some(ref quacker) = quacker {
-                quacker.lock().await.send_quack(current_time);
+        if num_missing > 0 && !sent_quack {
+            if let Some((ref quacker, ref config)) = quacker {
+                let mut quacker = quacker.lock().await;
+                if config.hint && config.riblt {
+                    quacker.send_quack_with_hint(current_time, num_missing * 3);
+                } else if config.hint && !config.riblt {
+                    quacker.send_quack_with_hint(current_time, num_missing);
+                } else {
+                    quacker.send_quack(current_time);
+                }
             }
         }
 
@@ -282,7 +289,9 @@ async fn main() -> io::Result<()> {
     // Initialize the client quacker if enabled.
     let (sidekick_tx, sidekick_rx) = mpsc::channel(MPSC_CHANNEL_SIZE);
     let quacker = if args.quacker {
-        Some(args.quacker_config.unwrap().init_udp_quacker(Some(sidekick_tx)))
+        let config = args.quacker_config.unwrap();
+        let quacker = config.init_udp_quacker(Some(sidekick_tx));
+        Some((quacker, config))
     } else {
         None
     };

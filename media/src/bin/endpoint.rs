@@ -72,7 +72,7 @@ impl Mode {
 
 /// Listen for incoming packets on the UDP socket and handle.
 async fn listen_incoming(
-    should_loop: bool, quacker: Option<Arc<Mutex<UdpQuacker>>>,
+    should_loop: bool, quacker: Option<(Arc<Mutex<UdpQuacker>>, QuackerConfig)>,
     tx: mpsc::Sender<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
     frequency: Duration, nack_frequency: Duration, nack_delay: Option<Duration>,
 ) -> io::Result<()> {
@@ -108,7 +108,7 @@ async fn listen_incoming(
 
         let current_time = current_time_ms();
         let mut sent_quack = false;
-        if let Some(ref quacker) = quacker {
+        if let Some((ref quacker, _)) = quacker {
             let mut quacker = quacker.lock().await;
 
             // Send <NUM_DISCOVERY_PKTS> packets if
@@ -170,7 +170,7 @@ async fn listen_incoming(
         }
 
         // Send NACKs for missing data.
-        let (nacks_to_send, missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
+        let (nacks_to_send, num_missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
         for seqno in nacks_to_send {
             debug!("nack {}", seqno);
             let nack = Packet::new_nack(seqno);
@@ -178,9 +178,16 @@ async fn listen_incoming(
         }
 
         // Explicitly send a quACK when missing data.
-        if missing && !sent_quack {
-            if let Some(ref quacker) = quacker {
-                quacker.lock().await.send_quack(current_time);
+        if num_missing > 0 && !sent_quack {
+            if let Some((ref quacker, ref config)) = quacker {
+                let mut quacker = quacker.lock().await;
+                if config.hint && config.riblt {
+                    quacker.send_quack_with_hint(current_time, num_missing * 3);
+                } else if config.hint && !config.riblt {
+                    quacker.send_quack_with_hint(current_time, num_missing);
+                } else {
+                    quacker.send_quack(current_time);
+                }
             }
         }
     }
@@ -265,7 +272,9 @@ async fn main() -> io::Result<()> {
 
     // Initialize the client quacker if enabled.
     let quacker = if args.quacker {
-        Some(args.quacker_config.unwrap().init_udp_quacker(None))
+        let config = args.quacker_config.unwrap();
+        let quacker = config.init_udp_quacker(None);
+        Some((quacker, config))
     } else {
         None
     };

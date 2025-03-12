@@ -258,6 +258,8 @@ def parse_args(argv=None):
              'packets that the quack can detect')
     proxy_config.add_argument('--riblt', action='store_true',
         help='Whether to enable the RIBLT quACK.')
+    proxy_config.add_argument('--quack-hint', action='store_true',
+        help='Whether to send quACKs with a hint of the number of symbols.')
     proxy_config.add_argument('--freq-ms', metavar='MS', type=int, default=50,
         help='The quacker quacks on the first insertion, AND if --freq-pkts '\
              'have been inserted or at least --freq-ms have elapsed since '\

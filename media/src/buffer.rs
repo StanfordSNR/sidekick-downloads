@@ -98,11 +98,11 @@ impl BufferedPackets {
     pub fn nacks_to_send(
         &mut self, now: Instant, nack_frequency: Duration,
         nack_delay: Option<Duration>,
-    ) -> (Vec<u32>, bool) {
+    ) -> (Vec<u32>, usize) {
         let mut nacks = vec![];
-        let mut missing = false;
+        let mut num_missing = 0;
         if self.buffer.is_empty() {
-            return (nacks, missing);
+            return (nacks, num_missing);
         }
         for packet in self.buffer.iter_mut() {
             if packet.time_recv.is_some() {
@@ -111,7 +111,7 @@ impl BufferedPackets {
             if packet.time_lost.is_none() {
                 packet.time_lost = Some(now);
             }
-            missing = true;
+            num_missing += 1;
             if let Some(nack_delay) = nack_delay {
                 if now < packet.time_lost.unwrap() + nack_delay {
                     continue;
@@ -127,7 +127,7 @@ impl BufferedPackets {
                 packet.time_nack = Some(now);
             }
         }
-        (nacks, missing)
+        (nacks, num_missing)
     }
 }
 

@@ -196,6 +196,8 @@ class MulticastBenchmark:
                               f'--target-addr {target_addr} '
                 if q.riblt:
                     client_cmd += '--riblt '
+                if q.hint:
+                    client_cmd += '--hint '
                 quackers_remaining -= 1
             p, thread = self.net.popen(host, client_cmd,
                 background=True, console_logger=DEBUG, logfile=logfile,

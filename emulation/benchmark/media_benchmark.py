@@ -163,6 +163,8 @@ class MediaBenchmark:
                    f'--target-addr {target_addr} '
             if q.riblt:
                 cmd += '--riblt '
+            if q.hint:
+                cmd += '--hint '
 
         # Add client parameters
         cmd += f'client --timeout {self.duration} '
