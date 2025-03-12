@@ -8,12 +8,12 @@ use crate::{Quacker, UdpQuacker};
 
 #[no_mangle]
 pub extern "C" fn udp_quacker_new(
-    threshold: usize, freq_pkts: u32, freq_ms: u64, addr: *const c_char,
+    threshold: usize, freq_pkts: u32, freq_ms: u64, addr: *const c_char, riblt: bool,
 ) -> *mut UdpQuacker {
     debug_assert!(!addr.is_null());
     let addr = unsafe { CStr::from_ptr(addr) };
     let addr = addr.to_str().unwrap().parse::<SocketAddr>().unwrap();
-    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr, false);
+    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr, riblt);
     Box::into_raw(Box::new(quacker))
 }
 
@@ -121,6 +121,13 @@ pub extern "C" fn udp_quacker_send_quack(quacker: *mut UdpQuacker, time_ms: u64)
     debug_assert!(!quacker.is_null());
     let quacker = unsafe { &mut *quacker };
     quacker.send_quack(time_ms);
+}
+
+#[no_mangle]
+pub extern "C" fn udp_quacker_send_quack_with_hint(quacker: *mut UdpQuacker, time_ms: u64, num_symbols: usize) {
+    debug_assert!(!quacker.is_null());
+    let quacker = unsafe { &mut *quacker };
+    quacker.send_quack_with_hint(time_ms, num_symbols);
 }
 
 #[no_mangle]
