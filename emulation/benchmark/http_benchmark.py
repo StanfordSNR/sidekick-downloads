@@ -370,10 +370,10 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         # Add parameters to configure the client quacker
         if self.quacker is not None:
             q = self.quacker
-            assert not q.riblt
-            assert not q.hint
+            assert not q.hint  # not implemented
             target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
             cmd += f'{q.threshold} {q.freq_pkts} {q.freq_ms} {target_addr} '
+            cmd += f'{int(q.riblt)} {int(q.hint)} '
 
         # Add the data size parameter
         cmd += f'{self.data_size}.html '

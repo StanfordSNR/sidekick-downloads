@@ -490,6 +490,15 @@ class TestPicoquicSidekickProtocol(SidekickProtocolTestCase):
         )
         self._test_quacker_receives_resets()
 
+    def test_picoquic_client_quacker_riblt(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', ['--riblt'], ['--client-quacker'])
+
+    @unittest.skip('not implemented')
+    def test_picoquic_client_quacker_with_hint(self):
+        self.execute_sidekick_command_and_check(
+            'picoquic', ['--quack-hint'], ['--client-quacker'])
+
 
 class TestMediaSidekickProtocol(SidekickProtocolTestCase):
     def test_media_client_quacker_default(self):
