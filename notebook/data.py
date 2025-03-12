@@ -189,6 +189,7 @@ class RawDataExecutor:
         self,
         missing_data: List[Tuple[RawDataFile, int, int]],
         chunk_size: int=10,
+        retry: int=0,
     ):
         print(len(missing_data))
         for file, data_size, num_missing in missing_data:
@@ -196,11 +197,12 @@ class RawDataExecutor:
             while remaining != 0:
                 num_trials = min(chunk_size, remaining)
                 start = time.time()
-                self._execute_chunk(file, data_size, num_trials)
+                self._execute_chunk(file, data_size, num_trials, retry)
                 print(time.time() - start)
                 remaining -= num_trials
 
-    def _execute_chunk(self, file: RawDataFile, data_size: int, num_trials: int):
+    def _execute_chunk(self, file: RawDataFile, data_size: int, num_trials: int,
+                       retry: int=0):
         # Start the process
         cmd = file.cmd(data_size, num_trials, timeout=self.timeout)
         print(cmd, end=' ')
@@ -239,9 +241,12 @@ class RawDataExecutor:
         # Cleanup the process
         exitcode = p.wait()
         if exitcode != 0:
-            print(f'execute error: {exitcode}')
-            sys.exit(1)
-
+            if retry > 0:
+                print(f'execute error: {exitcode} (retries remaining: {retry})')
+                self._execute_chunk(file, data_size, num_trials, retry - 1)
+            else:
+                print(f'execute error: {exitcode}')
+                sys.exit(1)
 
 class RawData(RawDataParser, RawDataExecutor):
     def __init__(
@@ -252,6 +257,7 @@ class RawData(RawDataParser, RawDataExecutor):
         max_data_sizes: Dict[str, int]={},
         max_networks: Dict[str, int]={},
         data_suffix: str='',
+        retry: int=0,
     ):
         """Parameters:
         - execute: Whether to collect missing data points.
@@ -281,7 +287,7 @@ class RawData(RawDataParser, RawDataExecutor):
             missing_data = self._find_missing_data()
             if len(missing_data) == 0 or not execute:
                 break
-            self._collect_missing_data(missing_data)
+            self._collect_missing_data(missing_data, retry=retry)
             self._reset()
             self._parse_files()
 
@@ -314,6 +320,7 @@ class DirectRawData(RawDataParser, RawDataExecutor):
         max_retries=10,
         max_num_timeouts=1,
         data_suffix: str='',
+        retry: int=0,
     ):
         """Parameters:
         - execute: Whether to collect missing data points.
@@ -338,7 +345,7 @@ class DirectRawData(RawDataParser, RawDataExecutor):
                     treatment, max_num_timeouts)
             if len(missing_data) == 0 or not execute:
                 break
-            self._collect_missing_data(missing_data)
+            self._collect_missing_data(missing_data, retry=retry)
             self._reset()
             self._parse_files()
 
