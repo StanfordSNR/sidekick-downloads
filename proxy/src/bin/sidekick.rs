@@ -19,9 +19,12 @@ struct Cli {
     quack_threshold: usize,
     /// Capacity of the QUACK cache. This implements a basic congestion control
     /// heuristic by dropping packets from the sender above a certain threshold.
-    /// This can be set to approx. BDP / MSS.
     #[arg(long, short = 'c', default_value_t = 45)]
     cache_capacity: usize,
+    /// Threshold, as a fraction of the cache, at which point packets should
+    /// be marked with the CE bit.
+    #[arg(long, short = 'e', default_value_t = 0.8)]
+    ecn_threshold: f64,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -58,7 +61,8 @@ async fn main() {
         &args.server_interface,
         args.quack_port,
         args.quack_threshold,
-        args.cache_capacity
+        args.cache_capacity,
+        args.ecn_threshold,
     );
     sidekick.start().await;
 }

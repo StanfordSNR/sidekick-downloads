@@ -133,6 +133,20 @@ impl UdpParser {
         identifier.to_id(x)
     }
 
+    /// Set the ECN bit if possible
+    pub fn set_ce(x: &mut [u8; BUFFER_SIZE], ecn: bool) {
+        println!("Set CE");
+        let ethertype = u16::from_be_bytes([x[12], x[13]]);
+        assert!(ethertype == 0x0800, "Only IPv4 supported");
+        let ip = &mut x[14..34];
+        let curr = ip[1] & 0b11111100; // Clear current ECN bits
+        if ecn {
+            ip[1] = curr | 0b10;
+        } else {
+            ip[1] = curr;
+        }
+    }
+
 }
 
 // All fields should be in NBO

@@ -393,7 +393,8 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick(
-        self, threshold: int, port: int, logfile: str, timeout=SETUP_TIMEOUT,
+        self, threshold: int, port: int,
+        logfile: str, ecn_threshold: float=0.8, timeout=SETUP_TIMEOUT,
         executable='./proxy/target/release/sidekick',
     ):
         condition = threading.Condition()
@@ -408,6 +409,7 @@ class EmulatedNetwork:
         # right value to set it at.
         cmd = f'{executable} --client-interface p1-eth0 '\
               f'--server-interface p1-eth1 --cache-capacity {4 * self.cwnd} '\
+              f'--ecn-threshold {ecn_threshold} '\
               f'--quack-port {port} --quack-threshold {threshold} '
 
         self.popen(self.p1, cmd,

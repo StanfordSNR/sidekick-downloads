@@ -42,12 +42,14 @@ impl Sidekick {
         quack_port: u16,
         quack_threshold: usize,
         cache_capacity: usize,
+        cache_ecn_thresh: f64,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
         let cache = QuackCache::new(
             IdentifierFunc::FixedOffset(ID_OFFSET), // \note should be more cleanly configurable
             quack_threshold,
-            cache_capacity
+            cache_capacity,
+            cache_ecn_thresh,
         );
         Self {
             stream,
@@ -113,8 +115,14 @@ impl Sidekick {
     /// Handle a packet from the server in the base connection.
     ///
     /// Add it to the cache and forward normally.
-    fn handle_base_packet_from_server(&mut self, packet: Packet) {
+    fn handle_base_packet_from_server(&mut self, mut packet: Packet) {
+        if self.cache.congested() {
+            UdpParser::set_ce(&mut packet.data, true);
+        }
         self.stream.forward_packet(&packet, packet.nbytes as usize);
+        if self.cache.congested() {
+            UdpParser::set_ce(&mut packet.data, false);
+        }
         self.cache.add(packet);
         self.num_tx += 1;
     }

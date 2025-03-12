@@ -267,6 +267,9 @@ def parse_args(argv=None):
     proxy_config.add_argument('--quackee-port', type=int, default=5252,
         help='If a quacker is enabled, the UDP port that the quackee on the '\
              'proxy is listening on for quacks')
+    proxy_config.add_argument('--ecn-threshold', type=float, default=0.8,
+        help='If --sidekick, the threshold, as a proportion of the cache capacity, '\
+             'at which the sidekick will start marking packets with ECN')
 
     ###########################################################################
     # HTTP/1.1+TCP benchmark
@@ -451,7 +454,7 @@ def main(args):
             net.start_bridge(proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
             net.start_sidekick(args.threshold, args.quackee_port,
-                logfile=proxy_logfile)
+                logfile=proxy_logfile, ecn_threshold=args.ecn_threshold)
         elif args.proxy == ProxyType.SIDEKICK_MULTICAST:
             net.start_sidekick_multicast(args.threshold, args.quackee_port,
                 logfile=proxy_logfile)

@@ -6,7 +6,6 @@ use quack::{arithmetic::ModularArithmetic, PowerSumQuack, PowerSumQuackU32};
 use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
 
-
 /// A cache of packets that is able to decode quACKs.
 ///
 /// The quACKs represent all packets that have ever been added to the cache,
@@ -24,18 +23,23 @@ pub struct QuackCache {
 
     /// Cache capacity. Incoming packets >= this capacity will be dropped.
     capacity: usize,
+    /// Congestion threshold. Incoming packets >= threshold * capacity
+    /// will be marked with ECN flag.
+    congestion_threshold: f64,
 }
 
 impl QuackCache {
     /// Initialize a new cache.
-    pub fn new(id_func: IdentifierFunc, quack_threshold: usize, capacity: usize) -> Self {
+    pub fn new(id_func: IdentifierFunc, quack_threshold: usize, capacity: usize,
+               congestion_threshold: f64) -> Self {
         Self {
             packet_cache: vec![],
             id_cache: vec![],
             id_func,
             quack: PowerSumQuackU32::new(quack_threshold),
             last_decode_result: DecodeResult::default(),
-            capacity
+            capacity,
+            congestion_threshold,
         }
     }
 
@@ -43,6 +47,11 @@ impl QuackCache {
     pub fn len(&self) -> usize {
         debug_assert!(self.packet_cache.len() <= self.capacity);
         self.packet_cache.len()
+    }
+
+    /// Cache should send ECN
+    pub fn congested(&self) -> bool {
+        self.len() > ((self.capacity as f64) * self.congestion_threshold).round() as usize
     }
 
     /// Return a read-only view of packets in the cache, ordered from least
@@ -64,6 +73,11 @@ impl QuackCache {
     /// Get the i-th packet (0-indexing) in the ordered cache view.
     pub fn get(&self, i: usize) -> Option<&Packet> {
         self.packet_cache.get(i)
+    }
+
+    /// Get the i-th packet as mutable
+    pub fn get_mut(&mut self, i: usize) -> Option<&mut Packet> {
+        self.packet_cache.get_mut(i)
     }
 
     /// Evict the `n` least recently added packets from the cache.
@@ -206,10 +220,11 @@ mod tests {
 
     const DEFAULT_THRESHOLD: usize = 4;
     const DEFAULT_CAPACITY: usize = 30;
+    const DEFAULT_ECN_THRESH: f64 = 0.8;
 
     fn new_cache() -> QuackCache {
         QuackCache::new(IdentifierFunc::FirstByte, DEFAULT_THRESHOLD,
-                        DEFAULT_CAPACITY)
+                        DEFAULT_CAPACITY, DEFAULT_ECN_THRESH)
     }
 
     fn test_packet(data: &[u8]) -> Packet {
