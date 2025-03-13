@@ -12,7 +12,7 @@ use sidekick_utils::packet::{
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};
 use quack::{Quack, QuackWrapper};
-
+use crate::cycles::*;
 
 /// The sidekick provides in-network assistance to a single base connection
 /// identified by a UDP 4-tuple. It also participates in a separate sidekick
@@ -64,25 +64,39 @@ impl Sidekick {
     /// from the cache. If the quACK can't be decoded, send a Reset packet
     /// back to the client on the sidekick connection.
     fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
+        cycles_start(6);
         let payload = UdpParser::payload(&packet.data, packet.nbytes);
         let quack = QuackWrapper::deserialize(payload);
         let cache = self.cache.as_mut().unwrap();
+        cycles_stop(6);
+        cycles_start(7);
         match cache.decode(&quack) {
             Ok(result) => {
+                cycles_stop(7);
                 debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), cache.len(),
                     result.last_index, result.missing_indexes,
                     fmt_hex!(self.sidekick_connection.unwrap()));
-                for index in result.missing_indexes {
+                cycles_start(8);
+                self.num_retx += result.missing_indexes.len();
+                for &index in &result.missing_indexes {
                     let retx = cache.get(index).unwrap();
-                    self.num_retx += 1;
-                    debug!("retransmit {}/{}", self.num_retx, self.num_tx);
-                    self.stream.forward_packet(&retx, retx.nbytes as usize);
                     cache.add(retx.clone()); // TODO: avoid clone
                 }
-                cache.evict(result.last_index).unwrap();
+                cycles_stop(8);
+                cycles_start(9);
+                for &index in &result.missing_indexes {
+                    let retx = cache.get(index).unwrap();
+                    debug!("retransmit {}/{}", self.num_retx, self.num_tx);
+                    self.stream.forward_packet(&retx, retx.nbytes as usize);
+                }
+                cycles_stop(9);
+                cycles_start(10);
+                cache.evict();
+                cycles_stop(10);
             }
             Err(e) => {
+                cycles_stop(7);
                 error!("Failed to decode quACK: {:?}", e);
                 if self.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
                     let mut buf = [0u8; BUFFER_SIZE];
@@ -112,7 +126,9 @@ impl Sidekick {
     /// Add it to the cache and forward normally.
     fn handle_base_packet_from_server(&mut self, packet: Packet) {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
+        cycles_start(5);
         self.cache.as_mut().unwrap().add(packet);
+        cycles_stop(5);
         self.num_tx += 1;
     }
 
@@ -127,19 +143,27 @@ impl Sidekick {
         match self.connection_type(&packet) {
             ConnectionType::BaseCtos => {
                 trace!("Received base packet from client");
+                cycles_start(1);
                 self.handle_base_packet_from_client(packet);
+                cycles_stop(1);
             }
             ConnectionType::BaseStoc => {
                 trace!("Received base packet from server");
+                cycles_start(2);
                 self.handle_base_packet_from_server(packet);
+                cycles_stop(2);
             }
             ConnectionType::Sidekick(_) => {
                 trace!("Received sidekick packet from client");
+                cycles_start(3);
                 self.handle_sidekick_packet_from_client(packet);
+                cycles_stop(3);
             }
             ConnectionType::None => {
                 trace!("Forwarding packet from unknown four-tuple");
+                cycles_start(4);
                 self.stream.forward_packet(&packet, packet.nbytes as usize);
+                cycles_stop(4);
             }
             _ => {}
         }
@@ -254,7 +278,9 @@ impl Sidekick {
     pub async fn start(&mut self) {
         while let Some(packet) = self.stream.receiver.recv().await {
             trace!("Received packet on mpsc: {}", packet.iface);
+            cycles_start(0);
             self.handle_packet(packet);
+            cycles_stop(0);
         }
     }
 }

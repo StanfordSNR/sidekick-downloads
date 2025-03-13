@@ -19,6 +19,10 @@ flexi_logger = "0.29.8"
 quack = { path = "../deps/quack" }
 sidekick-utils = { path = "../sidekick_utils/" }
 
+[features]
+default = []
+cycles = []
+
 [[bin]]
 name = "bridge"
 
