@@ -81,7 +81,6 @@ impl QuackCache {
         let n = self.last_decode_result.last_index;
 
         // Make missing packet decisions final
-        cycles_start(11);
         let mut missing_indexes = vec![];
         for &index in &self.last_decode_result.missing_indexes {
             if index < n {
@@ -90,15 +89,10 @@ impl QuackCache {
                 missing_indexes.push(index - n);
             }
         }
-        cycles_stop(11);
 
         // Make received packet decisions final and evict from caches
-        cycles_start(12);
         self.id_cache.drain(0..n);
-        cycles_stop(12);
-        cycles_start(13);
         self.packet_cache.drain(0..n);
-        cycles_stop(13);
         n
     }
 
@@ -123,18 +117,11 @@ impl QuackCache {
             return Err(DecodeError::EmptyClientQuack);
         }
 
-        // Check invalid threshold
-        if self.quack.threshold() != client_quack.threshold() {
-            return Err(DecodeError::InvalidThreshold {
-                expected: self.quack.threshold(),
-                actual: client_quack.threshold(),
-            });
-        }
-
         // Insert ids in the id cache up to the last id received by the client.
         // Assuming the client receives a subset of packets in the cache, if
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
+        cycles_start(11);
         let mut last_index = 0;
         let proxy_quack = &mut self.quack;
         for &id in &self.id_cache {
@@ -144,6 +131,7 @@ impl QuackCache {
             proxy_quack.insert(id);
             last_index += 1;
         }
+        cycles_stop(11);
         if proxy_quack.last_value() != client_quack.last_value() {
             return Err(DecodeError::MissingLastValue {
                 identifier: client_quack.last_value().unwrap(),
@@ -162,13 +150,23 @@ impl QuackCache {
         // Check that the number of missing packets is within the threshold.
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
+        cycles_start(12);
         let difference_quack = proxy_quack.clone().sub(&client_quack);
-        if (difference_quack.count() as usize) > difference_quack.threshold() {
+        if (difference_quack.count() as usize) > self.quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
                 num_missing: difference_quack.count() as usize,
-                threshold: difference_quack.threshold(),
+                threshold: self.quack.threshold(),
             });
         }
+        // Check invalid threshold (the quacker sent less symbols than the
+        // agreed upon threshold but estimated wrong).
+        if (difference_quack.count() as usize) > difference_quack.threshold() {
+            return Err(DecodeError::InvalidThreshold {
+                expected: self.quack.threshold(),
+                actual: difference_quack.threshold(),
+            });
+        }
+        cycles_stop(12);
 
         // Decode the quACK using the identifier cache.
         let result = if difference_quack.count() == 0 {
@@ -177,6 +175,7 @@ impl QuackCache {
                 missing_indexes: vec![],
             }
         } else {
+            cycles_start(13);
             let missing_indexes = match difference_quack {
                 QuackWrapper::PowerSum(difference_quack) => {
                     let coeffs = difference_quack.to_coeffs();
@@ -203,6 +202,7 @@ impl QuackCache {
                         .collect()
                 }
             };
+            cycles_stop(13);
             DecodeResult {
                 last_index,
                 missing_indexes,

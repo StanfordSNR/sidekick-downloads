@@ -3,10 +3,10 @@ const PRINT_NUM_PACKETS: u64 = 1000;
 const HEADERS: [&str; NUM_MEASUREMENTS] = [
     "handle_packet", "basectos", "basestoc", "sidekick", "none", "encode",
     "deserialize", "decode", "cache_add", "retransmit", "cache_evict",
-    "evict_missing", "evict_received", "drain",
+    "decode_insert", "decode_diff", "decode_missing",
 
 ];
-const PRINT_INDEXES: [usize; 9] = [3, 6, 7, 8, 9, 10, 11, 12, 13];
+const PRINT_INDEXES: [usize; 5] = [3, 7, 11, 12, 13];
 
 static mut START: [u64; NUM_MEASUREMENTS] = [0; NUM_MEASUREMENTS];
 static mut CYCLES: [u64; NUM_MEASUREMENTS] = [0; NUM_MEASUREMENTS];
