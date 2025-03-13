@@ -138,7 +138,18 @@ impl QuackCache {
             });
         }
 
+        // Check common case when all packets are quACKed.
+        if proxy_quack.count() == client_quack.count() {
+            self.last_decode_result = DecodeResult {
+                last_index,
+                missing_indexes: vec![],
+            };
+            return Ok(self.last_decode_result.clone());
+        }
+
         // Check that we have sent more packets than were received.
+        // Note that it's possible for weird behavior to occur with overflows,
+        // but the state is invalid in either case.
         if proxy_quack.count() < client_quack.count() {
             return Err(DecodeError::NotASubset {
                 num_recv: client_quack.count(),
@@ -148,71 +159,58 @@ impl QuackCache {
         }
 
         // Check that the number of missing packets is within the threshold.
-        // Note that it's possible for weird behavior to occur with overflows,
-        // but the state is invalid in either case.
-        cycles_start(12);
-        let difference_quack = proxy_quack.clone().sub(&client_quack);
-        if (difference_quack.count() as usize) > self.quack.threshold() {
+        // Fast fail for exceeded or invalid thresholds. An invalid threshold
+        // is when the quacker sends less symbols than the agreed upon threshold
+        // based on a hint, but estimated wrong.
+        let num_missing = (proxy_quack.count() - client_quack.count()) as usize;
+        if num_missing > proxy_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
-                num_missing: difference_quack.count() as usize,
-                threshold: self.quack.threshold(),
+                num_missing,
+                threshold: proxy_quack.threshold(),
             });
         }
-        // Check invalid threshold (the quacker sent less symbols than the
-        // agreed upon threshold but estimated wrong).
-        if (difference_quack.count() as usize) > difference_quack.threshold() {
+        let threshold = std::cmp::min(proxy_quack.threshold(), client_quack.threshold());
+        if num_missing > threshold {
             return Err(DecodeError::InvalidThreshold {
-                expected: self.quack.threshold(),
-                actual: difference_quack.threshold(),
+                expected: proxy_quack.threshold(),
+                actual: threshold,
             });
         }
-        cycles_stop(12);
 
         // Decode the quACK using the identifier cache.
-        let result = if difference_quack.count() == 0 {
-            DecodeResult {
-                last_index,
-                missing_indexes: vec![],
+        cycles_start(12);
+        let difference_quack = proxy_quack.clone().sub(&client_quack);
+        cycles_stop(12);
+        cycles_start(13);
+        let missing_indexes = match difference_quack {
+            QuackWrapper::PowerSum(difference_quack) => {
+                let coeffs = difference_quack.to_coeffs();
+                self.id_cache
+                    .iter()
+                    .take(last_index)
+                    .enumerate()
+                    .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
+                    .map(|(index, _)| index)
+                    .collect()
             }
-        } else {
-            cycles_start(13);
-            let missing_indexes = match difference_quack {
-                QuackWrapper::PowerSum(difference_quack) => {
-                    let coeffs = difference_quack.to_coeffs();
-                    self.id_cache
-                        .iter()
-                        .take(last_index)
-                        .enumerate()
-                        .filter(|(_, &id)| quack::arithmetic::eval(&coeffs, id).value() == 0)
-                        .map(|(index, _)| index)
-                        .collect()
-                }
-                QuackWrapper::IBLT(difference_quack) => {
-                    let missing = if let Some(missing) = difference_quack.decode() {
-                        missing.into_iter().collect::<HashSet<u32>>()
-                    } else {
-                        return Err(DecodeError::InvalidIBLT);
-                    };
-                    self.id_cache
-                        .iter()
-                        .take(last_index)
-                        .enumerate()
-                        .filter(|(_, id)| missing.contains(id))
-                        .map(|(index, _)| index)
-                        .collect()
-                }
-            };
-            cycles_stop(13);
-            DecodeResult {
-                last_index,
-                missing_indexes,
+            QuackWrapper::IBLT(difference_quack) => {
+                let missing = if let Some(missing) = difference_quack.decode() {
+                    missing.into_iter().collect::<HashSet<u32>>()
+                } else {
+                    return Err(DecodeError::InvalidIBLT);
+                };
+                self.id_cache
+                    .iter()
+                    .take(last_index)
+                    .enumerate()
+                    .filter(|(_, id)| missing.contains(id))
+                    .map(|(index, _)| index)
+                    .collect()
             }
         };
-
-        // Cache the result.
-        // TODO: unnecessary clone
-        self.last_decode_result = result.clone();
-        Ok(result)
+        cycles_stop(13);
+        self.last_decode_result = DecodeResult { last_index, missing_indexes };
+        Ok(self.last_decode_result.clone())
     }
 }
 

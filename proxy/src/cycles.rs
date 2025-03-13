@@ -28,7 +28,7 @@ unsafe fn print_cycles_summary() {
         .iter()
         .map(|&i| NUM_PACKETS[i])
         .map(|count| (count as f64) / (total as f64))
-        .map(|count| format!("{:.2}", count))
+        .map(|count| format!("{:.3}", count))
         .collect::<Vec<_>>()
         .join(",");
     if total == PRINT_NUM_PACKETS {
