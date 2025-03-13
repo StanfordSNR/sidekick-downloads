@@ -229,7 +229,7 @@ mod tests {
     const DEFAULT_CAPACITY: usize = 30;
 
     fn new_cache() -> QuackCache {
-        QuackCache::new(IdentifierFunc::FirstByte, DEFAULT_THRESHOLD,
+        QuackCache::new(false, IdentifierFunc::FirstByte, DEFAULT_THRESHOLD,
                         DEFAULT_CAPACITY)
     }
 
@@ -285,7 +285,7 @@ mod tests {
         cache.add(test_packet(&[3]));
 
         // quack all packets
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         q.insert(1);
         q.insert(2);
         q.insert(3);
@@ -323,7 +323,7 @@ mod tests {
         assert!(cache.evict(3).is_err());
 
         // quack all packets
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         q.insert(1);
         q.insert(2);
         q.insert(3);
@@ -350,7 +350,7 @@ mod tests {
     fn test_decode_none_missing() {
         let threshold = 4;
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(threshold);
+        let mut q = QuackWrapper::new(threshold, false);
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn test_decode_some_missing() {
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn test_decode_exceeded_threshold() {
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);

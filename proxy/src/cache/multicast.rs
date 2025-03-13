@@ -444,11 +444,11 @@ mod tests {
     #[test]
     fn test_decode_none_missing_from_start() {
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
 
         // connection joins at the start
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -480,14 +480,14 @@ mod tests {
     #[test]
     fn test_decode_none_missing_from_middle() {
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
         cache.add(test_packet(&[0]));
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
 
         // connection joins at the start
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 3..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -519,11 +519,11 @@ mod tests {
     #[test]
     fn test_decode_some_missing_from_start() {
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
 
         // connection joins at the start
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -561,14 +561,14 @@ mod tests {
     #[test]
     fn test_decode_some_missing_from_middle() {
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
         cache.add(test_packet(&[0]));
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
 
         // connection joins in the middle
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 3..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -605,12 +605,12 @@ mod tests {
 
     #[test]
     fn test_get_missing_packets() {
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
         cache.add(test_packet(&[0]));
 
         // connection joins midway
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
@@ -638,14 +638,14 @@ mod tests {
     #[test]
     fn test_decode_exceeded_threshold() {
         let num_packets = 10;
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let mut cache = new_cache();
         cache.add(test_packet(&[100]));
         cache.add(test_packet(&[110]));
         cache.add(test_packet(&[120]));
 
         // connection joins midway
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 0..num_packets {
             q.insert(i as _);
             cache.add(test_packet(&[i as _]));
@@ -676,14 +676,14 @@ mod tests {
         cache.add(test_packet(&[0]));
 
         // connection joins midway
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
 
         // send a packet before resetting the connection
         cache.add(test_packet(&[1]));
         cache.reset(&CONN1);
 
         // it's as if the connection joined at a later midway point
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         let num_packets = 10;
         for i in 2..num_packets {
             q.insert(i as _);
@@ -699,14 +699,14 @@ mod tests {
         cache.add(test_packet(&[0]));
 
         // connection joins midway
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         cache.add(test_packet(&[1]));
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
         assert_eq!(cache.len(), 4);
 
         // create a quack with missing packets
-        let mut q = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         q.insert(1);
         q.insert(3);
 
@@ -728,25 +728,25 @@ mod tests {
         cache.add(test_packet(&[0]));
         cache.add(test_packet(&[1]));
 
-        cache.init_conn(&CONN2, DEFAULT_THRESHOLD);
-        cache.init_conn(&CONN3, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN2, DEFAULT_THRESHOLD, false);
+        cache.init_conn(&CONN3, DEFAULT_THRESHOLD, false);
         cache.add(test_packet(&[2]));
 
-        cache.init_conn(&CONN1, DEFAULT_THRESHOLD);
+        cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         cache.add(test_packet(&[3]));
         cache.add(test_packet(&[4]));
         cache.add(test_packet(&[5]));
         cache.add(test_packet(&[6]));
         cache.add(test_packet(&[7]));
 
-        let mut q1 = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q1 = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         q1.insert(3);
         q1.insert(6);
-        let mut q2 = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q2 = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         q2.insert(2);
         q2.insert(3);
         q2.insert(5);
-        let mut q3 = PowerSumQuackU32::new(DEFAULT_THRESHOLD);
+        let mut q3 = QuackWrapper::new(DEFAULT_THRESHOLD, false);
         q3.insert(2);
         q3.insert(3);
         q3.insert(4);
