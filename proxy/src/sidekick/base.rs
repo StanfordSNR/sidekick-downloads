@@ -64,25 +64,39 @@ impl Sidekick {
     /// from the cache. If the quACK can't be decoded, send a Reset packet
     /// back to the client on the sidekick connection.
     fn handle_sidekick_packet_from_client(&mut self, packet: Packet) {
+        cycles_start(6);
         let payload = UdpParser::payload(&packet.data, packet.nbytes);
         let quack = QuackWrapper::deserialize(payload);
         let cache = self.cache.as_mut().unwrap();
+        cycles_stop(6);
+        cycles_start(7);
         match cache.decode(&quack) {
             Ok(result) => {
+                cycles_stop(7);
                 debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), cache.len(),
                     result.last_index, result.missing_indexes,
                     fmt_hex!(self.sidekick_connection.unwrap()));
-                for index in result.missing_indexes {
+                cycles_start(8);
+                self.num_retx += result.missing_indexes.len();
+                for &index in &result.missing_indexes {
                     let retx = cache.get(index).unwrap();
-                    self.num_retx += 1;
-                    debug!("retransmit {}/{}", self.num_retx, self.num_tx);
-                    self.stream.forward_packet(&retx, retx.nbytes as usize);
                     cache.add(retx.clone()); // TODO: avoid clone
                 }
+                cycles_stop(8);
+                cycles_start(9);
+                for &index in &result.missing_indexes {
+                    let retx = cache.get(index).unwrap();
+                    debug!("retransmit {}/{}", self.num_retx, self.num_tx);
+                    self.stream.forward_packet(&retx, retx.nbytes as usize);
+                }
+                cycles_stop(9);
+                cycles_start(10);
                 cache.evict(result.last_index).unwrap();
+                cycles_stop(10);
             }
             Err(e) => {
+                cycles_stop(7);
                 error!("Failed to decode quACK: {:?}", e);
                 if self.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
                     let mut buf = [0u8; BUFFER_SIZE];
@@ -112,7 +126,9 @@ impl Sidekick {
     /// Add it to the cache and forward normally.
     fn handle_base_packet_from_server(&mut self, packet: Packet) {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
+        cycles_start(5);
         self.cache.as_mut().unwrap().add(packet);
+        cycles_stop(5);
         self.num_tx += 1;
     }
 

@@ -1,5 +1,9 @@
-const NUM_MEASUREMENTS: usize = 5;
+const NUM_MEASUREMENTS: usize = 11;
 const PRINT_NUM_PACKETS: u64 = 1000;
+const HEADERS: [&str; NUM_MEASUREMENTS] = [
+    "handle_packet", "basectos", "basestoc", "sidekick", "none", "encode",
+    "deserialize", "decode", "cache_add", "retransmit", "cache_evict",
+];
 
 static mut START: [u64; NUM_MEASUREMENTS] = [0; NUM_MEASUREMENTS];
 static mut CYCLES: [u64; NUM_MEASUREMENTS] = [0; NUM_MEASUREMENTS];
@@ -24,7 +28,7 @@ unsafe fn print_cycles_summary() {
         .collect::<Vec<_>>()
         .join(",");
     if total == PRINT_NUM_PACKETS {
-        println!("handle_packet,basectos,basestoc,sidekick,none");
+        println!("{}", HEADERS.join(","));
     }
     println!("{} (total={},count={})", cycles_norm, total, count_prop);
 }
