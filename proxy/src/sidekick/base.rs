@@ -92,7 +92,7 @@ impl Sidekick {
                 }
                 cycles_stop(9);
                 cycles_start(10);
-                cache.evict(result.last_index).unwrap();
+                cache.evict();
                 cycles_stop(10);
             }
             Err(e) => {
