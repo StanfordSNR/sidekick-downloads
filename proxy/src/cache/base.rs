@@ -94,9 +94,7 @@ impl QuackCache {
 
         // Make received packet decisions final and evict from caches
         cycles_start(12);
-        for id in self.id_cache.drain(0..n) {
-            self.quack.insert(id);
-        }
+        self.id_cache.drain(0..n);
         cycles_stop(12);
         cycles_start(13);
         self.packet_cache.drain(0..n);
@@ -138,7 +136,7 @@ impl QuackCache {
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
         let mut last_index = 0;
-        let mut proxy_quack = self.quack.clone();
+        let proxy_quack = &mut self.quack;
         for &id in &self.id_cache {
             if proxy_quack.last_value() == client_quack.last_value() {
                 break;
@@ -164,7 +162,7 @@ impl QuackCache {
         // Check that the number of missing packets is within the threshold.
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
-        let difference_quack = proxy_quack.sub(&client_quack);
+        let difference_quack = proxy_quack.clone().sub(&client_quack);
         if (difference_quack.count() as usize) > difference_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
                 num_missing: difference_quack.count() as usize,
@@ -212,6 +210,7 @@ impl QuackCache {
         };
 
         // Cache the result.
+        // TODO: unnecessary clone
         self.last_decode_result = result.clone();
         Ok(result)
     }
@@ -338,6 +337,19 @@ mod tests {
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, num_packets);
         assert_eq!(res.missing_indexes, vec![]);
+        assert_eq!(cache.evict(), num_packets);
+    }
+
+    #[test]
+    fn test_decode_none_missing_prefix() {
+        let threshold = 4;
+        let num_packets = 10;
+        let mut q = QuackWrapper::new(threshold, false);
+        let mut cache = new_cache();
+        for i in 0..num_packets {
+            q.insert(i as _);
+            cache.add(test_packet(&[i as _]));
+        }
 
         // add more packets - a strict prefix is acked
         cache.add(test_packet(&[43]));
@@ -373,6 +385,23 @@ mod tests {
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, num_packets);
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
+        assert_eq!(cache.evict(), num_packets);
+    }
+
+    #[test]
+    fn test_decode_some_missing_prefix() {
+        let num_packets = 10;
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
+        let mut cache = new_cache();
+        for i in 0..num_packets {
+            q.insert(i as _);
+            cache.add(test_packet(&[i as _]));
+        }
+
+        // remove "missing" packets from the quack
+        q.remove(5);
+        q.remove(6);
+        q.remove(8);
 
         // add more packets to the suffix - detect missing packets still
         cache.add(test_packet(&[43]));
