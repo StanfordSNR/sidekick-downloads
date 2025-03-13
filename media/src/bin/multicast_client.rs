@@ -249,18 +249,18 @@ impl Sockets {
         payload_unicast: &mut [u8], payload_multicast: &mut [u8],
     ) -> (usize, SocketAddr, bool) {
         select! {
-            Ok((len, addr)) = {
-                self.unicast.recv_from(payload_unicast)
-            } => (len, addr, false),
-            Ok((len, addr)) = {
-                self.multicast.as_ref().unwrap().recv_from(payload_multicast)
-            } => (len, addr, true),
             Some(data) = {
                 sidekick_rx.recv()
             } => {
                 payload_multicast.copy_from_slice(&data);
                 (data.len(), self.server_addr, true)
             },
+            Ok((len, addr)) = {
+                self.unicast.recv_from(payload_unicast)
+            } => (len, addr, false),
+            Ok((len, addr)) = {
+                self.multicast.as_ref().unwrap().recv_from(payload_multicast)
+            } => (len, addr, true),
         }
     }
 
