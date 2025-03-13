@@ -121,8 +121,8 @@ impl UdpQuacker {
                 error!("Failed to send {}th discovery packet", i);
                 return;
             } else {
-                info!("Sent discovery for sidekick base connection {}",
-                      fmt_hex!(base));
+                info!("Sent discovery for sidekick base connection {} id_offset={} threshold={} riblt={}",
+                      fmt_hex!(base), id_offset, threshold, riblt);
             }
         }
     }

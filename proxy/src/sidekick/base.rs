@@ -156,8 +156,9 @@ impl Sidekick {
             "expect one base connection");
         assert!(self.sidekick_connection.is_none() || self.sidekick_connection == Some(addr_key),
             "expect one sidekick connection");
-        info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}.",
-              fmt_hex!(addr_key), fmt_hex!(base), self.sidekick_connection.is_some());
+        info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}. riblt={} offset={} threshold={}",
+              fmt_hex!(addr_key), fmt_hex!(base), self.sidekick_connection.is_some(),
+              disc.riblt, disc.id_offset, disc.threshold);
 
         // Initialize the connection for this proxy if not already initialized
         if self.cache.is_none() {
