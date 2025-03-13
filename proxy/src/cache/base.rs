@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::error::Error;
 use log::trace;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
@@ -6,6 +6,7 @@ use quack::{arithmetic::ModularArithmetic, Quack, PowerSumQuack, QuackWrapper};
 
 use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
+use crate::cycles::*;
 
 
 /// A cache of packets that is able to decode quACKs.
@@ -14,9 +15,9 @@ use crate::cache::{DecodeError, DecodeResult};
 /// including those that have already been evicted.
 pub struct QuackCache {
     /// The same length as `identifiers`.
-    packet_cache: Vec<Packet>,
+    packet_cache: VecDeque<Packet>,
     /// The same length as `packets`.
-    id_cache: Vec<Identifier>,
+    id_cache: VecDeque<Identifier>,
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
 
@@ -34,8 +35,8 @@ impl QuackCache {
         capacity: usize,
     ) -> Self {
         Self {
-            packet_cache: vec![],
-            id_cache: vec![],
+            packet_cache: VecDeque::with_capacity(capacity),
+            id_cache: VecDeque::with_capacity(capacity),
             id_func,
             quack: QuackWrapper::new(quack_threshold, riblt),
             last_decode_result: DecodeResult::default(),
@@ -51,8 +52,8 @@ impl QuackCache {
 
     /// Return a read-only view of packets in the cache, ordered from least
     /// to most recently added.
-    pub fn view(&self) -> &[Packet] {
-        self.packet_cache.as_slice()
+    pub fn view(&self) -> &VecDeque<Packet> {
+        &self.packet_cache
     }
 
     /// Add a packet to the cache.
@@ -61,8 +62,8 @@ impl QuackCache {
             trace!("At capacity {}; dropping packet", self.capacity);
             return;
         }
-        self.id_cache.push(self.id_func.to_id(&packet.data));
-        self.packet_cache.push(packet);
+        self.id_cache.push_back(self.id_func.to_id(&packet.data));
+        self.packet_cache.push_back(packet);
     }
 
     /// Get the i-th packet (0-indexing) in the ordered cache view.
@@ -87,6 +88,7 @@ impl QuackCache {
         }
 
         // Make missing packet decisions final
+        cycles_start(11);
         let mut missing_indexes = vec![];
         for &index in &self.last_decode_result.missing_indexes {
             if index < n {
@@ -95,12 +97,17 @@ impl QuackCache {
                 missing_indexes.push(index - n);
             }
         }
+        cycles_stop(11);
 
         // Make received packet decisions final and evict from caches
+        cycles_start(12);
         for id in self.id_cache.drain(0..n) {
             self.quack.insert(id);
         }
+        cycles_stop(12);
+        cycles_start(13);
         self.packet_cache.drain(0..n);
+        cycles_stop(13);
 
         // Update last decode result
         self.last_decode_result.last_index -= n;
@@ -110,8 +117,8 @@ impl QuackCache {
 
     /// Reset the cache.
     pub fn reset(&mut self) {
-        self.id_cache = vec![];
-        self.packet_cache = vec![];
+        self.id_cache.clear();
+        self.packet_cache.clear();
     }
 
     /// The quACK is the cumulative representation of all packets that have ever

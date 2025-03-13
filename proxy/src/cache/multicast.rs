@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashSet, HashMap, VecDeque};
 use std::cmp::min;
 
 use log::{debug, error};
@@ -22,7 +22,7 @@ struct VirtualBuffer {
     // The first value is at which index in the base buffer to insert.
     // The second value is the index in the base buffer of the inserted id.
     // The insertion indexes are in sorted order.
-    insertions: Vec<(usize, usize)>,
+    insertions: VecDeque<(usize, usize)>,
 }
 
 impl VirtualBuffer {
@@ -30,7 +30,7 @@ impl VirtualBuffer {
         Self {
             _start: start,
             next: start,
-            insertions: Vec::new(),
+            insertions: VecDeque::new(),
         }
     }
 
@@ -49,7 +49,7 @@ struct VirtualBufferIter<'a> {
     index: usize,
     base_end: usize,
     insertion_idx: usize,
-    insertions: &'a [(usize, usize)],
+    insertions: &'a VecDeque<(usize, usize)>,
 }
 
 impl<'a> Iterator for VirtualBufferIter<'a> {
@@ -103,9 +103,9 @@ pub struct QuackCacheMulticast {
     /// Number of evicted packets previously in the cache
     num_evicted: usize,
     /// The same length as `identifiers`.
-    packet_cache: Vec<Packet>,
+    packet_cache: VecDeque<Packet>,
     /// The same length as `packets`.
-    id_cache: Vec<Identifier>,
+    id_cache: VecDeque<Identifier>,
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
     /// Cache capacity. Incoming packets >= this capacity will be dropped.
@@ -119,8 +119,8 @@ impl QuackCacheMulticast {
     pub fn new(id_func: IdentifierFunc, capacity: usize) -> Self {
         Self {
             num_evicted: 0,
-            packet_cache: vec![],
-            id_cache: vec![],
+            packet_cache: VecDeque::with_capacity(capacity),
+            id_cache: VecDeque::with_capacity(capacity),
             id_func,
             capacity,
             conns: HashMap::new(),
@@ -155,14 +155,14 @@ impl QuackCacheMulticast {
 
     /// Return a read-only view of packets in the cache that have not been
     /// evicted, ordered from least to most recently added.
-    pub fn view(&self) -> &[Packet] {
-        self.packet_cache.as_slice()
+    pub fn view(&self) -> &VecDeque<Packet> {
+        &self.packet_cache
     }
 
     /// Return the identifiers of the read-only view of packets in the cache
     /// that have not been evicted, as returned by `view()`.
-    pub fn view_ids(&self) -> &[u32] {
-        self.id_cache.as_slice()
+    pub fn view_ids(&self) -> &VecDeque<u32> {
+        &self.id_cache
     }
 
     /// Add a packet to the cache.
@@ -173,8 +173,8 @@ impl QuackCacheMulticast {
         }
         let id = self.id_func.to_id(&packet.data);
         debug!("insert {}", id);
-        self.id_cache.push(id);
-        self.packet_cache.push(packet);
+        self.id_cache.push_back(id);
+        self.packet_cache.push_back(packet);
     }
 
     /// Get the i-th packet (0-indexing) in the cache, including those that
@@ -287,7 +287,7 @@ impl QuackCacheMulticast {
             let id = self.id_cache[index - self.num_evicted];
             proxy_quack.insert(id);
             if is_insertion {
-                state.buffer.insertions.remove(0);
+                state.buffer.insertions.pop_front();
             } else {
                 state.buffer.next += 1;
             }
@@ -352,7 +352,7 @@ impl QuackCacheMulticast {
                 }
             };
             for &index in &missing_indexes {
-                state.buffer.insertions.push((end, index));
+                state.buffer.insertions.push_back((end, index));
                 state.quack.remove(self.id_cache[index - self.num_evicted]);
             }
             DecodeResult {
@@ -378,8 +378,8 @@ mod tests {
         QuackCacheMulticast::new(IdentifierFunc::FirstByte, DEFAULT_CAPACITY)
     }
 
-    fn test_packet_view(ids: &[u8]) -> Vec<Packet> {
-        ids.iter().map(|&id| test_packet(&[id])).collect::<Vec<_>>()
+    fn test_packet_view(ids: &[u8]) -> VecDeque<Packet> {
+        ids.iter().map(|&id| test_packet(&[id])).collect::<VecDeque<_>>()
     }
 
     fn test_packet(data: &[u8]) -> Packet {
@@ -753,17 +753,17 @@ mod tests {
         q3.insert(5);
         q3.insert(6);
 
-        assert_eq!(cache.view(), test_packet_view(&[0, 1, 2, 3, 4, 5, 6, 7]));
+        assert_eq!(cache.view(), &test_packet_view(&[0, 1, 2, 3, 4, 5, 6, 7]));
         let res = cache.decode(&q1, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![4, 5]);
         assert_eq!(cache.evict(), 2);
 
-        assert_eq!(cache.view(), test_packet_view(&[2, 3, 4, 5, 6, 7]));
+        assert_eq!(cache.view(), &test_packet_view(&[2, 3, 4, 5, 6, 7]));
         let res = cache.decode(&q2, &CONN2).unwrap();
         assert_eq!(res.missing_indexes, vec![4]);
         assert_eq!(cache.evict(), 0);
 
-        assert_eq!(cache.view(), test_packet_view(&[2, 3, 4, 5, 6, 7]));
+        assert_eq!(cache.view(), &test_packet_view(&[2, 3, 4, 5, 6, 7]));
         let res = cache.decode(&q3, &CONN3).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(), 2);
@@ -773,7 +773,7 @@ mod tests {
         q2.insert(8);
         q3.insert(8);
 
-        assert_eq!(cache.view(), test_packet_view(&[4, 5, 6, 7, 8]));
+        assert_eq!(cache.view(), &test_packet_view(&[4, 5, 6, 7, 8]));
         let res = cache.decode(&q1, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![7, 4, 5]);
         let res = cache.decode(&q2, &CONN2).unwrap();
