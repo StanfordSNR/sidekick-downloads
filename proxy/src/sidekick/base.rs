@@ -12,7 +12,7 @@ use sidekick_utils::packet::{
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, error};
 use quack::{Quack, QuackWrapper};
-
+use crate::cycles::*;
 
 /// The sidekick provides in-network assistance to a single base connection
 /// identified by a UDP 4-tuple. It also participates in a separate sidekick
@@ -127,19 +127,27 @@ impl Sidekick {
         match self.connection_type(&packet) {
             ConnectionType::BaseCtos => {
                 trace!("Received base packet from client");
+                cycles_start(1);
                 self.handle_base_packet_from_client(packet);
+                cycles_stop(1);
             }
             ConnectionType::BaseStoc => {
                 trace!("Received base packet from server");
+                cycles_start(2);
                 self.handle_base_packet_from_server(packet);
+                cycles_stop(2);
             }
             ConnectionType::Sidekick(_) => {
                 trace!("Received sidekick packet from client");
+                cycles_start(3);
                 self.handle_sidekick_packet_from_client(packet);
+                cycles_stop(3);
             }
             ConnectionType::None => {
                 trace!("Forwarding packet from unknown four-tuple");
+                cycles_start(4);
                 self.stream.forward_packet(&packet, packet.nbytes as usize);
+                cycles_stop(4);
             }
             _ => {}
         }
@@ -253,7 +261,9 @@ impl Sidekick {
     pub async fn start(&mut self) {
         while let Some(packet) = self.stream.receiver.recv().await {
             trace!("Received packet on mpsc: {}", packet.iface);
+            cycles_start(0);
             self.handle_packet(packet);
+            cycles_stop(0);
         }
     }
 }
