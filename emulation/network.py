@@ -47,7 +47,7 @@ class EmulatedNetwork:
 
     def _config_iface(self, iface, netem: bool, pacing: bool=False,
                       delay=None, loss=None, bw=None, bdp=None, qdisc=None,
-                      jitter=None):
+                      jitter=None, disable_checksum=False):
         """Configures the given interface <iface>:
         - Netem: whether this is a network emulation node (i.e., delay, loss, etc.
           should be configured)
@@ -62,8 +62,10 @@ class EmulatedNetwork:
         self.popen(host, f'ethtool -K {iface} gso off tso off')
         self.popen(host, f'ethtool -K {iface} tx-udp-segmentation off')
 
-        # Turn off checksum offloading for sidekick proxy
-        self.popen(host, f'ethtool -K {iface} tx off rx off')
+        if disable_checksum:
+            # For some reason, this needs to be disabled at the endpoints in
+            # the multicast network.
+            self.popen(host, f'ethtool -K {iface} tx off')
 
         # Configure the end-host or proxy
         if not netem:
@@ -141,6 +143,9 @@ class EmulatedNetwork:
             else:
                 raise NotImplementedError(qdisc)
             self.popen(host, queue_cmd)
+
+        # Turn off checksum offloading for sidekick proxy
+        self.popen(host, f'ethtool -K {iface} tx off rx off')
 
     def set_tcp_congestion_control(self, cca):
         version = get_linux_version()
@@ -724,13 +729,13 @@ class MulticastNetwork(EmulatedNetwork):
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
         rtt = 2 * (delay1 + delay2)
         bdp = self._calculate_bdp(delay1, delay2, bw1, bw2)
-        self._config_iface('h0-eth0', False, pacing)
+        self._config_iface('h0-eth0', False, pacing, disable_checksum=True)
         self._config_iface('p1-eth0', False, pacing)
         self._config_iface('p1-eth1', False, pacing)
         self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc)
         self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc)
         for cid in client_ids:
-            self._config_iface(f'h{cid}-eth0', False, pacing)
+            self._config_iface(f'h{cid}-eth0', False, pacing, disable_checksum=True)
             self._config_iface(f'e2-eth{cid}', True, False, delay2, loss2, bw2, bdp, qdisc)
 
         # Save network statistics
