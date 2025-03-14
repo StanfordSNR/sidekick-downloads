@@ -110,7 +110,9 @@ class MediaBenchmark:
         Parameters:
         - timeout: The number of seconds to block during setup before an error.
         """
+        logfile = self.logfile(self.server)
         cmd = f'./media/target/release/endpoint '\
+              f'--logfile {logfile} '\
               f'--nack-frequency {self.net.rtt} '\
               f'--frequency {self.frequency} '\
               f'server '
@@ -135,7 +137,6 @@ class MediaBenchmark:
         # The start_server() function blocks until the server is ready to
         # accept client requests. That is, when we observe the 'Serving'
         # string in the server output.
-        logfile = self.logfile(self.server)
         self.net.popen(self.server, cmd, background=True,
             console_logger=DEBUG, logfile=logfile, func=parse_output)
         with condition:
@@ -147,7 +148,9 @@ class MediaBenchmark:
         """
         Runs the Media client on the h1 host and writes output to a logfile.
         """
+        logfile = self.logfile(self.client)
         cmd = f'./media/target/release/endpoint '\
+              f'--logfile {logfile} '\
               f'--nack-frequency {self.net.rtt} '\
               f'--nack-delay {self.nack_delay} '\
               f'--frequency {self.frequency} '
@@ -179,7 +182,6 @@ class MediaBenchmark:
                 result['latencies'] = json.loads(match2.group(1))
 
         with self.condition:
-            logfile = self.logfile(self.client)
             start = time.time()
             self.net.popen(self.client, cmd, background=False,
                 console_logger=DEBUG, logfile=logfile, func=parse_result,

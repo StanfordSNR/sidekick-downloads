@@ -2,9 +2,12 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::fs::File;
+use std::path::Path;
 
 use clap::Parser;
 use log::{debug, info};
+use flexi_logger::{Logger, WriteMode, FileSpec};
 use tokio::task;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
@@ -31,6 +34,12 @@ struct Cli {
     /// Multicast port to send packets to.
     #[arg(long, default_value_t = 5202)]
     multicast_port: u16,
+    /// Logfile to write rust logs to (optional)
+    /// Must be a complete, valid path including directory.
+    /// This should be set for loglevel = TRACE. Excessively logging to
+    /// stdout/stderr can interfere with Mininet's packet buffers.
+    #[arg(long, short = 'f')]
+    logfile: Option<String>,
 }
 
 /// Listen for incoming packets on the UDP socket and handle.
@@ -103,8 +112,22 @@ async fn gen_data_packets(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> io::Result<()> {
-    env_logger::init();
     let args = Cli::parse();
+    if let Some(logfile) = args.logfile {
+        if !Path::new(&logfile).exists() {
+            eprintln!("Creating logfile {}", logfile);
+            let _ = File::create(&logfile).unwrap();
+        }
+        Logger::try_with_env_or_str("error").unwrap()
+            .log_to_file(FileSpec::try_from(&logfile).unwrap())
+            .write_mode(WriteMode::BufferAndFlush)
+            .append()
+            .start()
+            .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
+            .unwrap();
+    } else {
+        env_logger::init();
+    }
     let frequency = Duration::from_millis(args.frequency);
 
     // Bind to the local socket to listen to and send packets from.

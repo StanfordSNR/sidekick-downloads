@@ -358,6 +358,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
     ) -> Optional[HTTPClientOutput]:
         target_ip = self.server.IP() if self.proxy_type != ProxyType.PICOQUIC else self.proxy.IP()
         target_port = self.server_port if self.proxy_type != ProxyType.PICOQUIC else PROXY_PORT
+        logfile = self.logfile(self.client)
         base = 'deps/picoquic'
         cmd = f'./{base}/picoquic_sample '\
               f'client '\
@@ -365,6 +366,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
               f'{target_port} '\
               f'/tmp '\
               f'{self.cca} '\
+              f'{logfile} '\
               f'{self.ack_delay} '
 
         # Add parameters to configure the client quacker
@@ -389,7 +391,6 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             self.additional_data['num_spurious_receiver'] = int(match.group(2))
 
         with self.condition:
-            logfile = self.logfile(self.client)
             timeout_flag = self.net.popen(self.client, cmd, background=False,
                 console_logger=DEBUG, logfile=logfile, func=parse_result,
                 timeout=timeout, raise_error=False)

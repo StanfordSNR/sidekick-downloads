@@ -1,9 +1,12 @@
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::fs::File;
+use std::path::Path;
 
 use clap::{Parser, Subcommand};
-use log::{debug, info};
+use log::debug;
+use flexi_logger::{Logger, WriteMode, FileSpec};
 use tokio::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::error::SendError;
@@ -44,6 +47,12 @@ struct Cli {
     quacker: bool,
     #[command(flatten)]
     quacker_config: Option<QuackerConfig>,
+    /// Logfile to write rust logs to (optional)
+    /// Must be a complete, valid path including directory.
+    /// This should be set for loglevel = TRACE. Excessively logging to
+    /// stdout/stderr can interfere with Mininet's packet buffers.
+    #[arg(long, short = 'f')]
+    logfile: Option<String>,
 }
 
 #[derive(Debug, Subcommand, PartialEq, Eq)]
@@ -248,8 +257,22 @@ async fn gen_timeout_packets(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> io::Result<()> {
-    env_logger::init();
     let args = Cli::parse();
+    if let Some(logfile) = args.logfile {
+        if !Path::new(&logfile).exists() {
+            eprintln!("Creating logfile {}", logfile);
+            let _ = File::create(&logfile).unwrap();
+        }
+        Logger::try_with_env_or_str("error").unwrap()
+            .log_to_file(FileSpec::try_from(&logfile).unwrap())
+            .write_mode(WriteMode::BufferAndFlush)
+            .append()
+            .start()
+            .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
+            .unwrap();
+    } else {
+        env_logger::init();
+    }
     let frequency = Duration::from_millis(args.frequency);
     let nack_frequency = Duration::from_millis(args.nack_frequency);
     let nack_delay = if args.nack_delay > 0 {
@@ -260,7 +283,7 @@ async fn main() -> io::Result<()> {
 
     // Bind to the local socket to listen to and send packets from.
     let sock = Arc::new(UdpSocket::bind(format!("0.0.0.0:{}", args.port)).await?);
-    info!("Ready to accept incoming packets {:?}", sock.local_addr());
+    eprintln!("Ready to accept incoming packets {:?}", sock.local_addr());
 
     // Channel for sending data on the UDP socket from one thread.
     let (tx, rx) = mpsc::channel(MPSC_CHANNEL_SIZE);

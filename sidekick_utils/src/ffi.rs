@@ -1,4 +1,8 @@
+use std::ffi::{OsStr, CStr};
+use std::os::{raw::c_char, unix::ffi::OsStrExt};
+use std::path::Path;
 use std::sync::Once;
+use flexi_logger::{Logger, WriteMode, FileSpec};
 use crate::identifier::IdentifierFunc;
 
 #[no_mangle]
@@ -19,9 +23,21 @@ pub static NUM_DISCOVERY_PKTS: usize = crate::packet::NUM_DISCOVERY_PKTS;
 static INIT: Once = Once::new();
 
 #[no_mangle]
-pub extern "C" fn sidekick_init_logging() {
+pub extern "C" fn sidekick_init_logging(logfile: *const c_char) {
     INIT.call_once(|| {
-        env_logger::init();
+        if logfile.is_null() {
+            env_logger::init();
+        } else {
+            let logfile = unsafe { CStr::from_ptr(logfile) };
+            let logfile = Path::new(OsStr::from_bytes(logfile.to_bytes()));
+            Logger::try_with_env_or_str("error").unwrap()
+                .log_to_file(FileSpec::try_from(logfile).unwrap())
+                .write_mode(WriteMode::BufferAndFlush)
+                .append()
+                .start()
+                .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
+                .unwrap();
+        }
     });
 }
 

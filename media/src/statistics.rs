@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::debug;
 use tokio::time::Duration;
 
 /// Dejitter delay statistics.
@@ -34,11 +34,11 @@ impl Statistics {
             values.sort();
             (values.len(), values)
         };
-        info!("{}Num Spurious: {}", prefix, self.num_spurious);
-        info!("{}Num Values: {}", prefix, len);
-        info!("{}Median: {:?}", prefix, values[(len as f64 * 0.50) as usize]);
-        info!("{}p95: {:?}", prefix, values[(len as f64 * 0.95) as usize]);
-        info!("{}p99: {:?}", prefix, values[(len as f64 * 0.99) as usize]);
+        eprintln!("{}Num Spurious: {}", prefix, self.num_spurious);
+        eprintln!("{}Num Values: {}", prefix, len);
+        eprintln!("{}Median: {:?}", prefix, values[(len as f64 * 0.50) as usize]);
+        eprintln!("{}p95: {:?}", prefix, values[(len as f64 * 0.95) as usize]);
+        eprintln!("{}p99: {:?}", prefix, values[(len as f64 * 0.99) as usize]);
         let values_raw = values
             .into_iter()
             .map(|duration| duration.as_secs() * 1000000000 + duration.subsec_nanos() as u64)
@@ -54,7 +54,7 @@ impl Statistics {
                 .map(|index| values_raw[index])
                 .collect::<Vec<_>>()
         );
-        info!(
+        eprintln!(
             "{}Raw values = {:?}",
             prefix,
             self.values

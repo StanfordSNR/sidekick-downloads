@@ -13,7 +13,7 @@ extern const uint64_t RESET_FREQ_MS;
 extern const uint64_t DISCOVERY_FREQ_MS;
 extern const size_t NUM_DISCOVERY_PKTS;
 
-void sidekick_init_logging();
+void sidekick_init_logging(const char* logfile);
 uint32_t sidekick_fixed_offset_to_id(const uint8_t* bytes, size_t packet_length, size_t offset);
 
 #ifdef __cplusplus

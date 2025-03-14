@@ -32,17 +32,16 @@ async fn main() {
     let args = Cli::parse();
     if let Some(logfile) = args.logfile {
         if !Path::new(&logfile).exists() {
-            println!("Creating logfile {}", logfile);
+            eprintln!("Creating logfile {}", logfile);
             let _ = File::create(&logfile).expect(&format!("Cannot create {} for logging", logfile));
         }
         Logger::try_with_env_or_str("error").unwrap()
-                                            .log_to_file(
-                                                FileSpec::try_from(&logfile)
-                                                    .expect(&format!("Cannot open {} for logging", logfile))
-                                            ).write_mode(WriteMode::BufferAndFlush)
-                                             .start()
-                                             .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
-                                             .unwrap();
+            .log_to_file(FileSpec::try_from(&logfile).unwrap())
+            .write_mode(WriteMode::BufferAndFlush)
+            .append()
+            .start()
+            .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
+            .unwrap();
     } else {
         env_logger::init();
     }

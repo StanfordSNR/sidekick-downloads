@@ -367,7 +367,7 @@ class EmulatedNetwork:
             cmd = f'tcpdump -i {iface} -w {logdir}/{iface}.pcap'
             self.popen(host, cmd, background=True, console_logger=DEBUG)
 
-    def start_client_quacker(self, config: QuackerConfig, logfile=None):
+    def start_client_quacker(self, config: QuackerConfig, logfile: Optional[str]=None):
         assert not config.hint
         cmd = f'./quacker/target/release/quacker '\
               f'--interface h1-eth0 '\
@@ -377,6 +377,8 @@ class EmulatedNetwork:
               f'--target-addr {self.p1.IP()}:{config.quackee_port} '
         if config.riblt:
             cmd += '--riblt '
+        if logfile:
+            cmd += f'--logfile {logfile} '
 
         self.popen(self.h1, cmd, background=True, console_logger=DEBUG,
             logfile=logfile)
@@ -401,7 +403,7 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick(
-        self, port: int, logfile: str, timeout=SETUP_TIMEOUT,
+        self, port: int, logfile: Optional[str], timeout=SETUP_TIMEOUT,
         executable='./proxy/target/release/sidekick',
     ):
         condition = threading.Condition()
@@ -417,6 +419,8 @@ class EmulatedNetwork:
         cmd = f'{executable} --client-interface p1-eth0 '\
               f'--server-interface p1-eth1 --cache-capacity {4 * self.cwnd} '\
               f'--quack-port {port} '
+        if logfile:
+            cmd += f'--logfile {logfile} '
 
         self.popen(self.p1, cmd,
                    background=True, console_logger=DEBUG,

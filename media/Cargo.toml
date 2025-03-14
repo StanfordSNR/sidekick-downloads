@@ -10,6 +10,7 @@ log = "0.4.17"
 rand = "0.8.5"
 sidekick-utils = { path = "../sidekick_utils" }
 quacker = { path = "../quacker" }
+flexi_logger = "0.29.8"
 env_logger = "0.9.3"
 bincode = "1.3.3"
 

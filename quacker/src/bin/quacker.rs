@@ -1,5 +1,8 @@
 use clap::Parser;
 use log::{trace, debug, info, warn};
+use flexi_logger::{Logger, WriteMode, FileSpec};
+use std::fs::File;
+use std::path::Path;
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -35,6 +38,12 @@ struct Cli {
     /// Whether to use the RIBLT quACK.
     #[arg(long)]
     riblt: bool,
+    /// Logfile to write rust logs to (optional)
+    /// Must be a complete, valid path including directory.
+    /// This should be set for loglevel = TRACE. Excessively logging to
+    /// stdout/stderr can interfere with Mininet's packet buffers.
+    #[arg(long, short = 'f')]
+    logfile: Option<String>,
 }
 
 async fn send_quacks(
@@ -139,9 +148,22 @@ async fn start_sniffer(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), String> {
-    env_logger::init();
-
     let args = Cli::parse();
+    if let Some(logfile) = args.logfile {
+        if !Path::new(&logfile).exists() {
+            eprintln!("Creating logfile {}", logfile);
+            let _ = File::create(&logfile).unwrap();
+        }
+        Logger::try_with_env_or_str("error").unwrap()
+            .log_to_file(FileSpec::try_from(&logfile).unwrap())
+            .write_mode(WriteMode::BufferAndFlush)
+            .append()
+            .start()
+            .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
+            .unwrap();
+    } else {
+        env_logger::init();
+    }
     debug!("interface={} threshold={}", args.interface, args.threshold);
     debug!(
         "frequency_ms={:?} frequency_pkts={:?} target_addr={:?}",

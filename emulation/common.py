@@ -103,10 +103,10 @@ def handle_background_process(p, logfile, func):
         return
 
     # Both write to the logfile and call the callback function
-    with open(logfile, 'a') as f:
-        for line, _ in read_subprocess_pipe(p):
-            if func is not None:
-                func(line)
+    for line, _ in read_subprocess_pipe(p):
+        if func is not None:
+            func(line)
+        with open(logfile, 'a') as f:
             f.write(line)
 
 def get_linux_version():

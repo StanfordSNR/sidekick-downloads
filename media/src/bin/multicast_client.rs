@@ -1,9 +1,12 @@
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::fs::File;
+use std::path::Path;
 
 use clap::Parser;
 use log::{debug, info};
+use flexi_logger::{Logger, WriteMode, FileSpec};
 use tokio::task;
 use tokio::select;
 use tokio::sync::{mpsc, Mutex};
@@ -50,6 +53,12 @@ struct Cli {
     quacker: bool,
     #[command(flatten)]
     quacker_config: Option<QuackerConfig>,
+    /// Logfile to write rust logs to (optional)
+    /// Must be a complete, valid path including directory.
+    /// This should be set for loglevel = TRACE. Excessively logging to
+    /// stdout/stderr can interfere with Mininet's packet buffers.
+    #[arg(long, short = 'f')]
+    logfile: Option<String>,
 }
 
 /// Listen for incoming packets on the UDP socket and handle.
@@ -281,8 +290,22 @@ impl Sockets {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> io::Result<()> {
-    env_logger::init();
     let args = Cli::parse();
+    if let Some(logfile) = args.logfile {
+        if !Path::new(&logfile).exists() {
+            eprintln!("Creating logfile {}", logfile);
+            let _ = File::create(&logfile).unwrap();
+        }
+        Logger::try_with_env_or_str("error").unwrap()
+            .log_to_file(FileSpec::try_from(&logfile).unwrap())
+            .write_mode(WriteMode::BufferAndFlush)
+            .append()
+            .start()
+            .inspect_err(|e| eprintln!("Cannot start logger: {}", e))
+            .unwrap();
+    } else {
+        env_logger::init();
+    }
     let nack_frequency = Duration::from_millis(args.nack_frequency);
     let mut sock = Sockets::new(args.multicast_ip, args.multicast_port, args.addr).await?;
 
