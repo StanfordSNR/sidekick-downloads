@@ -184,22 +184,28 @@ impl Quacker for UdpQuacker {
     }
 
     fn send_quack(&mut self, time_ms: u64) {
-        self.quacker.send_quack(time_ms);
-        let mut buf = self.buf;
         let quack = self.get_quack();
+        if quack.last_value().is_none() {
+            return;
+        }
+        let mut buf = self.buf;
         debug!("quack {}", quack.count());
         let len = quack.serialize(&mut buf[..]);
         self.src_sock.send_to(&buf[..len], self.dst_addr).unwrap();
+        self.quacker.send_quack(time_ms);
     }
 }
 
 impl UdpQuacker {
     pub fn send_quack_with_hint(&mut self, time_ms: u64, num_symbols: usize) {
-        self.quacker.send_quack(time_ms);
-        let mut buf = self.buf;
         let quack = self.get_quack();
+        if quack.last_value().is_none() {
+            return;
+        }
+        let mut buf = self.buf;
         debug!("quack {}", quack.count());
         let len = quack.serialize_with_hint(&mut buf[..], num_symbols);
         self.src_sock.send_to(&buf[..len], self.dst_addr).unwrap();
+        self.quacker.send_quack(time_ms);
     }
 }
