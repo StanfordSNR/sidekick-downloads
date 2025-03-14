@@ -265,14 +265,6 @@ impl QuackCacheMulticast {
         let end = self.total();
         let state = self.conns.get_mut(conn).unwrap();
 
-        // Check invalid threshold
-        if state.quack.threshold() != client_quack.threshold() {
-            return Err(DecodeError::InvalidThreshold {
-                expected: state.quack.threshold(),
-                actual: client_quack.threshold(),
-            });
-        }
-
         // Insert ids in the id cache up to the last id received by the client.
         // Assuming the client receives a subset of packets in the cache, if
         // the last value doesn't exist in our cache, then the state is
@@ -313,10 +305,18 @@ impl QuackCacheMulticast {
         // but the state is invalid in either case.
         let proxy_quack = proxy_quack.clone();
         let difference_quack = proxy_quack.sub(&client_quack);
-        if (difference_quack.count() as usize) > difference_quack.threshold() {
+        let num_missing = difference_quack.count() as usize;
+        if num_missing > proxy_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
-                num_missing: difference_quack.count() as usize,
-                threshold: difference_quack.threshold(),
+                num_missing,
+                threshold: proxy_quack.threshold(),
+            });
+        }
+        let threshold = std::cmp::min(proxy_quack.threshold(), client_quack.threshold());
+        if num_missing > threshold {
+            return Err(DecodeError::InvalidThreshold {
+                expected: proxy_quack.threshold(),
+                actual: threshold,
             });
         }
 
