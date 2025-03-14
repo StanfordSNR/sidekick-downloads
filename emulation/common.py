@@ -73,7 +73,7 @@ def LOG(val, level):
 
 def init_logdir(path):
     os.system(f'mkdir -p {path}')
-    os.system(f'rm {path}/*')
+    os.system(f'rm -f {path}/*')
 
 def read_subprocess_pipe(p):
     streams = [p.stdout, p.stderr]
