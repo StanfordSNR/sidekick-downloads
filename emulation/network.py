@@ -4,6 +4,7 @@ import threading
 from typing import List, Optional
 
 from common import *
+from mininet.node import Host
 from mininet.net import Mininet
 from mininet.link import TCLink
 
@@ -25,9 +26,10 @@ class EmulatedNetwork:
         self.background_threads = []
 
     @staticmethod
-    def _mac(digit):
-        assert 0 <= digit < 10
-        return f'00:00:00:00:00:0{int(digit)}'
+    def _mac(n):
+        mac = f'{n:012d}'
+        assert len(mac) == 12
+        return ':'.join(mac[i:i+2] for i in range(0, 12, 2))
 
     @staticmethod
     def _ip(digit, suffix=10):
@@ -210,6 +212,9 @@ class EmulatedNetwork:
             return 0
         else:
             return value[0]
+
+    def _set_arp_table(self, host: Host, ip: str, mac: str, iface: str):
+        self.popen(host, f'ip neigh add {ip} lladdr {mac} dev {iface} nud permanent')
 
     def get_perf_options(self) -> str:
         supported = subprocess.check_output('perf list', shell=True, text=True)
@@ -543,8 +548,8 @@ class OneHopNetwork(EmulatedNetwork):
         super().__init__(perf=perf, debug=debug)
 
         # Add hosts, switches, and network emulation nodes
-        self.h1 = self.net.addHost('h1', ip=self._ip(1, 10), mac=self._mac(1))
-        self.h2 = self.net.addHost('h2', ip=self._ip(2, 10), mac=self._mac(2))
+        self.h1 = self.net.addHost('h1', ip=self._ip(1, 10), mac=self._mac(101))
+        self.h2 = self.net.addHost('h2', ip=self._ip(2, 10), mac=self._mac(102))
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
         self.p1 = self.net.addHost('p1', ip=self._ip(1, 11))
@@ -572,21 +577,25 @@ class OneHopNetwork(EmulatedNetwork):
 
         # Setup routing and forwarding (e2 acts as router)
         if router_proxy:
-            self.setup_router_node(self.p1)
+            self.setup_router_node(self.p1, self._mac(11), self._mac(21))
         else:
-            self.setup_router_node(self.e2)
+            self.setup_router_node(self.e2, self._mac(11), self._mac(21))
         self.popen(self.h1, "ip route add default via 172.16.1.1")
         self.popen(self.h2, "ip route add default via 172.16.2.1")
+        self._set_arp_table(self.h1, '172.16.1.1', self._mac(11), 'h1-eth0')
+        self._set_arp_table(self.h2, '172.16.2.1', self._mac(21), 'h2-eth0')
 
         # Set up transparent bridging
         if router_proxy:
-            self.setup_bridging_node(self.e1)
-            self.setup_bridging_node(self.e2)
+            self.setup_bridging_node(self.e1, mac=self._mac(51))
+            self.setup_bridging_node(self.e2, mac=self._mac(52))
         elif bridge_proxy:
-            self.setup_bridging_node(self.e1)
-            self.setup_bridging_node(self.p1)
+            self.setup_bridging_node(self.e1, mac=self._mac(51))
+            self.setup_bridging_node(self.p1, mac=self._mac(53))
+            self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'br0')
+            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'br0')
         else:
-            self.setup_bridging_node(self.e1)
+            self.setup_bridging_node(self.e1, mac=self._mac(51))
 
         # Configure IP addresses
         if not router_proxy:
@@ -599,9 +608,26 @@ class OneHopNetwork(EmulatedNetwork):
                 self.popen(self.p1, f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
                 self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
             else:
+                self.popen(self.p1, f"ip link set dev p1-eth0 address {self._mac(40)}")
+                self.popen(self.p1, f"ip link set dev p1-eth1 address {self._mac(41)}")
                 self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev p1-eth0")
                 self.popen(self.p1, f"ip addr add {self._ip(1, 12)} dev p1-eth1")
                 self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
+                self.popen(self.p1, 'ip link set dev p1-eth0 up')
+                self.popen(self.p1, 'ip link set dev p1-eth1 up')
+
+        # Prepopulate the ARP table
+        if bridge_proxy:
+            self._set_arp_table(self.h1, '172.16.1.11', self._mac(53), 'h1-eth0')
+            self._set_arp_table(self.e2, '172.16.1.11', self._mac(53), 'e2-eth0')
+        elif not router_proxy:
+            self._set_arp_table(self.h1, '172.16.1.11', self._mac(40), 'h1-eth0')
+            self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'p1-eth0')
+            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'p1-eth1')
+            self._set_arp_table(self.e2, '172.16.1.12', self._mac(41), 'e2-eth0')
+            self._set_arp_table(self.e2, '172.16.1.11', self._mac(41), 'e2-eth0')
+        for host in [self.h1, self.e1, self.p1, self.e2, self.h2]:
+            self.popen(host, 'ip neigh flush all')
 
         # Configure link latency, delay, bandwidth, and queue size
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
@@ -620,19 +646,22 @@ class OneHopNetwork(EmulatedNetwork):
         self.rtt = rtt
         self.cwnd = self._calculate_cwnd(bdp)
 
-    def setup_router_node(self, node):
+    def setup_router_node(self, node, mac1, mac2):
         self.popen(node, f"ifconfig {node.name}-eth0 0")
         self.popen(node, f"ifconfig {node.name}-eth1 0")
-        self.popen(node, f"ifconfig {node.name}-eth0 hw ether 00:00:00:00:01:01")
-        self.popen(node, f"ifconfig {node.name}-eth1 hw ether 00:00:00:00:01:02")
-        self.popen(node, f"ip addr add 172.16.1.1/24 brd + dev {node.name}-eth0")
-        self.popen(node, f"ip addr add 172.16.2.1/24 brd + dev {node.name}-eth1")
+        self.popen(node, f"ifconfig {node.name}-eth0 hw ether {mac1}")
+        self.popen(node, f"ifconfig {node.name}-eth1 hw ether {mac2}")
+        self.popen(node, f"ip addr add {self._ip(1, 1)} brd + dev {node.name}-eth0")
+        self.popen(node, f"ip addr add {self._ip(2, 1)} brd + dev {node.name}-eth1")
         self.popen(node, 'sysctl net.ipv4.ip_forward=1')
+        self._set_arp_table(node, self.h1.IP(), self.h1.MAC(), f'{node.name}-eth0')
+        self._set_arp_table(node, self.h2.IP(), self.h2.MAC(), f'{node.name}-eth1')
 
-    def setup_bridging_node(self, node):
+    def setup_bridging_node(self, node, mac):
         self.popen(node, "brctl addbr br0")
         self.popen(node, f"brctl addif br0 {node.name}-eth0")
         self.popen(node, f"brctl addif br0 {node.name}-eth1")
+        self.popen(node, f"ip link set dev br0 address {mac}")
         self.popen(node, "ip link set dev br0 up")
 
 
@@ -667,16 +696,16 @@ class MulticastNetwork(EmulatedNetwork):
 
         # Create the topology
         client_ids = list(range(1, num_clients + 1))
-        self.server = self.net.addHost('h0', ip='192.168.1.10/24')
+        self.server = self.net.addHost('h0', ip='192.168.1.10/24', mac=self._mac(0))
         self.e1 = self.net.addHost('e1')
-        self.p1 = self.net.addHost('p1', ip='192.168.1.11/24')
+        self.p1 = self.net.addHost('p1', ip='192.168.1.11/24', mac=self._mac(999999999999))
         self.e2 = self.net.addHost('e2')
         self.net.addLink(self.server, self.e1)
         self.net.addLink(self.e1, self.p1)
         self.net.addLink(self.p1, self.e2)
         self.clients = []
         for cid in client_ids:
-            host = self.net.addHost(f'h{cid}', ip=f'172.16.{cid}.100')
+            host = self.net.addHost(f'h{cid}', ip=f'172.16.{cid}.100', mac=self._mac(cid))
             self.clients.append(host)
             self.net.addLink(self.e2, host)
         self.net.build()

@@ -3,6 +3,7 @@ Test network.py.
 """
 import unittest
 import os
+import subprocess
 import time
 import tempfile
 from network import *
@@ -92,10 +93,11 @@ class NetworkTestCase(unittest.TestCase):
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
         jitter1=None, jitter2=None, qdisc='red', pacing=False, setup_time=0,
-        bridge_proxy=True, cache=True,
+        bridge_proxy=True, router_proxy=False, cache=True,
     ) -> OneHopNetwork:
         net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                            jitter1, jitter2, qdisc, pacing, bridge_proxy)
+                            jitter1, jitter2, qdisc, pacing,
+                            bridge_proxy=bridge_proxy, router_proxy=router_proxy)
         if cache:
             self.stopNetwork()
             self.net = net
@@ -282,14 +284,14 @@ class TestEmulatedNetwork(unittest.TestCase):
             EmulatedNetwork._ip(-1, 10)
 
     def test_mac(self):
+        self.assertEqual(EmulatedNetwork._mac(0), '00:00:00:00:00:00')
         self.assertEqual(EmulatedNetwork._mac(1), '00:00:00:00:00:01')
         self.assertEqual(EmulatedNetwork._mac(2), '00:00:00:00:00:02')
-        self.assertEqual(EmulatedNetwork._mac(0), '00:00:00:00:00:00')
-        self.assertEqual(EmulatedNetwork._mac(9), '00:00:00:00:00:09')
+        self.assertEqual(EmulatedNetwork._mac(22), '00:00:00:00:00:22')
+        self.assertEqual(EmulatedNetwork._mac(123), '00:00:00:00:01:23')
+        self.assertEqual(EmulatedNetwork._mac(123456789), '00:01:23:45:67:89')
         with self.assertRaises(AssertionError):
-            EmulatedNetwork._mac(10)
-        with self.assertRaises(AssertionError):
-            EmulatedNetwork._mac(-1)
+            EmulatedNetwork._mac(9999999999999)
 
     def test_calculate_bdp(self):
         delay1 = 20 # ms
@@ -325,6 +327,7 @@ class TestNetworkReachability(NetworkTestCase):
         os.chdir('..') # run from sidekick base directory
         net = self.setUpOneHopNetwork(bridge_proxy=False)
         net.start_sidekick(self.quackee_port, logfile=None)
+        time.sleep(1)
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
         os.chdir(cwd)
@@ -349,6 +352,7 @@ class TestNetworkReachability(NetworkTestCase):
         os.chdir('..')
         net = self.setUpOneHopNetwork(bridge_proxy=False)
         net.start_sidekick(self.quackee_port, logfile=None)
+        time.sleep(1)
         self.assertReachable(net.p1, net.h1)
         self.assertReachable(net.p1, net.h2)
         self.assertReachable(net.h1, net.p1)
@@ -786,3 +790,68 @@ class TestProxyFunctions(NetworkTestCase):
         self.assertTrue(os.path.exists(self.logfile))
         with open(self.logfile, 'r') as f:
             self.assertNotEqual(f.read(), '', 'proxy writes to logfile')
+
+
+class TestPrepopulateArpTable(NetworkTestCase):
+    def setUp(self):
+        super().setUp()
+        self.cwd = os.getcwd()
+        os.chdir('..') # run from sidekick base directory
+        self._logdir = tempfile.TemporaryDirectory()
+        self.logdir = self._logdir.name
+        self.logfile = f'{self._logdir.name}/{ROUTER_LOGFILE}'
+
+    def tearDown(self):
+        super().tearDown()
+        self._logdir.cleanup()
+        os.chdir(self.cwd)
+
+    def ping_all(self, hosts: List[Host]):
+        for h1 in hosts:
+            for h2 in hosts:
+                if h1 != h2:
+                    self.ping(h1, h2, 1)
+
+    def check_pcap(self, lines, num_pings):
+        icmp = 0
+        arps = []
+        for line in lines:
+            if 'ICMP echo reply' in line:
+                icmp += 1
+            elif 'ARP' in line:
+                arps.append(line)
+        self.assertEqual(len(arps), 0, '\n'.join(arps))
+        self.assertGreater(icmp, 0, 'tcpdump did not capture the ping, may need to sleep longer')
+
+    def check_arp_table_is_used(self, net: OneHopNetwork, hosts: List[Host]):
+        # for host in hosts + [net.e2]: print(host.name, host.cmd('ip neigh show'))
+        self.ping_all(hosts)
+        time.sleep(1)
+        # for host in hosts + [net.e2]: print(host.name, host.cmd('ip neigh show'))
+        self.stopNetwork()
+        for iface in net.primary_ifaces:
+            filename = f'{self.logdir}/{iface}.pcap'
+            self.assertTrue(os.path.exists(filename))
+            p = subprocess.run(f'tcpdump -r {filename}', shell=True,
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            lines = p.stdout.split('\n')
+            self.check_pcap(lines, len(hosts) - 1)
+
+    def test_arp_one_hop_network_bridge_proxy(self):
+        net = self.setUpOneHopNetwork(bridge_proxy=True, router_proxy=False)
+        net.start_tcpdump(logdir=self.logdir)
+        time.sleep(1)
+        self.check_arp_table_is_used(net, [net.h1, net.p1, net.h2])
+
+    def test_arp_one_hop_network_router_proxy(self):
+        net = self.setUpOneHopNetwork(bridge_proxy=False, router_proxy=True)
+        net.start_tcpdump(logdir=self.logdir)
+        time.sleep(1)
+        self.check_arp_table_is_used(net, [net.h1, net.h2])
+
+    def test_arp_one_hop_network_sidekick(self):
+        net = self.setUpOneHopNetwork(bridge_proxy=False, router_proxy=False)
+        net.start_sidekick(port=5252, logfile=None)
+        net.start_tcpdump(logdir=self.logdir)
+        time.sleep(1)
+        self.check_arp_table_is_used(net, [net.h1, net.p1, net.h2])
