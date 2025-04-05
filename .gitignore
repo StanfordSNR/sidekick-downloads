@@ -28,3 +28,4 @@ deps/depot_tools/
 deps/chromium/
 deps/picoquic/
 deps/smcroute/
+figures/*.pdf

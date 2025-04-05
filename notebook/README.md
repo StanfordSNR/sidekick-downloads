@@ -5,6 +5,8 @@
 Setup virtual environment:
 
 ```
+cd $SIDEKICK_HOME
+mkdir figures
 virtualenv -p python3 env
 source env/bin/activate
 ```
