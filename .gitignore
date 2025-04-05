@@ -27,3 +27,4 @@ deps/quack/
 deps/depot_tools/
 deps/chromium/
 deps/picoquic/
+deps/smcroute/
