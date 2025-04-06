@@ -7,8 +7,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::Duration;
 
 use quacker::{current_time_ms, Quacker, UdpQuacker};
-use sidekick_utils::BUFFER_SIZE;
-use sidekick_utils::buffer::AddrKey;
+use sidekick_utils::{BUFFER_SIZE, buffer::AddrKey, packet::CachePolicy};
 
 
 #[derive(Debug, Parser, Clone)]
@@ -44,6 +43,7 @@ impl QuackerConfig {
             self.frequency_ms,
             self.target_addr,
             self.riblt,
+            CachePolicy::Optimistic,
         )));
 
         // Ensure quACKs are sent at a time interval if specified.

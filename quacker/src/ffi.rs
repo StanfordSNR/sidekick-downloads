@@ -6,14 +6,23 @@ use libc::sockaddr_in;
 use sidekick_utils::buffer::AddrKey;
 use crate::{Quacker, UdpQuacker};
 
+pub use sidekick_utils::packet::CachePolicy;
+
 #[no_mangle]
 pub extern "C" fn udp_quacker_new(
     threshold: usize, freq_pkts: u32, freq_ms: u64, addr: *const c_char, riblt: u8,
+    optimistic_cache_policy: u8,
 ) -> *mut UdpQuacker {
     debug_assert!(!addr.is_null());
     let addr = unsafe { CStr::from_ptr(addr) };
     let addr = addr.to_str().unwrap().parse::<SocketAddr>().unwrap();
-    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr, riblt != 0);
+    let cache_policy = if optimistic_cache_policy != 0 {
+        CachePolicy::Optimistic
+    } else {
+        CachePolicy::SidekickReset
+    };
+    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr,
+                                  riblt != 0, cache_policy);
     Box::into_raw(Box::new(quacker))
 }
 

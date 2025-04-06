@@ -1,5 +1,6 @@
 use quack::{Quack, QuackWrapper};
 use crate::{Quacker, BaseQuacker};
+use sidekick_utils::packet::CachePolicy;
 
 #[derive(Clone)]
 pub struct PrintQuacker {
@@ -9,9 +10,10 @@ pub struct PrintQuacker {
 impl PrintQuacker {
     pub fn new(
         riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
+        cache_policy: CachePolicy,
     ) -> Self {
         Self {
-            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms, cache_policy),
         }
     }
 }

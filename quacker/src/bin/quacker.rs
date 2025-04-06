@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tokio::time::{self, Instant, Duration};
 
 use sidekick_utils::{BUFFER_SIZE, ID_BUFFER_SIZE, ID_OFFSET};
-use sidekick_utils::packet::{NUM_DISCOVERY_PKTS, DISCOVERY_FREQ_MS};
+use sidekick_utils::packet::{NUM_DISCOVERY_PKTS, DISCOVERY_FREQ_MS, CachePolicy};
 use sidekick_utils::socket::{SockAddr, Socket};
 use sidekick_utils::buffer::{UdpParser, Direction};
 use sidekick_utils::identifier::IdentifierFunc;
@@ -38,6 +38,9 @@ struct Cli {
     /// Whether to use the RIBLT quACK.
     #[arg(long)]
     riblt: bool,
+    /// Whether to use the optimistic cache policy (default is sidekick-reset).
+    #[arg(long)]
+    optimistic: bool,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -169,9 +172,14 @@ async fn main() -> Result<(), String> {
         "frequency_ms={:?} frequency_pkts={:?} target_addr={:?}",
         args.frequency_ms, args.frequency_pkts, args.target_addr
     );
+    let cache_policy = if args.optimistic {
+        CachePolicy::Optimistic
+    } else {
+        CachePolicy::SidekickReset
+    };
     let quacker = Arc::new(Mutex::new(UdpQuacker::new(
         args.threshold, args.frequency_pkts, args.frequency_ms,
-        args.target_addr, args.riblt)));
+        args.target_addr, args.riblt, cache_policy)));
     if args.frequency_ms > 0 {
         let quacker = quacker.clone();
         tokio::task::spawn(async move {

@@ -81,7 +81,9 @@ impl Sidekick {
                 self.num_retx += result.missing_indexes.len();
                 for &index in &result.missing_indexes {
                     let retx = cache.get(index).unwrap();
-                    cache.add(retx.clone()); // TODO: avoid clone
+                    cache.add(retx.clone()).unwrap(); // TODO: avoid clone
+                    // TODO: roll this in with evict. add() should never exceed
+                    // the capacity because we will just remove stuff after
                 }
                 cycles_stop(8);
                 cycles_start(9);
@@ -98,18 +100,22 @@ impl Sidekick {
             Err(e) => {
                 cycles_stop(7);
                 error!("Failed to decode quACK: {:?}", e);
-                if self.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
-                    let mut buf = [0u8; BUFFER_SIZE];
-                    match ResetPayload::build_packet(&mut buf, &packet.data) {
-                        Ok(len) => {
-                            info!("Sending reset packet");
-                            self.stream.send(&buf, len, packet.iface);
-                            cache.reset();
-                            self.last_reset = Instant::now();
-                        }
-                        Err(e) => error!("Failed to build reset packet: {}", e),
-                    }
+                self.reset_sidekick_connection(packet);
+            }
+        }
+    }
+
+    fn reset_sidekick_connection(&mut self, packet: Packet) {
+        if self.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
+            let mut buf = [0u8; BUFFER_SIZE];
+            match ResetPayload::build_packet(&mut buf, &packet.data) {
+                Ok(len) => {
+                    info!("Sending reset packet");
+                    self.stream.send(&buf, len, packet.iface);
+                    self.cache.as_mut().unwrap().reset();
+                    self.last_reset = Instant::now();
                 }
+                Err(e) => error!("Failed to build reset packet: {}", e),
             }
         }
     }
@@ -127,7 +133,9 @@ impl Sidekick {
     fn handle_base_packet_from_server(&mut self, packet: Packet) {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
         cycles_start(5);
-        self.cache.as_mut().unwrap().add(packet);
+        if let Err(packet) = self.cache.as_mut().unwrap().add(packet) {
+            self.reset_sidekick_connection(packet);
+        }
         cycles_stop(5);
         self.num_tx += 1;
     }
@@ -180,9 +188,9 @@ impl Sidekick {
             "expect one base connection");
         assert!(self.sidekick_connection.is_none() || self.sidekick_connection == Some(addr_key),
             "expect one sidekick connection");
-        info!("Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}. riblt={} offset={} threshold={}",
-              fmt_hex!(addr_key), fmt_hex!(base), self.sidekick_connection.is_some(),
-              disc.riblt, disc.id_offset, disc.threshold);
+        info!("{:?} Received discovery packet from client. Sidekick: {}, Base: {}. Update: {}. riblt={} offset={} threshold={} cache_policy={:?}",
+              Instant::now(), fmt_hex!(addr_key), fmt_hex!(base), self.sidekick_connection.is_some(),
+              disc.riblt, disc.id_offset, disc.threshold, disc.cache_policy);
 
         // Initialize the connection for this proxy if not already initialized
         if self.cache.is_none() {
@@ -191,6 +199,7 @@ impl Sidekick {
                 IdentifierFunc::FixedOffset(UDP_PAYLOAD_OFFSET + disc.id_offset as usize),
                 disc.threshold as usize,
                 self.cache_capacity,
+                disc.cache_policy,
             ));
         }
         self.sidekick_connection = Some(addr_key);

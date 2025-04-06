@@ -53,6 +53,15 @@ pub enum DiscoveryOp {
     TeardownAck = 4,
 }
 
+#[repr(u8)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
+pub enum CachePolicy {
+    /// Reset the sidekick connection when the cache is full
+    SidekickReset = 1,
+    /// Evict old packets when the cache is full and optimistically encode
+    Optimistic = 2,
+}
+
 /// The first packet on a sidekick connection.
 /// Should identify the corresponding base connection.
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,6 +80,8 @@ pub struct DiscoveryPayload {
     pub threshold: u8,
     /// Whether to use the RIBLT quACK.
     pub riblt: bool,
+    /// Policy when the cache is full.
+    pub cache_policy: CachePolicy,
 }
 
 impl DiscoveryPayload {
@@ -80,9 +91,10 @@ impl DiscoveryPayload {
         id_offset: u16,
         threshold: u8,
         riblt: bool,
+        cache_policy: CachePolicy,
     ) -> Self {
-        trace!("Creating new DiscoveryPayload for base connection {} id_offset {} threshold {}, {:?}",
-               fmt_hex!(base_connection_stoc), id_offset, threshold, op);
+        trace!("Creating new DiscoveryPayload for base connection {} id_offset {} threshold {} cache_policy {:?}, {:?}",
+               fmt_hex!(base_connection_stoc), id_offset, threshold, cache_policy, op);
         Self {
             magic: MAGIC,
             op,
@@ -90,6 +102,7 @@ impl DiscoveryPayload {
             id_offset,
             threshold,
             riblt,
+            cache_policy,
         }
     }
 
@@ -111,7 +124,7 @@ impl DiscoveryPayload {
             DiscoveryOp::Teardown => DiscoveryOp::TeardownAck,
             _ => panic!("Invalid operation for ack"),
         };
-        Self::new(self.base_connection_stoc, op, 0, 0, false)
+        Self::new(self.base_connection_stoc, op, 0, 0, false, CachePolicy::SidekickReset)
     }
 
     /// Given a DISCOVER DiscoveryPayload, the full packet it came in, and an output buffer,

@@ -10,6 +10,7 @@ use crate::{Quacker, BaseQuacker};
 use sidekick_utils::{fmt_hex, BUFFER_SIZE, ID_OFFSET, UDP_PAYLOAD_OFFSET};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::packet::{
+    CachePolicy,
     ResetPayload, DiscoveryPayload, RetransmitPayload, DiscoveryOp,
 };
 
@@ -27,14 +28,14 @@ pub struct UdpQuacker {
 impl UdpQuacker {
     pub fn new(
         threshold: usize, freq_pkts: u32, freq_ms: u64, addr: SocketAddr,
-        riblt: bool,
+        riblt: bool, cache_policy: CachePolicy,
     ) -> Self {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
         socket.set_reuse_address(true).unwrap();
         socket.bind(&SockAddr::from(
             "0.0.0.0:0".parse::<SocketAddr>().unwrap())).unwrap();
         Self {
-            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms, cache_policy),
             src_sock: Arc::new(socket.into()),
             dst_addr: addr,
             buf: [0u8; BUFFER_SIZE],
@@ -113,16 +114,17 @@ impl UdpQuacker {
         let id_offset: u16 = (ID_OFFSET - UDP_PAYLOAD_OFFSET).try_into().unwrap();
         let threshold: u8 = self.quacker.threshold().try_into().unwrap();
         let riblt = self.quacker.riblt();
+        let cache_policy = self.quacker.cache_policy();
         let bytes = bincode::serialize(
-            &DiscoveryPayload::new(base, op, id_offset, threshold, riblt)
+            &DiscoveryPayload::new(base, op, id_offset, threshold, riblt, cache_policy)
         ).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {
                 error!("Failed to send {}th discovery packet", i);
                 return;
             } else {
-                info!("Sent discovery for sidekick base connection {} id_offset={} threshold={} riblt={}",
-                      fmt_hex!(base), id_offset, threshold, riblt);
+                info!("Sent discovery for sidekick base connection {} id_offset={} threshold={} riblt={} cache_policy={:?}",
+                      fmt_hex!(base), id_offset, threshold, riblt, cache_policy);
             }
         }
     }

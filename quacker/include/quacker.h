@@ -9,7 +9,7 @@ extern "C" {
 
 typedef struct UdpQuacker UdpQuacker;
 
-UdpQuacker* udp_quacker_new(size_t threshold, uint32_t freq_pkts, uint64_t freq_ms, const char* addr, uint8_t riblt);
+UdpQuacker* udp_quacker_new(size_t threshold, uint32_t freq_pkts, uint64_t freq_ms, const char* addr, uint8_t riblt, uint8_t optimistic_cache_policy);
 void udp_quacker_handle_sidekick_payload(UdpQuacker* quacker, const uint8_t* udp_payload, size_t len);
 void udp_quacker_send_discovery(UdpQuacker* quacker, const uint8_t (*base)[ADDR_KEY_LEN], size_t n);
 uint8_t udp_quacker_base_stoc_is_none(const UdpQuacker* quacker);

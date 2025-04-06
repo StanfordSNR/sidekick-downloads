@@ -1,4 +1,5 @@
 use quack::{Quack, QuackWrapper, PowerSumQuackU32, IBLTQuackU32};
+use sidekick_utils::packet::CachePolicy;
 
 /// Basic interface for a quACK sender.
 ///
@@ -29,6 +30,7 @@ pub struct BaseQuacker {
     freq_pkts: u32,
     freq_ms: u64,
     riblt: bool,
+    cache_policy: CachePolicy,
 
     last_quack_count: u32,
     last_quack_time: u64,
@@ -37,12 +39,14 @@ pub struct BaseQuacker {
 impl BaseQuacker {
     pub fn new(
         riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
+        cache_policy: CachePolicy,
     ) -> Self {
         Self {
             quack: QuackWrapper::new(threshold, riblt),
             freq_pkts,
             freq_ms: freq_ms,
             riblt,
+            cache_policy,
             last_quack_count: 0,
             last_quack_time: 0,
         }
@@ -54,6 +58,10 @@ impl BaseQuacker {
 
     pub fn riblt(&self) -> bool {
         self.riblt
+    }
+
+    pub fn cache_policy(&self) -> CachePolicy {
+        self.cache_policy
     }
 }
 

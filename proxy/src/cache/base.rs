@@ -1,6 +1,9 @@
 use std::collections::{HashSet, VecDeque};
-use log::trace;
-use sidekick_utils::identifier::{Identifier, IdentifierFunc};
+use log::{trace, debug};
+use sidekick_utils::{
+    packet::CachePolicy,
+    identifier::{Identifier, IdentifierFunc},
+};
 use quack::{arithmetic::ModularArithmetic, Quack, PowerSumQuack, QuackWrapper};
 
 use crate::stream::Packet;
@@ -23,15 +26,17 @@ pub struct QuackCache {
     quack: QuackWrapper,
     last_decode_result: DecodeResult,
 
-    /// Cache capacity. Incoming packets >= this capacity will be dropped.
+    /// Cache capacity. Incoming packets >= this capacity will be handled
+    /// according to the cache policy.
     capacity: usize,
+    cache_policy: CachePolicy,
 }
 
 impl QuackCache {
     /// Initialize a new cache.
     pub fn new(
         riblt: bool, id_func: IdentifierFunc, quack_threshold: usize,
-        capacity: usize,
+        capacity: usize, cache_policy: CachePolicy,
     ) -> Self {
         Self {
             packet_cache: VecDeque::with_capacity(capacity),
@@ -39,6 +44,7 @@ impl QuackCache {
             id_func,
             quack: QuackWrapper::new(quack_threshold, riblt),
             last_decode_result: DecodeResult::default(),
+            cache_policy,
             capacity
         }
     }
@@ -56,13 +62,25 @@ impl QuackCache {
     }
 
     /// Add a packet to the cache.
-    pub fn add(&mut self, packet: Packet) {
+    pub fn add(&mut self, packet: Packet) -> Result<(), Packet> {
         if self.len() >= self.capacity {
             trace!("At capacity {}; dropping packet", self.capacity);
-            return;
+            match self.cache_policy {
+                CachePolicy::SidekickReset => {
+                    debug!("Reset at cache capcity={}", self.capacity);
+                    return Err(packet);
+                }
+                CachePolicy::Optimistic => {
+                    self.packet_cache.pop_front().unwrap();
+                    let id = self.id_cache.pop_front().unwrap();
+                    trace!("Evicting optimistically {}", id);
+                    self.quack.insert(id);
+                }
+            }
         }
         self.id_cache.push_back(self.id_func.to_id(&packet.data));
         self.packet_cache.push_back(packet);
+        Ok(())
     }
 
     /// Get the i-th packet (0-indexing) in the ordered cache view.
@@ -125,7 +143,8 @@ impl QuackCache {
         let mut last_index = 0;
         let proxy_quack = &mut self.quack;
         for &id in &self.id_cache {
-            if proxy_quack.last_value() == client_quack.last_value() {
+            if proxy_quack.last_value() == client_quack.last_value()
+                && proxy_quack.count() >= client_quack.count() {
                 break;
             }
             proxy_quack.insert(id);
@@ -223,7 +242,7 @@ mod tests {
 
     fn new_cache() -> QuackCache {
         QuackCache::new(false, IdentifierFunc::FirstByte, DEFAULT_THRESHOLD,
-                        DEFAULT_CAPACITY)
+                        DEFAULT_CAPACITY, CachePolicy::SidekickReset)
     }
 
     fn test_packet(data: &[u8]) -> Packet {
@@ -247,8 +266,8 @@ mod tests {
         let packet1 = test_packet(&[1, 2, 3]);
         let packet2 = test_packet(&[4, 5, 6]);
 
-        cache.add(packet1.clone());
-        cache.add(packet2.clone());
+        cache.add(packet1.clone()).unwrap();
+        cache.add(packet2.clone()).unwrap();
 
         let view = cache.view();
         assert_eq!(view.len(), 2);
@@ -262,8 +281,8 @@ mod tests {
         let packet1 = test_packet(&[1, 2, 3]);
         let packet2 = test_packet(&[4, 5, 6]);
 
-        cache.add(packet1.clone());
-        cache.add(packet2.clone());
+        cache.add(packet1.clone()).unwrap();
+        cache.add(packet2.clone()).unwrap();
 
         assert_eq!(cache.get(0), Some(&packet1));
         assert_eq!(cache.get(1), Some(&packet2));
@@ -273,9 +292,9 @@ mod tests {
     #[test]
     fn test_evict_success() {
         let mut cache = new_cache();
-        cache.add(test_packet(&[1]));
-        cache.add(test_packet(&[2]));
-        cache.add(test_packet(&[3]));
+        cache.add(test_packet(&[1])).unwrap();
+        cache.add(test_packet(&[2])).unwrap();
+        cache.add(test_packet(&[3])).unwrap();
 
         // quack packets
         let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
@@ -314,7 +333,7 @@ mod tests {
     #[test]
     fn test_reset() {
         let mut cache = new_cache();
-        cache.add(test_packet(&[1]));
+        cache.add(test_packet(&[1])).unwrap();
         cache.reset();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.view().len(), 0);
@@ -328,7 +347,7 @@ mod tests {
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _])).unwrap();
         }
 
         // all packets are acked
@@ -346,13 +365,13 @@ mod tests {
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _])).unwrap();
         }
 
         // add more packets - a strict prefix is acked
-        cache.add(test_packet(&[43]));
-        cache.add(test_packet(&[27]));
-        cache.add(test_packet(&[36]));
+        cache.add(test_packet(&[43])).unwrap();
+        cache.add(test_packet(&[27])).unwrap();
+        cache.add(test_packet(&[36])).unwrap();
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, num_packets);
         assert_eq!(res.missing_indexes, vec![]);
@@ -371,7 +390,7 @@ mod tests {
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _])).unwrap();
         }
 
         // remove "missing" packets from the quack
@@ -393,7 +412,7 @@ mod tests {
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _])).unwrap();
         }
 
         // remove "missing" packets from the quack
@@ -402,9 +421,9 @@ mod tests {
         q.remove(8);
 
         // add more packets to the suffix - detect missing packets still
-        cache.add(test_packet(&[43]));
-        cache.add(test_packet(&[27]));
-        cache.add(test_packet(&[36]));
+        cache.add(test_packet(&[43])).unwrap();
+        cache.add(test_packet(&[27])).unwrap();
+        cache.add(test_packet(&[36])).unwrap();
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, num_packets);
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
@@ -423,7 +442,7 @@ mod tests {
         let mut cache = new_cache();
         for i in 0..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _])).unwrap();
         }
 
         // remove "missing" packets from the quack
@@ -446,18 +465,51 @@ mod tests {
     }
 
     #[test]
-    fn test_add_capacity() {
-        let mut cache = new_cache();
+    fn test_add_capacity_reset() {
+        let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
+            DEFAULT_THRESHOLD, DEFAULT_CAPACITY, CachePolicy::SidekickReset);
         for i in 0..DEFAULT_CAPACITY as u8 {
-            cache.add(test_packet(&[i]));
+            assert!(cache.add(test_packet(&[i])).is_ok());
         }
 
         assert_eq!(cache.len(), DEFAULT_CAPACITY);
         assert_eq!(cache.view().len(), DEFAULT_CAPACITY);
 
-        // Adding the extra packet should have no impact
-        cache.add(test_packet(&[DEFAULT_CAPACITY as _]));
-        assert_eq!(cache.len(), DEFAULT_CAPACITY);
-        assert_eq!(cache.view().len(), DEFAULT_CAPACITY);
+        // Adding the extra packet should error to cause a reset
+        assert!(cache.add(test_packet(&[DEFAULT_CAPACITY as _])).is_err());
     }
+
+    #[test]
+    fn test_add_capacity_optimistic() {
+        let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
+            DEFAULT_THRESHOLD, 2, CachePolicy::Optimistic);
+
+        let packet1 = test_packet(&[1, 2, 3]);
+        assert!(cache.add(packet1.clone()).is_ok());
+        assert!(cache.add(packet1.clone()).is_ok());
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.get(0), Some(&packet1));
+        assert_eq!(cache.get(1), Some(&packet1));
+
+        // Adding the extra packets should be successful
+        let packet2 = test_packet(&[4, 5, 6]);
+        println!("check 1");
+        assert!(cache.add(packet2.clone()).is_ok());
+        println!("check 2");
+        assert!(cache.add(packet2.clone()).is_ok());
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.get(0), Some(&packet2));
+        assert_eq!(cache.get(1), Some(&packet2));
+
+        // The evicted packets should be encoded in the quACK
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
+        q.insert(1);
+        q.insert(1);
+        q.insert(4);
+        q.insert(4);
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, 2);
+        assert_eq!(res.missing_indexes, vec![]);
+    }
+
 }
