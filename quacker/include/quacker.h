@@ -22,7 +22,7 @@ void udp_quacker_reset(UdpQuacker* quacker);
 uint8_t udp_quacker_insert(UdpQuacker* quacker, uint64_t time_ms, uint32_t id);
 uint8_t udp_quacker_update_time(UdpQuacker* quacker, uint64_t time_ms);
 void udp_quacker_send_quack(UdpQuacker* quacker, uint64_t time_ms);
-void udp_quacker_send_quack_with_hint(UdpQuacker* quacker, uint64_t time_ms, size_t num_symbols);
+void udp_quacker_send_quack_with_hint(UdpQuacker* quacker, uint64_t time_ms, size_t num_missing);
 void udp_quacker_free(UdpQuacker* quacker);
 
 #ifdef __cplusplus

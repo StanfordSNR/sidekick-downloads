@@ -147,9 +147,7 @@ async fn listen_incoming(
         if num_missing > 0 && !sent_quack {
             if let Some((ref quacker, ref config)) = quacker {
                 let mut quacker = quacker.lock().await;
-                if config.hint && config.riblt {
-                    quacker.send_quack_with_hint(current_time, num_missing * 3);
-                } else if config.hint && !config.riblt {
+                if config.hint {
                     quacker.send_quack_with_hint(current_time, num_missing);
                 } else {
                     quacker.send_quack(current_time);

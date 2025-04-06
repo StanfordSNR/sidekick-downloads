@@ -124,10 +124,10 @@ pub extern "C" fn udp_quacker_send_quack(quacker: *mut UdpQuacker, time_ms: u64)
 }
 
 #[no_mangle]
-pub extern "C" fn udp_quacker_send_quack_with_hint(quacker: *mut UdpQuacker, time_ms: u64, num_symbols: usize) {
+pub extern "C" fn udp_quacker_send_quack_with_hint(quacker: *mut UdpQuacker, time_ms: u64, num_missing: usize) {
     debug_assert!(!quacker.is_null());
     let quacker = unsafe { &mut *quacker };
-    quacker.send_quack_with_hint(time_ms, num_symbols);
+    quacker.send_quack_with_hint(time_ms, num_missing);
 }
 
 #[no_mangle]
