@@ -1,7 +1,7 @@
 """
 Define the data needed for an experiment.
 """
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 class Treatment:
@@ -25,48 +25,6 @@ class Treatment:
     @property
     def protocol_options(self) -> List[str]:
         return self._protocol_options
-
-
-class TCPTreatment(Treatment):
-    def __init__(self, label: str, cca: str='cubic', pep: bool=False):
-        protocol_options = ['-cca', cca]
-        if pep:
-            protocol_options.append('--pep')
-        super().__init__(
-            protocol='tcp', label=label, protocol_options=protocol_options)
-
-
-class QUICTreatment(Treatment):
-    def __init__(self, label: str, cca: str='cubic'):
-        super().__init__(
-            protocol='quic', label=label,
-            protocol_options=['-cca', cca],
-        )
-
-
-class CloudflareQUICTreatment(Treatment):
-    def __init__(self, label: str, cca: str='cubic'):
-        super().__init__(
-            protocol='quiche', label=label,
-            protocol_options=['-cca', cca],
-        )
-
-
-class PicoQUICTreatment(Treatment):
-    def __init__(self, label: str, cca: str='cubic'):
-        super().__init__(
-            protocol='picoquic', label=label,
-            protocol_options=['-cca', cca],
-        )
-
-
-class TCPIperf3Treatment(Treatment):
-    def __init__(self, label: str, cca: str='cubic', pep: bool=False):
-        protocol_options = ['-cca', cca]
-        if pep:
-            protocol_options.append('--pep')
-        super().__init__(
-            protocol='iperf3', label=label, protocol_options=protocol_options)
 
 
 class NetworkSetting:
@@ -148,81 +106,14 @@ class NetworkSetting:
         return value
 
 
-class DirectNetworkSetting(NetworkSetting):
-    def __init__(self, delay: Optional[int]=None, loss: Optional[str]=None,
-                 bw: Optional[int]=None, qdisc: Optional[str]=None,
-                 jitter: Optional[int]=None):
-        super().__init__(delay1=delay, loss1=loss, bw1=bw, qdisc=qdisc,
-                         jitter1=jitter)
-        for key in ['delay2', 'loss2', 'bw2', 'jitter2']:
-            del self.settings[key]
-        self.settings['topology'] = 'direct'
-        self.labels.append('topology')
-        self.labels.sort()
-
-    def mirror(self):
-        raise NotImplementedError('cannot mirror a direct network')
-
-
 class Experiment:
     def __init__(self,
-                 num_trials: int,
                  treatments: List[Treatment],
-                 network_settings: List[NetworkSetting],
-                 data_sizes: List[int],
-                 timeout: Optional[int]=None,
-                 network_losses: List[str]=[],
-                 network_delays: List[int]=[],
-                 network_bws: List[int]=[],
-                 cartesian: bool=True):
-        """Parameters:
-        - network_settings: List of network settings to test in the experiment.
-          Typically used if varying data size as the test parameter. If empty,
-          uses `network_losses`, `network_delays`, and `network_bws` to generate
-          the space of (direct) network settings to test and uses data sizes
-          that are 10x the bottleneck bandwidth for the network setting.
-        - data_sizes: List of data sizes to test in the experiment. Ignored if
-          `network_settings` is an empty list.
-        - network_losses: Used if `network_settings` is an empty list to
-          generate the space of (direct) network settings to test. Sorted order.
-        - network_delays: Used if `network_settings` is an empty list to
-          generate the space of (direct) network settings to test. Sorted order.
-        - network_bws: Used if `network_settings` is an empty list to
-          generate the space of (direct) network settings to test. Sorted order.
-        - cartesian: If True, takes the Cartesian product of network settings
-          and data sizes in the experiment. If False, zips the network settings
-          and data sizes one-to-one.
-        """
-        self.num_trials = num_trials
+                 network_settings: List[NetworkSetting]):
         self.treatments = [x.label() for x in treatments]
-
-        if len(network_settings) > 0:
-            self._network_settings = { x.label(): x for x in network_settings }
-            self.network_settings = [x.label() for x in network_settings]
-            self.data_sizes = data_sizes
-            self.network_losses = []
-            self.network_delays = []
-            self.network_bws = []
-        else:
-            self._network_settings = {}
-            self.network_settings = []
-            self.data_sizes = []
-            self.network_losses = network_losses
-            self.network_delays = network_delays
-            self.network_bws = network_bws
-            data_size = lambda bw: int(10*1000000*bw/8)  # 10x the bottleneck bandwidth
-            for loss in network_losses:
-                for delay in network_delays:
-                    for bw in network_bws:
-                        ns = DirectNetworkSetting(loss=loss, delay=delay, bw=bw)
-                        ns_label = ns.label()
-                        self._network_settings[ns_label] = ns
-                        self.network_settings.append(ns_label)
-                        self.data_sizes.append(data_size(bw))
-
+        self.network_settings = [x.label() for x in network_settings]
         self._treatments = { x.label(): x for x in treatments }
-        self.timeout = timeout
-        self.cartesian = cartesian
+        self._network_settings = { x.label(): x for x in network_settings }
 
     def get_treatment(self, label: str) -> Treatment:
         return self._treatments[label]
