@@ -8,12 +8,12 @@ use crate::{Quacker, UdpQuacker};
 
 #[no_mangle]
 pub extern "C" fn udp_quacker_new(
-    threshold: usize, freq_pkts: u32, freq_ms: u64, addr: *const c_char, riblt: bool,
+    threshold: usize, freq_pkts: u32, freq_ms: u64, addr: *const c_char, riblt: u8,
 ) -> *mut UdpQuacker {
     debug_assert!(!addr.is_null());
     let addr = unsafe { CStr::from_ptr(addr) };
     let addr = addr.to_str().unwrap().parse::<SocketAddr>().unwrap();
-    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr, riblt);
+    let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr, riblt != 0);
     Box::into_raw(Box::new(quacker))
 }
 
@@ -40,17 +40,17 @@ pub extern "C" fn udp_quacker_send_discovery(
 }
 
 #[no_mangle]
-pub extern "C" fn udp_quacker_base_stoc_is_none(quacker: *const UdpQuacker) -> bool {
+pub extern "C" fn udp_quacker_base_stoc_is_none(quacker: *const UdpQuacker) -> u8 {
     debug_assert!(!quacker.is_null());
     let quacker = unsafe { &*quacker };
-    quacker.base_stoc.is_none()
+    quacker.base_stoc.is_none() as u8
 }
 
 #[no_mangle]
-pub extern "C" fn udp_quacker_awaiting_disc_ack(quacker: *const UdpQuacker) -> bool {
+pub extern "C" fn udp_quacker_awaiting_disc_ack(quacker: *const UdpQuacker) -> u8 {
     debug_assert!(!quacker.is_null());
     let quacker = unsafe { &*quacker };
-    quacker.awaiting_disc_ack
+    quacker.awaiting_disc_ack as u8
 }
 
 fn to_sockaddr_in(addr: SocketAddr) -> sockaddr_in {
@@ -103,17 +103,17 @@ pub extern "C" fn udp_quacker_reset(quacker: *mut UdpQuacker) {
 }
 
 #[no_mangle]
-pub extern "C" fn udp_quacker_insert(quacker: *mut UdpQuacker, time_ms: u64, id: u32) -> bool {
+pub extern "C" fn udp_quacker_insert(quacker: *mut UdpQuacker, time_ms: u64, id: u32) -> u8 {
     debug_assert!(!quacker.is_null());
     let quacker = unsafe { &mut *quacker };
-    quacker.insert(time_ms, id)
+    quacker.insert(time_ms, id) as u8
 }
 
 #[no_mangle]
-pub extern "C" fn udp_quacker_update_time(quacker: *mut UdpQuacker, time_ms: u64) -> bool {
+pub extern "C" fn udp_quacker_update_time(quacker: *mut UdpQuacker, time_ms: u64) -> u8 {
     debug_assert!(!quacker.is_null());
     let quacker = unsafe { &mut *quacker };
-    quacker.update_time(time_ms)
+    quacker.update_time(time_ms) as u8
 }
 
 #[no_mangle]
