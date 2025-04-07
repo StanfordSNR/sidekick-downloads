@@ -47,6 +47,9 @@ struct Cli {
     quacker: bool,
     #[command(flatten)]
     quacker_config: Option<QuackerConfig>,
+    /// Whether to send quACKs when sending a NACK.
+    #[arg(long)]
+    send_on_nack: bool,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -84,6 +87,7 @@ async fn listen_incoming(
     should_loop: bool, quacker: Option<(Arc<Mutex<UdpQuacker>>, QuackerConfig)>,
     tx: mpsc::Sender<(Packet, SocketAddr)>, sock: Arc<UdpSocket>,
     frequency: Duration, nack_frequency: Duration, nack_delay: Option<Duration>,
+    send_on_nack: bool,
 ) -> io::Result<()> {
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
@@ -116,7 +120,7 @@ async fn listen_incoming(
         }
 
         let current_time = current_time_ms();
-        let mut sent_quack = false;
+        let mut should_quack = false;
         if let Some((ref quacker, _)) = quacker {
             let mut quacker = quacker.lock().await;
 
@@ -139,7 +143,7 @@ async fn listen_incoming(
             else
             {
                 debug!("insert {}", data.identifier);
-                sent_quack = quacker.insert(current_time, data.identifier);
+                should_quack = quacker.insert(current_time, data.identifier);
             }
         }
 
@@ -148,15 +152,16 @@ async fn listen_incoming(
         assert_eq!(*from_addr, addr);
 
         // Retransmit data if it's a NACK.
-        if data.is_nack {
+        let now = Instant::now();
+        if data.is_nack
+        {
             debug!("retransmit data {}", data.seqno);
             let retx = Packet::new_data(data.seqno);
             tx.send((retx, addr.clone())).await.unwrap();
-            continue;
         }
-
         // Otherwise it's a data packet. Timeout packets end the connection.
-        if data.seqno == TIMEOUT_SEQNO {
+        else if data.seqno == TIMEOUT_SEQNO
+        {
             stats.print_statistics(None);
             if should_loop {
                 send_task.as_mut().unwrap().abort();
@@ -167,15 +172,15 @@ async fn listen_incoming(
                 break;
             }
         }
-
         // Add the data packet to the dejitter buffer and try to play data.
-        let now = Instant::now();
-        if buffer.recv_seqno(data.seqno, now) {
-            stats.add_spurious();
-        }
-        debug!("receive data {}", data.seqno);
-        while let Some(time_recv) = buffer.pop_seqno() {
-            stats.add_value(now - time_recv);
+        else {
+            if buffer.recv_seqno(data.seqno, now) {
+                stats.add_spurious();
+            }
+            debug!("receive data {}", data.seqno);
+            while let Some(time_recv) = buffer.pop_seqno() {
+                stats.add_value(now - time_recv);
+            }
         }
 
         // Send NACKs for missing data.
@@ -187,7 +192,7 @@ async fn listen_incoming(
         }
 
         // Explicitly send a quACK when missing data.
-        if num_missing > 0 && !sent_quack {
+        if should_quack || (send_on_nack && num_missing > 0) {
             if let Some((ref quacker, ref config)) = quacker {
                 let mut quacker = quacker.lock().await;
                 if config.hint {
@@ -305,6 +310,7 @@ async fn main() -> io::Result<()> {
         Mode::Server => {
             listen_incoming(
                 true, quacker, tx, sock, frequency, nack_frequency, nack_delay,
+                args.send_on_nack,
             ).await.unwrap();
         }
         Mode::Client { timeout, addr } => {
@@ -315,7 +321,7 @@ async fn main() -> io::Result<()> {
                 task::spawn(async move {
                     listen_incoming(
                         false, quacker, tx, sock, frequency, nack_frequency,
-                        nack_delay,
+                        nack_delay, args.send_on_nack,
                     ).await.unwrap()
                 })
             };
