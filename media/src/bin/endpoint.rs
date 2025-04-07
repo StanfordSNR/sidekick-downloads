@@ -196,7 +196,8 @@ async fn listen_incoming(
             if let Some((ref quacker, ref config)) = quacker {
                 let mut quacker = quacker.lock().await;
                 if config.hint {
-                    quacker.send_quack_with_hint(current_time, num_missing);
+                    // Add a small buffer of 4 for missing NACKs
+                    quacker.send_quack_with_hint(current_time, num_missing + 4);
                 } else {
                     quacker.send_quack(current_time);
                 }
