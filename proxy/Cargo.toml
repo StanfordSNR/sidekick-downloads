@@ -22,6 +22,7 @@ sidekick-utils = { path = "../sidekick_utils/" }
 [features]
 default = []
 cycles = []
+cache_statistics = []
 
 [[bin]]
 name = "bridge"

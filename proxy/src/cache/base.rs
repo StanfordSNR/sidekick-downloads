@@ -1,4 +1,6 @@
 use std::collections::{HashSet, VecDeque};
+#[cfg(feature = "cache_statistics")]
+use std::time::Instant;
 use log::{trace, debug};
 use sidekick_utils::{
     packet::CachePolicy,
@@ -10,12 +12,19 @@ use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
 use crate::cycles::*;
 
+#[cfg(feature = "cache_statistics")]
+fn cache_log(event: &str, nbytes: usize) {
+    debug!("cache_statistics {:?} {} {}", Instant::now(), event, nbytes);
+}
 
 /// A cache of packets that is able to decode quACKs.
 ///
 /// The quACKs represent all packets that have ever been added to the cache,
 /// including those that have already been evicted.
 pub struct QuackCache {
+    /// The number of bytes in the packet cache.
+    #[cfg(feature = "cache_statistics")]
+    pub(crate) nbytes: usize,
     /// The same length as `identifiers`.
     packet_cache: VecDeque<Packet>,
     /// The same length as `packets`.
@@ -39,6 +48,8 @@ impl QuackCache {
         capacity: usize, cache_policy: CachePolicy,
     ) -> Self {
         Self {
+            #[cfg(feature = "cache_statistics")]
+            nbytes: 0,
             packet_cache: VecDeque::with_capacity(capacity),
             id_cache: VecDeque::with_capacity(capacity),
             id_func,
@@ -71,13 +82,28 @@ impl QuackCache {
                     return Err(packet);
                 }
                 CachePolicy::Optimistic => {
-                    self.packet_cache.pop_front().unwrap();
+                    #[cfg(feature = "cache_statistics")]
+                    {
+                        let packet = self.packet_cache.pop_front().unwrap();
+                        self.nbytes -= packet.data.len();
+                    }
+                    #[cfg(not(feature = "cache_statistics"))]
+                    {
+                        self.packet_cache.pop_front().unwrap();
+                    }
                     let id = self.id_cache.pop_front().unwrap();
                     trace!("Evicting optimistically {}", id);
                     self.quack.insert(id);
                 }
             }
         }
+
+        #[cfg(feature = "cache_statistics")]
+        {
+            self.nbytes += packet.data.len();
+            cache_log("add", self.nbytes);
+        }
+
         self.id_cache.push_back(self.id_func.to_id(&packet.data));
         self.packet_cache.push_back(packet);
         Ok(())
@@ -118,6 +144,14 @@ impl QuackCache {
                 self.quack.remove(ids[index]);
             }
         }
+
+        // Update the number of bytes in the cache
+        #[cfg(feature = "cache_statistics")]
+        {
+            self.nbytes =
+                self.packet_cache.iter().map(|packet| packet.data.len()).sum();
+            cache_log("evict", self.nbytes);
+        }
         n
     }
 
@@ -125,6 +159,11 @@ impl QuackCache {
     pub fn reset(&mut self) {
         self.id_cache.clear();
         self.packet_cache.clear();
+        #[cfg(feature = "cache_statistics")]
+        {
+            self.nbytes = 0;
+            cache_log("reset", self.nbytes);
+        }
     }
 
     /// The quACK is the cumulative representation of all packets that have ever
