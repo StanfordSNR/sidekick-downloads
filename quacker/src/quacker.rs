@@ -16,11 +16,11 @@ pub trait Quacker {
     fn get_quack(&self) -> &QuackWrapper;
     /// Reset the quACK.
     fn reset(&mut self);
-    /// Insert an identifier into the quACK. Return whether we quack.
+    /// Insert an identifier into the quACK. Return whether we should quack.
     fn insert(&mut self, time_ms: u64, id: u32) -> bool;
-    /// Update the current time. Return whether we quACK.
+    /// Update the current time. Return whether we should quACK.
     fn update_time(&mut self, time_ms: u64) -> bool;
-    /// Manually quack.
+    /// Send a quack.
     fn send_quack(&mut self, time_ms: u64);
 }
 
@@ -97,9 +97,6 @@ impl Quacker for BaseQuacker {
         let should_quack = count == 1 ||
             (self.freq_pkts > 0 && count >= self.last_quack_count + self.freq_pkts) ||
             (self.freq_ms > 0 && time_ms >= self.last_quack_time + self.freq_ms);
-        if should_quack {
-            self.send_quack(time_ms);
-        }
         should_quack
     }
 
@@ -107,9 +104,6 @@ impl Quacker for BaseQuacker {
         let count = self.quack.count();
         let should_quack = count > 0 &&
             (self.freq_ms > 0 && time_ms >= self.last_quack_time + self.freq_ms);
-        if should_quack {
-            self.send_quack(time_ms);
-        }
         should_quack
     }
 
@@ -126,19 +120,25 @@ mod tests {
     const THRESHOLD: usize = 10;
     const IDENTIFIER: u32 = 100;
 
+    fn new_base_quacker(freq_pkts: u32, freq_ms: u64) -> BaseQuacker {
+        BaseQuacker::new(false, THRESHOLD, freq_pkts, freq_ms, CachePolicy::SidekickReset)
+    }
+
     #[test]
     fn test_new_quacker() {
         let freq_pkts = 8;
         let freq_ms = 123;
-        let q = BaseQuacker::new(THRESHOLD, freq_pkts, freq_ms);
+        let q = new_base_quacker(freq_pkts, freq_ms);
         assert_eq!(q.freq_pkts(), freq_pkts);
         assert_eq!(q.freq_ms(), freq_ms);
     }
 
     #[test]
     fn test_quack_on_first_insert() {
-        let mut q = BaseQuacker::new(THRESHOLD, 0, 0);
+        let mut q = new_base_quacker(0, 0);
         assert!(q.insert(1, IDENTIFIER));
+        q.send_quack(1);
+        q.send_quack(1);
         assert!(!q.insert(2, IDENTIFIER));
         assert!(!q.insert(3, IDENTIFIER));
         assert!(!q.insert(4, IDENTIFIER));
@@ -147,80 +147,102 @@ mod tests {
 
     #[test]
     fn test_quack_every_packet() {
-        let mut q = BaseQuacker::new(THRESHOLD, 1, 0);
+        let mut q = new_base_quacker(1, 0);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
     }
 
     #[test]
     fn test_quack_every_n_packets() {
-        let mut q = BaseQuacker::new(THRESHOLD, 2, 0);
+        let mut q = new_base_quacker(2, 0);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(!q.insert(0, IDENTIFIER));
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(!q.insert(0, IDENTIFIER));
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
     }
 
     #[test]
     fn test_quack_every_n_ms_on_insert() {
-        let mut q = BaseQuacker::new(THRESHOLD, 0, 2);
+        let mut q = new_base_quacker(0, 2);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(!q.insert(0, IDENTIFIER));
         assert!(!q.insert(1, IDENTIFIER));
         assert!(q.insert(2, IDENTIFIER));
+        q.send_quack(2);
         assert!(q.insert(4, IDENTIFIER));
+        q.send_quack(4);
         assert!(!q.insert(5, IDENTIFIER));
         assert!(q.insert(10, IDENTIFIER));
+        q.send_quack(10);
         assert!(!q.insert(11, IDENTIFIER));
     }
 
     #[test]
     fn test_quack_every_n_ms_without_insert() {
-        let mut q = BaseQuacker::new(THRESHOLD, 0, 5);
+        let mut q = new_base_quacker(0, 5);
         assert!(!q.update_time(10));
         assert!(!q.update_time(20));
         assert!(q.insert(30, IDENTIFIER));
+        q.send_quack(30);
         assert!(!q.update_time(31));
         assert!(!q.update_time(34));
         assert!(q.update_time(35));
+        q.send_quack(35);
         assert!(!q.update_time(35));
         assert!(!q.update_time(39));
         assert!(q.update_time(100));
+        q.send_quack(100);
     }
 
     #[test]
     fn test_quack_with_both_frequencies() {
-        let mut q = BaseQuacker::new(THRESHOLD, 5, 10);
+        let mut q = new_base_quacker(5, 10);
         assert!(q.insert(0, IDENTIFIER));
+        q.send_quack(0);
         assert!(q.insert(10, IDENTIFIER));
+        q.send_quack(10);
         assert!(q.insert(25, IDENTIFIER));
+        q.send_quack(25);
         assert!(!q.insert(30, IDENTIFIER));
         assert!(!q.insert(31, IDENTIFIER));
         assert!(!q.insert(32, IDENTIFIER));
         assert!(!q.insert(33, IDENTIFIER));
         assert!(q.insert(34, IDENTIFIER));
+        q.send_quack(34);
         assert!(!q.insert(40, IDENTIFIER));
     }
 
     #[test]
     fn test_quack_reset() {
-        let mut q = BaseQuacker::new(THRESHOLD, 0, 0);
+        let mut q = new_base_quacker(0, 0);
         assert!(q.insert(1, IDENTIFIER));
+        q.send_quack(1);
         assert!(!q.insert(2, IDENTIFIER));
         assert!(!q.insert(3, IDENTIFIER));
         q.reset();
         assert!(q.insert(4, IDENTIFIER));
+        q.send_quack(4);
         assert!(!q.insert(5, IDENTIFIER));
     }
 
     #[test]
     fn test_quack_manual_send() {
-        let mut q = BaseQuacker::new(THRESHOLD, 0, 0);
+        let mut q = new_base_quacker(0, 0);
         assert!(q.insert(1, IDENTIFIER));
+        q.send_quack(1);
         assert!(!q.insert(2, IDENTIFIER));
         assert!(!q.insert(3, IDENTIFIER));
         q.send_quack(4);

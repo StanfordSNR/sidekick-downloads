@@ -36,19 +36,11 @@ impl Quacker for PrintQuacker {
     }
 
     fn insert(&mut self, time_ms: u64, id: u32) -> bool {
-        let should_quack = self.quacker.insert(time_ms, id);
-        if should_quack {
-            self.send_quack(time_ms);
-        }
-        should_quack
+        self.quacker.insert(time_ms, id)
     }
 
     fn update_time(&mut self, time_ms: u64) -> bool {
-        let should_quack = self.quacker.update_time(time_ms);
-        if should_quack {
-            self.send_quack(time_ms);
-        }
-        should_quack
+        self.quacker.update_time(time_ms)
     }
 
     fn send_quack(&mut self, time_ms: u64) {
