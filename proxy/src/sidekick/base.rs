@@ -77,15 +77,6 @@ impl Sidekick {
                     quack.count(), cache.len(),
                     result.last_index, result.missing_indexes,
                     fmt_hex!(self.sidekick_connection.unwrap()));
-                cycles_start(8);
-                self.num_retx += result.missing_indexes.len();
-                for &index in &result.missing_indexes {
-                    let retx = cache.get(index).unwrap();
-                    cache.add(retx.clone()).unwrap(); // TODO: avoid clone
-                    // TODO: roll this in with evict. add() should never exceed
-                    // the capacity because we will just remove stuff after
-                }
-                cycles_stop(8);
                 cycles_start(9);
                 for &index in &result.missing_indexes {
                     let retx = cache.get(index).unwrap();
@@ -94,8 +85,9 @@ impl Sidekick {
                 }
                 cycles_stop(9);
                 cycles_start(10);
-                cache.evict();
+                cache.evict(true);
                 cycles_stop(10);
+                self.num_retx += result.missing_indexes.len();
             }
             Err(e) => {
                 cycles_stop(7);

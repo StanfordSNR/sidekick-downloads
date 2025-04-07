@@ -24,7 +24,7 @@ pub struct QuackCache {
     id_func: IdentifierFunc,
 
     quack: QuackWrapper,
-    last_decode_result: DecodeResult,
+    last_decode_result: Option<DecodeResult>,
 
     /// Cache capacity. Incoming packets >= this capacity will be handled
     /// according to the cache policy.
@@ -43,7 +43,7 @@ impl QuackCache {
             id_cache: VecDeque::with_capacity(capacity),
             id_func,
             quack: QuackWrapper::new(quack_threshold, riblt),
-            last_decode_result: DecodeResult::default(),
+            last_decode_result: None,
             cache_policy,
             capacity
         }
@@ -93,24 +93,31 @@ impl QuackCache {
     /// The evicted packets have all been decided to be either received or
     /// lost based on the decode results of the last quACK. Eviction makes these
     /// decisions final.
+    /// The `retransmit_missing` option will put the "missing" indexes at the
+    /// end of the cache, as if they were just retransmitted.
     ///
     /// Returns the number of evicted packets.
-    pub fn evict(&mut self) -> usize {
-        let n = self.last_decode_result.last_index;
-
-        // Make missing packet decisions final
-        let mut missing_indexes = vec![];
-        for &index in &self.last_decode_result.missing_indexes {
-            if index < n {
-                self.quack.remove(self.id_cache[index]);
-            } else {
-                missing_indexes.push(index - n);
-            }
-        }
+    pub fn evict(&mut self, retransmit_missing: bool) -> usize {
+        let last_decode_result = self.last_decode_result.take().unwrap();
+        let n = last_decode_result.last_index;
 
         // Make received packet decisions final and evict from caches
-        self.id_cache.drain(0..n);
-        self.packet_cache.drain(0..n);
+        let ids = self.id_cache.drain(0..n).collect::<Vec<_>>();
+        let packets = self.packet_cache.drain(0..n).collect::<Vec<_>>();
+
+        // Make missing packet decisions final
+        if retransmit_missing {
+            for &index in &last_decode_result.missing_indexes {
+                debug_assert!(index < n);
+                self.quack.remove(ids[index]);
+                self.add(packets[index].to_owned()).unwrap();
+            }
+        } else {
+            for &index in &last_decode_result.missing_indexes {
+                debug_assert!(index < n);
+                self.quack.remove(ids[index]);
+            }
+        }
         n
     }
 
@@ -159,11 +166,11 @@ impl QuackCache {
 
         // Check common case when all packets are quACKed.
         if proxy_quack.count() == client_quack.count() {
-            self.last_decode_result = DecodeResult {
+            self.last_decode_result = Some(DecodeResult {
                 last_index,
                 missing_indexes: vec![],
-            };
-            return Ok(self.last_decode_result.clone());
+            });
+            return Ok(self.last_decode_result.clone().unwrap());
         }
 
         // Check that we have sent more packets than were received.
@@ -228,8 +235,8 @@ impl QuackCache {
             }
         };
         cycles_stop(13);
-        self.last_decode_result = DecodeResult { last_index, missing_indexes };
-        Ok(self.last_decode_result.clone())
+        self.last_decode_result = Some(DecodeResult { last_index, missing_indexes });
+        Ok(self.last_decode_result.clone().unwrap())
     }
 }
 
@@ -305,7 +312,7 @@ mod tests {
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 2);
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 2);
+        assert_eq!(cache.evict(true), 2);
         assert_eq!(cache.len(), 1);
         assert_eq!(cache.view().len(), 1);
         assert_eq!(cache.get(0), Some(&test_packet(&[3])));
@@ -314,14 +321,15 @@ mod tests {
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 0);
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 0);
+        assert_eq!(cache.evict(true), 0);
+        assert_eq!(cache.len(), 1);  // no change
 
         // evict full
         q.insert(3);
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 1);
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 1);
+        assert_eq!(cache.evict(true), 1);
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.view().len(), 0);
         assert_eq!(cache.get(0), None);
@@ -354,7 +362,8 @@ mod tests {
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, num_packets);
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), num_packets);
+        assert_eq!(cache.evict(true), num_packets);
+        assert_eq!(cache.len(), 0);
     }
 
     #[test]
@@ -377,7 +386,8 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![]);
 
         // evict some packets
-        assert_eq!(cache.evict(), num_packets);
+        assert_eq!(cache.evict(true), num_packets);
+        assert_eq!(cache.len(), 3);  // 3 new
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 0);
         assert_eq!(res.missing_indexes, vec![]);
@@ -402,7 +412,8 @@ mod tests {
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, num_packets);
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
-        assert_eq!(cache.evict(), num_packets);
+        assert_eq!(cache.evict(true), num_packets);
+        assert_eq!(cache.len(), 3);
     }
 
     #[test]
@@ -429,7 +440,8 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
 
         // evict some packets
-        assert_eq!(cache.evict(), num_packets);
+        assert_eq!(cache.evict(true), num_packets);
+        assert_eq!(cache.len(), 6);  // 3 new, 3 retransmitted
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 0);
         assert_eq!(res.missing_indexes, vec![]);
