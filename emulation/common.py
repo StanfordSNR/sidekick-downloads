@@ -37,6 +37,8 @@ class QuackerConfig:
     riblt: bool
     # Whether to send quACKs with a hint for the number of missing symbols
     hint: bool
+    # Whether to send quACKs when sending a NACK
+    send_on_nack: bool
     # The threshold number of missing packets the quACK can find.
     threshold: int
     # The quacker quacks on the first insertion, AND if <freq_pkts> have been
@@ -49,8 +51,8 @@ class QuackerConfig:
     quackee_port: int
 
     def from_args(args):
-        return QuackerConfig(args.riblt, args.quack_hint, args.threshold,
-                             args.freq_ms, args.freq_pkts, args.quackee_port)
+        return QuackerConfig(args.riblt, args.quack_hint, args.quack_nack,
+            args.threshold, args.freq_ms, args.freq_pkts, args.quackee_port)
 
 def TRACE(val):
     # LOG(val, 'TRACE')

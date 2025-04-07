@@ -168,6 +168,8 @@ class MediaBenchmark:
                 cmd += '--riblt '
             if q.hint:
                 cmd += '--hint '
+            if q.send_on_nack:
+                cmd += '--send-on-nack '
 
         # Add client parameters
         cmd += f'client --timeout {self.duration} '

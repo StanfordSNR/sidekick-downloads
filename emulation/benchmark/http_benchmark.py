@@ -373,6 +373,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
         if self.quacker is not None:
             q = self.quacker
             assert not q.hint  # not implemented
+            assert not q.send_on_nack  # picoquic doesn't send nacks
             target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
             cmd += f'{q.threshold} {q.freq_pkts} {q.freq_ms} {target_addr} '
             cmd += f'{int(q.riblt)} {int(q.hint)} '
