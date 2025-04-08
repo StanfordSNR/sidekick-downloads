@@ -170,9 +170,50 @@ impl QuackCache {
         self.id_cache.clear();
         self.packet_cache.clear();
         self.nbytes = 0;
+        self.quack = QuackWrapper::new(self.quack.threshold(), self.quack.riblt());
         #[cfg(feature = "cache_statistics")]
         {
             self.cache_log("reset");
+        }
+    }
+
+    fn check_valid_quack(&self, client_quack: &QuackWrapper) -> Result<usize, DecodeError> {
+        // Check empty client quACK
+        if client_quack.last_value().is_none() {
+            return Err(DecodeError::EmptyClientQuack);
+        }
+
+        // Fail fast if we don't have enough packets to do subset reconciliation
+        let client_count = client_quack.count() as usize;
+        let proxy_count = self.quack.count() as usize;
+        if proxy_count + self.len() < client_count {
+            return Err(DecodeError::NotASubset {
+                num_recv: client_count as u32,
+                num_send: (proxy_count + self.len()) as u32,
+                last_value: client_quack.last_value().unwrap(),
+            });
+        }
+
+        // Check that the last value is already up to date or that it exists
+        let mut num_to_add = 0;
+        let last_value = client_quack.last_value().unwrap();
+        if client_count > proxy_count {
+            num_to_add += client_count - proxy_count;
+        }
+        if num_to_add == 0 && self.quack.last_value() == Some(last_value) {
+            return Ok(0);
+        }
+
+        // Otherwise we have to add some packets from the id cache.
+        num_to_add += self.id_cache.iter().skip(num_to_add - 1)
+            .position(|&id| id == last_value).unwrap_or(0);
+        if num_to_add > 0 && self.id_cache[num_to_add - 1] == last_value {
+            Ok(num_to_add)
+        } else {
+            println!("num_to_add={} {:?}", num_to_add, self.id_cache);
+            Err(DecodeError::MissingLastValue {
+                identifier: last_value,
+            })
         }
     }
 
@@ -186,32 +227,20 @@ impl QuackCache {
     ///
     /// Returns an error if the quACK fails to decode.
     pub fn decode(&mut self, client_quack: &QuackWrapper) -> Result<DecodeResult, DecodeError> {
-        // Check empty client quACK
-        if client_quack.last_value().is_none() {
-            return Err(DecodeError::EmptyClientQuack);
-        }
+        // Don't modify the state until checking whether the quACK is worth
+        // decoding in a preliminary check, in case we're waiting on a reset!!!
+        let last_index = self.check_valid_quack(client_quack)?;
 
         // Insert ids in the id cache up to the last id received by the client.
         // Assuming the client receives a subset of packets in the cache, if
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
         cycles_start(11);
-        let mut last_index = 0;
         let proxy_quack = &mut self.quack;
-        for &id in &self.id_cache {
-            if proxy_quack.last_value() == client_quack.last_value()
-                && proxy_quack.count() >= client_quack.count() {
-                break;
-            }
+        for &id in self.id_cache.iter().take(last_index) {
             proxy_quack.insert(id);
-            last_index += 1;
         }
         cycles_stop(11);
-        if proxy_quack.last_value() != client_quack.last_value() {
-            return Err(DecodeError::MissingLastValue {
-                identifier: client_quack.last_value().unwrap(),
-            });
-        }
 
         // Check common case when all packets are quACKed.
         if proxy_quack.count() == client_quack.count() {
@@ -220,17 +249,6 @@ impl QuackCache {
                 missing_indexes: vec![],
             });
             return Ok(self.last_decode_result.clone().unwrap());
-        }
-
-        // Check that we have sent more packets than were received.
-        // Note that it's possible for weird behavior to occur with overflows,
-        // but the state is invalid in either case.
-        if proxy_quack.count() < client_quack.count() {
-            return Err(DecodeError::NotASubset {
-                num_recv: client_quack.count(),
-                num_send: proxy_quack.count(),
-                last_value: proxy_quack.last_value().unwrap(),
-            });
         }
 
         // Check that the number of missing packets is within the threshold.
