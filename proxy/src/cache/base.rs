@@ -140,6 +140,8 @@ impl QuackCache {
         // Make received packet decisions final and evict from caches
         let ids = self.id_cache.drain(0..n).collect::<Vec<_>>();
         let packets = self.packet_cache.drain(0..n).collect::<Vec<_>>();
+        self.nbytes =
+            self.packet_cache.iter().map(|packet| packet.nbytes).sum();
 
         // Make missing packet decisions final
         if retransmit_missing {
@@ -154,10 +156,6 @@ impl QuackCache {
                 self.quack.remove(ids[index]);
             }
         }
-
-        // Update the number of bytes in the cache
-        self.nbytes =
-            self.packet_cache.iter().map(|packet| packet.nbytes).sum();
         #[cfg(feature = "cache_statistics")]
         {
             self.cache_log("evict");
