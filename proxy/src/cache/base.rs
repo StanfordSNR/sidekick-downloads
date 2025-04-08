@@ -95,7 +95,6 @@ impl QuackCache {
             trace!("At capacity {}; dropping packet", self.capacity);
             match self.cache_policy {
                 CachePolicy::SidekickReset => {
-                    debug!("Reset at cache capcity={}", self.capacity);
                     return Err(packet);
                 }
                 CachePolicy::Optimistic => {

@@ -10,7 +10,7 @@ use sidekick_utils::packet::{
 };
 
 use std::time::{Instant, Duration};
-use log::{trace, debug, info, error};
+use log::{trace, debug, info, warn, error};
 use quack::{Quack, QuackWrapper};
 use crate::cycles::*;
 
@@ -94,13 +94,13 @@ impl Sidekick {
             }
             Err(e) => {
                 cycles_stop(7);
-                error!("Failed to decode quACK: {:?}", e);
                 self.reset_sidekick_connection(packet);
+                error!("Failed to decode quACK: {:?}", e);
             }
         }
     }
 
-    fn reset_sidekick_connection(&mut self, packet: Packet) {
+    fn reset_sidekick_connection(&mut self, packet: Packet) -> bool {
         if self.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
             let mut buf = [0u8; BUFFER_SIZE];
             match ResetPayload::build_packet(&mut buf, &packet.data) {
@@ -109,10 +109,12 @@ impl Sidekick {
                     self.stream.send(&buf, len, packet.iface);
                     self.cache.as_mut().unwrap().reset();
                     self.last_reset = Instant::now();
+                    return true;
                 }
                 Err(e) => error!("Failed to build reset packet: {}", e),
             }
         }
+        false
     }
 
     /// Handle a packet from the client in the base connection.
@@ -129,7 +131,9 @@ impl Sidekick {
         self.stream.forward_packet(&packet, packet.nbytes as usize);
         cycles_start(5);
         if let Err(packet) = self.cache.as_mut().unwrap().add(packet) {
-            self.reset_sidekick_connection(packet);
+            if self.reset_sidekick_connection(packet) {
+                warn!("Reset due to exceeding cache capacity");
+            }
         }
         cycles_stop(5);
         self.num_tx += 1;
