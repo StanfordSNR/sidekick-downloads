@@ -68,6 +68,11 @@ impl QuackCache {
         self.packet_cache.len()
     }
 
+    /// The number of bytes in the cache.
+    pub fn size(&self) -> usize {
+        self.nbytes
+    }
+
     /// Return a read-only view of packets in the cache, ordered from least
     /// to most recently added.
     pub fn view(&self) -> &VecDeque<Packet> {
@@ -298,6 +303,7 @@ mod tests {
     fn test_new_quack_cache() {
         let cache = new_cache();
         assert_eq!(cache.len(), 0);
+        assert_eq!(cache.size(), 0);
         assert_eq!(cache.view().len(), 0);
     }
 
@@ -312,6 +318,7 @@ mod tests {
 
         let view = cache.view();
         assert_eq!(view.len(), 2);
+        assert_eq!(cache.size(), 6);
         assert_eq!(view[0], packet1);
         assert_eq!(view[1], packet2);
     }
@@ -334,8 +341,10 @@ mod tests {
     fn test_evict_success() {
         let mut cache = new_cache();
         cache.add(test_packet(&[1])).unwrap();
-        cache.add(test_packet(&[2])).unwrap();
-        cache.add(test_packet(&[3])).unwrap();
+        cache.add(test_packet(&[2, 2])).unwrap();
+        cache.add(test_packet(&[3, 3, 3])).unwrap();
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.size(), 6);
 
         // quack packets
         let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
@@ -348,8 +357,9 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(true), 2);
         assert_eq!(cache.len(), 1);
+        assert_eq!(cache.size(), 3);
         assert_eq!(cache.view().len(), 1);
-        assert_eq!(cache.get(0), Some(&test_packet(&[3])));
+        assert_eq!(cache.get(0), Some(&test_packet(&[3, 3, 3])));
 
         // evict none
         let res = cache.decode(&q).unwrap();
@@ -357,6 +367,7 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(true), 0);
         assert_eq!(cache.len(), 1);  // no change
+        assert_eq!(cache.size(), 3);
 
         // evict full
         q.insert(3);
@@ -366,6 +377,7 @@ mod tests {
         assert_eq!(cache.evict(true), 1);
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.view().len(), 0);
+        assert_eq!(cache.size(), 0);
         assert_eq!(cache.get(0), None);
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 0);
@@ -378,6 +390,7 @@ mod tests {
         cache.add(test_packet(&[1])).unwrap();
         cache.reset();
         assert_eq!(cache.len(), 0);
+        assert_eq!(cache.size(), 0);
         assert_eq!(cache.view().len(), 0);
     }
 
@@ -398,6 +411,7 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(true), num_packets);
         assert_eq!(cache.len(), 0);
+        assert_eq!(cache.size(), 0);
     }
 
     #[test]
@@ -422,6 +436,7 @@ mod tests {
         // evict some packets
         assert_eq!(cache.evict(true), num_packets);
         assert_eq!(cache.len(), 3);  // 3 new
+        assert_eq!(cache.size(), 3);
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 0);
         assert_eq!(res.missing_indexes, vec![]);
@@ -448,6 +463,7 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
         assert_eq!(cache.evict(true), num_packets);
         assert_eq!(cache.len(), 3);
+        assert_eq!(cache.size(), 3);
     }
 
     #[test]
@@ -476,6 +492,7 @@ mod tests {
         // evict some packets
         assert_eq!(cache.evict(true), num_packets);
         assert_eq!(cache.len(), 6);  // 3 new, 3 retransmitted
+        assert_eq!(cache.size(), 6);
         let res = cache.decode(&q).unwrap();
         assert_eq!(res.last_index, 0);
         assert_eq!(res.missing_indexes, vec![]);
