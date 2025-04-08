@@ -12,11 +12,6 @@ use crate::stream::Packet;
 use crate::cache::{DecodeError, DecodeResult};
 use crate::cycles::*;
 
-#[cfg(feature = "cache_statistics")]
-fn cache_log(event: &str, nbytes: usize) {
-    debug!("cache_statistics {:?} {} {}", Instant::now(), event, nbytes);
-}
-
 /// A cache of packets that is able to decode quACKs.
 ///
 /// The quACKs represent all packets that have ever been added to the cache,
@@ -70,6 +65,12 @@ impl QuackCache {
         }
     }
 
+    #[cfg(feature = "cache_statistics")]
+    fn cache_log(&self, event: &str) {
+        debug!("cache_statistics {:?} {} nbytes={} len={}",
+            Instant::now(), event, self.size(), self.len());
+    }
+
     /// The number of packets in the cache.
     pub fn len(&self) -> usize {
         self.packet_cache.len()
@@ -110,7 +111,7 @@ impl QuackCache {
         self.nbytes += packet.nbytes;
         #[cfg(feature = "cache_statistics")]
         {
-            cache_log("add", self.nbytes);
+            self.cache_log("add");
         }
 
         self.id_cache.push_back(self.id_func.to_id(&packet.data));
@@ -159,7 +160,7 @@ impl QuackCache {
             self.packet_cache.iter().map(|packet| packet.nbytes).sum();
         #[cfg(feature = "cache_statistics")]
         {
-            cache_log("evict", self.nbytes);
+            self.cache_log("evict");
         }
         n
     }
@@ -171,7 +172,7 @@ impl QuackCache {
         self.nbytes = 0;
         #[cfg(feature = "cache_statistics")]
         {
-            cache_log("reset", self.nbytes);
+            self.cache_log("reset");
         }
     }
 
@@ -566,9 +567,7 @@ mod tests {
 
         // Adding the extra packets should be successful
         let packet2 = test_packet(&[4, 5, 6]);
-        println!("check 1");
         assert!(cache.add(packet2.clone()).is_ok());
-        println!("check 2");
         assert!(cache.add(packet2.clone()).is_ok());
         assert_eq!(cache.len(), 2);
         assert_eq!(cache.get(0), Some(&packet2));
