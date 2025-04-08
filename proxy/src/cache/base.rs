@@ -85,7 +85,7 @@ impl QuackCache {
                     #[cfg(feature = "cache_statistics")]
                     {
                         let packet = self.packet_cache.pop_front().unwrap();
-                        self.nbytes -= packet.data.len();
+                        self.nbytes -= packet.nbytes;
                     }
                     #[cfg(not(feature = "cache_statistics"))]
                     {
@@ -100,7 +100,7 @@ impl QuackCache {
 
         #[cfg(feature = "cache_statistics")]
         {
-            self.nbytes += packet.data.len();
+            self.nbytes += packet.nbytes;
             cache_log("add", self.nbytes);
         }
 
@@ -149,7 +149,7 @@ impl QuackCache {
         #[cfg(feature = "cache_statistics")]
         {
             self.nbytes =
-                self.packet_cache.iter().map(|packet| packet.data.len()).sum();
+                self.packet_cache.iter().map(|packet| packet.nbytes).sum();
             cache_log("evict", self.nbytes);
         }
         n
