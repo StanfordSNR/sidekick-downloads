@@ -273,6 +273,8 @@ def parse_args(argv=None):
     proxy_config.add_argument('--quackee-port', type=int, default=5252,
         help='If a quacker is enabled, the UDP port that the quackee on the '\
              'proxy is listening on for quacks')
+    proxy_config.add_argument('--cache-capacity', type=int, metavar='KB', default=65536,
+        help='Default proxy cache capacity per connection')
 
     ###########################################################################
     # HTTP/1.1+TCP benchmark
@@ -456,9 +458,11 @@ def main(args):
         elif args.proxy == ProxyType.BRIDGE:
             net.start_bridge(proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
-            net.start_sidekick(args.quackee_port, logfile=proxy_logfile)
+            net.start_sidekick(args.quackee_port, args.cache_capacity,
+                logfile=proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK_MULTICAST:
-            net.start_sidekick_multicast(args.quackee_port, logfile=proxy_logfile)
+            net.start_sidekick_multicast(args.quackee_port, args.cache_capacity,
+                logfile=proxy_logfile)
         # PicoQUIC proxy must be started within the benchmark after server.
 
         # Start the packet trace collector

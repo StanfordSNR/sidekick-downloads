@@ -408,8 +408,8 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick(
-        self, port: int, logfile: Optional[str], timeout=SETUP_TIMEOUT,
-        executable='./proxy/target/release/sidekick',
+        self, port: int, cache_capacity: int, logfile: Optional[str],
+        timeout=SETUP_TIMEOUT, executable='./proxy/target/release/sidekick',
     ):
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -422,7 +422,7 @@ class EmulatedNetwork:
         # to avoid unnecessary dropping in tests, until we figure out the
         # right value to set it at.
         cmd = f'{executable} --client-interface p1-eth0 '\
-              f'--server-interface p1-eth1 --cache-capacity {4 * self.cwnd} '\
+              f'--server-interface p1-eth1 --cache-capacity {cache_capacity} '\
               f'--quack-port {port} '
         if logfile:
             cmd += f'--logfile {logfile} '
@@ -437,7 +437,7 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_sidekick timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick_multicast(
-        self, port: int, logfile: str, timeout=SETUP_TIMEOUT,
+        self, port: int, cache_capacity: int, logfile: str, timeout=SETUP_TIMEOUT,
     ):
         condition = threading.Condition()
         def notify_when_ready(line):
@@ -452,7 +452,7 @@ class EmulatedNetwork:
         ifaces = [f'p1-eth{i}' for i in range(1, len(self.clients)+1)]
         cmd = f'./proxy/target/release/sidekick_multicast '\
               f'--server-interface p1-eth0 --client-interface p1-eth1 '\
-              f'--cache-capacity {4 * self.cwnd} '\
+              f'--cache-capacity {cache_capacity} '\
               f'--quack-port {port} '
 
         self.popen(self.p1, cmd,
