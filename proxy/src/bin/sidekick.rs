@@ -14,11 +14,12 @@ struct Cli {
     /// UDP port to listen on for quACKs from the client.
     #[arg(long, default_value_t = 5252)]
     quack_port: u16,
-    /// Capacity of the QUACK cache. This implements a basic congestion control
-    /// heuristic by dropping packets from the sender above a certain threshold.
-    /// This can be set to approx. BDP / MSS.
-    #[arg(long, short = 'c', default_value_t = 45)]
+    /// Capacity of the QUACK cache. Like a flow control window size.
+    #[arg(long, short = 'c', default_value_t = 65536)]
     cache_capacity: usize,
+    /// Whether to set the cache capacity in packets, instead of bytes (default).
+    #[arg(long)]
+    cache_capacity_pkts: bool,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -53,7 +54,8 @@ async fn main() {
         &args.client_interface,
         &args.server_interface,
         args.quack_port,
-        args.cache_capacity
+        args.cache_capacity,
+        args.cache_capacity_pkts,
     );
     sidekick.start().await;
 }

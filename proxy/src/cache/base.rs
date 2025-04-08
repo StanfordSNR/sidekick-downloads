@@ -22,8 +22,6 @@ fn cache_log(event: &str, nbytes: usize) {
 /// The quACKs represent all packets that have ever been added to the cache,
 /// including those that have already been evicted.
 pub struct QuackCache {
-    /// The number of bytes in the packet cache.
-    nbytes: usize,
     /// The same length as `identifiers`.
     packet_cache: VecDeque<Packet>,
     /// The same length as `packets`.
@@ -34,9 +32,14 @@ pub struct QuackCache {
     quack: QuackWrapper,
     last_decode_result: Option<DecodeResult>,
 
+    /// The number of bytes in the packet cache.
+    nbytes: usize,
     /// Cache capacity. Incoming packets >= this capacity will be handled
     /// according to the cache policy.
     capacity: usize,
+    /// Whether to measure cache capacity in terms of packets, otherwise bytes.
+    capacity_pkts: bool,
+    /// How to handle adding packets above the cache capacity.
     cache_policy: CachePolicy,
 }
 
@@ -44,17 +47,18 @@ impl QuackCache {
     /// Initialize a new cache.
     pub fn new(
         riblt: bool, id_func: IdentifierFunc, quack_threshold: usize,
-        capacity: usize, cache_policy: CachePolicy,
+        capacity: usize, capacity_pkts: bool, cache_policy: CachePolicy,
     ) -> Self {
         Self {
-            nbytes: 0,
             packet_cache: VecDeque::with_capacity(capacity),
             id_cache: VecDeque::with_capacity(capacity),
             id_func,
             quack: QuackWrapper::new(quack_threshold, riblt),
             last_decode_result: None,
+            nbytes: 0,
+            capacity,
+            capacity_pkts,
             cache_policy,
-            capacity
         }
     }
 
@@ -275,11 +279,11 @@ mod tests {
     use super::*;
 
     const DEFAULT_THRESHOLD: usize = 4;
-    const DEFAULT_CAPACITY: usize = 30;
+    const DEFAULT_CAPACITY_PKTS: usize = 30;
 
     fn new_cache() -> QuackCache {
         QuackCache::new(false, IdentifierFunc::FirstByte, DEFAULT_THRESHOLD,
-                        DEFAULT_CAPACITY, CachePolicy::SidekickReset)
+                        DEFAULT_CAPACITY_PKTS, true, CachePolicy::SidekickReset)
     }
 
     fn test_packet(data: &[u8]) -> Packet {
@@ -509,22 +513,23 @@ mod tests {
     #[test]
     fn test_add_capacity_reset() {
         let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
-            DEFAULT_THRESHOLD, DEFAULT_CAPACITY, CachePolicy::SidekickReset);
-        for i in 0..DEFAULT_CAPACITY as u8 {
+            DEFAULT_THRESHOLD, DEFAULT_CAPACITY_PKTS, true,
+            CachePolicy::SidekickReset);
+        for i in 0..DEFAULT_CAPACITY_PKTS as u8 {
             assert!(cache.add(test_packet(&[i])).is_ok());
         }
 
-        assert_eq!(cache.len(), DEFAULT_CAPACITY);
-        assert_eq!(cache.view().len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.len(), DEFAULT_CAPACITY_PKTS);
+        assert_eq!(cache.view().len(), DEFAULT_CAPACITY_PKTS);
 
         // Adding the extra packet should error to cause a reset
-        assert!(cache.add(test_packet(&[DEFAULT_CAPACITY as _])).is_err());
+        assert!(cache.add(test_packet(&[DEFAULT_CAPACITY_PKTS as _])).is_err());
     }
 
     #[test]
     fn test_add_capacity_optimistic() {
         let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
-            DEFAULT_THRESHOLD, 2, CachePolicy::Optimistic);
+            DEFAULT_THRESHOLD, 2, true, CachePolicy::Optimistic);
 
         let packet1 = test_packet(&[1, 2, 3]);
         assert!(cache.add(packet1.clone()).is_ok());

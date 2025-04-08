@@ -25,6 +25,7 @@ pub struct Sidekick {
     base_connection_stoc: Option<AddrKey>,
     sidekick_connection: Option<AddrKey>,
     cache_capacity: usize,
+    cache_capacity_pkts: bool,
     num_retx: usize,
     num_tx: usize,
     last_reset: Instant,
@@ -42,6 +43,7 @@ impl Sidekick {
         server_interface: &str,
         quack_port: u16,
         cache_capacity: usize,
+        cache_capacity_pkts: bool,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
         Self {
@@ -51,6 +53,7 @@ impl Sidekick {
             base_connection_stoc: None,
             sidekick_connection: None,
             cache_capacity,
+            cache_capacity_pkts,
             num_retx: 0,
             num_tx: 0,
             last_reset: Instant::now(),
@@ -191,6 +194,7 @@ impl Sidekick {
                 IdentifierFunc::FixedOffset(UDP_PAYLOAD_OFFSET + disc.id_offset as usize),
                 disc.threshold as usize,
                 self.cache_capacity,
+                self.cache_capacity_pkts,
                 disc.cache_policy,
             ));
         }
