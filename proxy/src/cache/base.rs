@@ -113,7 +113,9 @@ impl QuackCache {
             self.cache_log("add");
         }
 
-        self.id_cache.push_back(self.id_func.to_id(&packet.data));
+        let id = self.id_func.to_id(&packet.data);
+        debug!("insert {}", id);
+        self.id_cache.push_back(id);
         self.packet_cache.push_back(packet);
         Ok(())
     }

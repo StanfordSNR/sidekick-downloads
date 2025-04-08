@@ -167,6 +167,7 @@ impl Quacker for UdpQuacker {
 
     fn insert(&mut self, time_ms: u64, id: u32) -> bool {
         if self.base_stoc.is_some() && !self.awaiting_disc_ack {
+            debug!("insert {} {}", id, time_ms);
             self.quacker.insert(time_ms, id)
         } else {
             false
