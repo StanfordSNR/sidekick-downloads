@@ -23,8 +23,7 @@ fn cache_log(event: &str, nbytes: usize) {
 /// including those that have already been evicted.
 pub struct QuackCache {
     /// The number of bytes in the packet cache.
-    #[cfg(feature = "cache_statistics")]
-    pub(crate) nbytes: usize,
+    nbytes: usize,
     /// The same length as `identifiers`.
     packet_cache: VecDeque<Packet>,
     /// The same length as `packets`.
@@ -48,7 +47,6 @@ impl QuackCache {
         capacity: usize, cache_policy: CachePolicy,
     ) -> Self {
         Self {
-            #[cfg(feature = "cache_statistics")]
             nbytes: 0,
             packet_cache: VecDeque::with_capacity(capacity),
             id_cache: VecDeque::with_capacity(capacity),
@@ -82,15 +80,8 @@ impl QuackCache {
                     return Err(packet);
                 }
                 CachePolicy::Optimistic => {
-                    #[cfg(feature = "cache_statistics")]
-                    {
-                        let packet = self.packet_cache.pop_front().unwrap();
-                        self.nbytes -= packet.nbytes;
-                    }
-                    #[cfg(not(feature = "cache_statistics"))]
-                    {
-                        self.packet_cache.pop_front().unwrap();
-                    }
+                    let packet = self.packet_cache.pop_front().unwrap();
+                    self.nbytes -= packet.nbytes;
                     let id = self.id_cache.pop_front().unwrap();
                     trace!("Evicting optimistically {}", id);
                     self.quack.insert(id);
@@ -98,9 +89,9 @@ impl QuackCache {
             }
         }
 
+        self.nbytes += packet.nbytes;
         #[cfg(feature = "cache_statistics")]
         {
-            self.nbytes += packet.nbytes;
             cache_log("add", self.nbytes);
         }
 
@@ -146,10 +137,10 @@ impl QuackCache {
         }
 
         // Update the number of bytes in the cache
+        self.nbytes =
+            self.packet_cache.iter().map(|packet| packet.nbytes).sum();
         #[cfg(feature = "cache_statistics")]
         {
-            self.nbytes =
-                self.packet_cache.iter().map(|packet| packet.nbytes).sum();
             cache_log("evict", self.nbytes);
         }
         n
@@ -159,9 +150,9 @@ impl QuackCache {
     pub fn reset(&mut self) {
         self.id_cache.clear();
         self.packet_cache.clear();
+        self.nbytes = 0;
         #[cfg(feature = "cache_statistics")]
         {
-            self.nbytes = 0;
             cache_log("reset", self.nbytes);
         }
     }
