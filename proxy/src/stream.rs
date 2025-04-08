@@ -15,7 +15,7 @@ const CHANNEL_CAPACITY: usize = 100;
 pub struct Packet {
     pub iface: u16,
     pub data: [u8; BUFFER_SIZE],
-    pub nbytes: isize,
+    pub nbytes: usize,
 }
 
 impl Packet {
@@ -107,8 +107,8 @@ async fn poll_packets(socket: ProxySocket, tx: mpsc::Sender<Packet>) {
                 continue;
             },
         };
-        packet.nbytes = nbytes;
-        assert!(packet.nbytes > 0, "packet.nbytes={}", packet.nbytes);
+        assert!(nbytes > 0, "nbytes={}", nbytes);
+        packet.nbytes = nbytes as usize;
         match tx.send(packet).await {
             Ok(_) => trace!("Notified of {} bytes on {}", nbytes, socket.interface()),
             Err(e) => error!("Error on mpsc send {:?}", e),

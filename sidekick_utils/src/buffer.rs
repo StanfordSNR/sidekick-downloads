@@ -123,8 +123,8 @@ impl UdpParser {
 
     /// Returns the UDP payload.
     /// nbytes is the number of bytes in the entire packet
-    pub fn payload(x: &[u8; BUFFER_SIZE], nbytes: isize) -> &[u8] {
-        &x[crate::UDP_PAYLOAD_OFFSET..(nbytes as usize)]
+    pub fn payload(x: &[u8; BUFFER_SIZE], nbytes: usize) -> &[u8] {
+        &x[crate::UDP_PAYLOAD_OFFSET..nbytes]
     }
 
     /// Returns the sidekick identifier assuming the buffer

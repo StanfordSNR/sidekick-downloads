@@ -102,7 +102,7 @@ async fn start_sniffer(
         // If this is an incoming sidekick packet from the proxy, handle it.
         if Ipv4Addr::from(UdpParser::parse_src_ip(&buf)) == quack_addr.ip() &&
            u16::from_be_bytes(UdpParser::parse_src_port(&buf)) == quack_addr.port() {
-            quacker.lock().await.handle_sidekick_payload(UdpParser::payload(&buf, n));
+            quacker.lock().await.handle_sidekick_payload(UdpParser::payload(&buf, n.try_into().unwrap()));
             continue; // skip packets from proxy
         }
 
