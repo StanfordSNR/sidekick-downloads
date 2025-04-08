@@ -50,8 +50,16 @@ impl QuackCache {
         capacity: usize, capacity_pkts: bool, cache_policy: CachePolicy,
     ) -> Self {
         Self {
-            packet_cache: VecDeque::with_capacity(capacity),
-            id_cache: VecDeque::with_capacity(capacity),
+            packet_cache: if capacity_pkts {
+                VecDeque::with_capacity(capacity)
+            } else {
+                VecDeque::new()
+            },
+            id_cache: if capacity_pkts {
+                VecDeque::with_capacity(capacity)
+            } else {
+                VecDeque::new()
+            },
             id_func,
             quack: QuackWrapper::new(quack_threshold, riblt),
             last_decode_result: None,
@@ -64,7 +72,6 @@ impl QuackCache {
 
     /// The number of packets in the cache.
     pub fn len(&self) -> usize {
-        debug_assert!(self.packet_cache.len() <= self.capacity);
         self.packet_cache.len()
     }
 
@@ -81,7 +88,9 @@ impl QuackCache {
 
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) -> Result<(), Packet> {
-        if self.len() >= self.capacity {
+        while (self.capacity_pkts && (self.len() >= self.capacity)) ||
+            (!self.capacity_pkts && (self.nbytes + packet.nbytes > self.capacity))
+        {
             trace!("At capacity {}; dropping packet", self.capacity);
             match self.cache_policy {
                 CachePolicy::SidekickReset => {
@@ -528,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_capacity_reset() {
+    fn test_add_capacity_pkts_reset() {
         let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
             DEFAULT_THRESHOLD, DEFAULT_CAPACITY_PKTS, true,
             CachePolicy::SidekickReset);
@@ -544,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_capacity_optimistic() {
+    fn test_add_capacity_pkts_optimistic() {
         let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
             DEFAULT_THRESHOLD, 2, true, CachePolicy::Optimistic);
 
@@ -576,4 +585,59 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![]);
     }
 
+    #[test]
+    fn test_add_capacity_bytes_reset() {
+        const CAPACITY_BYTES: usize = 10;
+        const CACHE_POLICY: CachePolicy = CachePolicy::SidekickReset;
+        let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
+            DEFAULT_THRESHOLD, CAPACITY_BYTES, false, CACHE_POLICY);
+        assert!(cache.add(test_packet(&[1, 2, 3])).is_ok());
+        assert!(cache.add(test_packet(&[4, 5])).is_ok());
+        assert!(cache.add(test_packet(&[7, 8, 9, 10])).is_ok());
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.size(), 9);
+
+        // Adding the extra packet should error to cause a reset
+        assert!(cache.add(test_packet(&[11, 12])).is_err());
+    }
+
+    #[test]
+    fn test_add_capacity_bytes_optimistic() {
+        const CAPACITY_BYTES: usize = 10;
+        const CACHE_POLICY: CachePolicy = CachePolicy::Optimistic;
+        let mut cache = QuackCache::new(false, IdentifierFunc::FirstByte,
+            DEFAULT_THRESHOLD, CAPACITY_BYTES, false, CACHE_POLICY);
+        assert!(cache.add(test_packet(&[1, 2, 3])).is_ok());
+        assert!(cache.add(test_packet(&[4, 5])).is_ok());
+        assert!(cache.add(test_packet(&[7, 8, 9, 10])).is_ok());
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.size(), 9);
+
+        // Adding the extra packets should be successful
+        assert!(cache.add(test_packet(&[1, 2])).is_ok());
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.size(), 8);
+        assert!(cache.add(test_packet(&[1, 2])).is_ok());
+        assert_eq!(cache.len(), 4);
+        assert_eq!(cache.size(), 10);
+        assert!(cache.add(test_packet(&[1, 2])).is_ok());
+        assert_eq!(cache.len(), 4);
+        assert_eq!(cache.size(), 10);
+        assert!(cache.add(test_packet(&[1, 2])).is_ok());
+        assert_eq!(cache.len(), 4);
+        assert_eq!(cache.size(), 8);
+
+        // The evicted packets should be encoded in the quACK
+        let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
+        q.insert(1);
+        q.insert(4);
+        q.insert(7);
+        q.insert(1);
+        q.insert(1);
+        q.insert(1);
+        q.insert(1);
+        let res = cache.decode(&q).unwrap();
+        assert_eq!(res.last_index, 4);
+        assert_eq!(res.missing_indexes, vec![]);
+    }
 }
