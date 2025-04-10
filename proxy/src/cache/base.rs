@@ -202,18 +202,17 @@ impl QuackCache {
         if num_to_add == 0 && self.quack.last_value() == Some(last_value) {
             return Ok(0);
         }
-
-        // Otherwise we have to add some packets from the id cache.
-        num_to_add += self.id_cache.iter().skip(num_to_add - 1)
-            .position(|&id| id == last_value).unwrap_or(0);
         if num_to_add > 0 && self.id_cache[num_to_add - 1] == last_value {
-            Ok(num_to_add)
-        } else {
-            println!("num_to_add={} {:?}", num_to_add, self.id_cache);
-            Err(DecodeError::MissingLastValue {
-                identifier: last_value,
-            })
+            return Ok(num_to_add);
         }
+
+        // Otherwise we have to add some more packets from the id cache.
+        num_to_add += self.id_cache.iter()
+            .skip(num_to_add)
+            .position(|&id| id == last_value)
+            .map(|index| index + 1)
+            .ok_or(DecodeError::MissingLastValue { identifier: last_value })?;
+        Ok(num_to_add)
     }
 
     /// The quACK is the cumulative representation of all packets that have ever
