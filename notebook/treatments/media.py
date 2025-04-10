@@ -6,7 +6,7 @@ IBLT_MULTIPLIER = 4
 DEFAULT_FREQ_PKTS = 2
 PROTOCOL = 'media'
 
-def nos(iblt: bool=False, quack_hint: bool=False, quack_nack: bool=False):
+def nos(iblt: bool=False, quack_hint: bool=False, quack_nack: bool=False, cache_capacity: Optional[int]=None):
     options = ['--proxy', 'sidekick', '--freq-ms', '0']
     if iblt:
         threshold = DEFAULT_THRESHOLD * IBLT_MULTIPLIER
@@ -16,9 +16,11 @@ def nos(iblt: bool=False, quack_hint: bool=False, quack_nack: bool=False):
     if quack_hint:
         options += ['--quack-hint']
     if quack_nack:
-    	options += ['--quack-nack', '--freq-pkts', '0']
+        options += ['--quack-nack', '--freq-pkts', '0']
     else:
-    	options += ['--freq-pkts', str(DEFAULT_FREQ_PKTS)]
+        options += ['--freq-pkts', str(DEFAULT_FREQ_PKTS)]
+    if cache_capacity:
+        options += ['--cache-capacity', str(cache_capacity)]
     return options
 
 def pos(ack_delay: Optional[int]=None):
@@ -27,22 +29,35 @@ def pos(ack_delay: Optional[int]=None):
         options += ['--ack-delay', str(ack_delay)]
     return options
 
+def generate_treatment(ty: str, delay: int, hint: bool, nack: bool, cache_capacity: Optional[int]=None):
+    label = f'{ty}_delay{delay}'
+    if hint:
+        label += '_hint'
+    if nack:
+        label += '_nack'
+    if cache_capacity:
+        label += f'_cache{cache_capacity}'
+    network_options = nos(iblt=ty =='iblt', quack_hint=hint, quack_nack=nack, cache_capacity=cache_capacity)
+    protocol_options = pos(delay)
+    treatment = Treatment(PROTOCOL, label=label,
+        network_options=network_options, protocol_options=protocol_options)
+    return treatment
+
 def generate_treatments():
+    # Baseline and cache policy treatments
     treatments = [
-	    Treatment(PROTOCOL, label='baseline', network_options=[], protocol_options=[]),
-	    Treatment(PROTOCOL, label='psum_delay0', network_options=nos(), protocol_options=pos(0)),
-	    Treatment(PROTOCOL, label='psum_delay45', network_options=nos(), protocol_options=pos(45)),
-	    Treatment(PROTOCOL, label='psum_delay90', network_options=nos(), protocol_options=pos(90)),
-	    Treatment(PROTOCOL, label='psum_delay45_hint', network_options=nos(quack_hint=True), protocol_options=pos(45)),
-	    Treatment(PROTOCOL, label='psum_delay45_nack', network_options=nos(quack_nack=True), protocol_options=pos(45)),
-	    Treatment(PROTOCOL, label='psum_delay45_hint_nack', network_options=nos(quack_hint=True, quack_nack=True), protocol_options=pos(45)),
-	    Treatment(PROTOCOL, label='iblt_delay0', network_options=nos(iblt=True), protocol_options=pos(0)),
-	    Treatment(PROTOCOL, label='iblt_delay45', network_options=nos(iblt=True), protocol_options=pos(45)),
-	    Treatment(PROTOCOL, label='iblt_delay90', network_options=nos(iblt=True), protocol_options=pos(90)),
-	    Treatment(PROTOCOL, label='iblt_delay45_hint', network_options=nos(iblt=True, quack_hint=True), protocol_options=pos(45)),
-	    Treatment(PROTOCOL, label='iblt_delay45_nack', network_options=nos(iblt=True, quack_nack=True), protocol_options=pos(45)),
-	    Treatment(PROTOCOL, label='iblt_delay45_hint_nack', network_options=nos(iblt=True, quack_hint=True, quack_nack=True), protocol_options=pos(45)),
-	]
+        Treatment(PROTOCOL, label='baseline', network_options=[], protocol_options=[]),
+        generate_treatment('psum', 45, True, True, 10000),
+        generate_treatment('iblt', 45, True, True, 10000),
+        generate_treatment('iblt', 45, True, True, 2000),
+    ]
+    # Various delays, hint, nack
+    for ty in ['psum', 'iblt']:
+        for delay in [0, 5, 10, 15, 30, 45, 90]:
+            treatments.append(generate_treatment(ty, delay, False, False))
+            treatments.append(generate_treatment(ty, delay, True, False))
+            treatments.append(generate_treatment(ty, delay, False, True))
+            treatments.append(generate_treatment(ty, delay, True, True))
     labels = [treatment.label() for treatment in treatments]
     treatment_map = {}
     for label, treatment in zip(labels, treatments):
