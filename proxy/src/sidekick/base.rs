@@ -76,14 +76,19 @@ impl Sidekick {
         match cache.decode(&quack) {
             Ok(result) => {
                 cycles_stop(7);
-                debug!("quack {} cache_len={} last_index={} missing={:?}, Sidekick: {}",
-                    quack.count(), cache.len(),
+                debug!("quack {} cache_len={} num_symbols={} last_index={} missing={:?}, Sidekick: {}",
+                    quack.count(), cache.len(), quack.threshold(),
                     result.last_index, result.missing_indexes,
                     fmt_hex!(self.sidekick_connection.unwrap()));
                 cycles_start(9);
-                for &index in &result.missing_indexes {
+                for (i, &index) in result.missing_indexes.iter().enumerate() {
                     let retx = cache.get(index).unwrap();
-                    debug!("retransmit {}/{}", self.num_retx, self.num_tx);
+                    debug!(
+                        "retransmit {} {}/{}",
+                        cache.get_id(index).unwrap(),
+                        self.num_retx + i + 1,
+                        self.num_tx,
+                    );
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
                 }
                 cycles_stop(9);
@@ -94,6 +99,10 @@ impl Sidekick {
             }
             Err(e) => {
                 cycles_stop(7);
+                debug!("quack {} cache_len={} num_symbols={} last_value={}, Sidekick: {}",
+                    quack.count(), cache.len(), quack.threshold(),
+                    quack.last_value().unwrap(),
+                    fmt_hex!(self.sidekick_connection.unwrap()));
                 self.reset_sidekick_connection(packet);
                 error!("Failed to decode quACK: {:?}", e);
             }

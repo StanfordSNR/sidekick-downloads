@@ -28,11 +28,12 @@ pub enum DecodeError {
     /// The client should only send quACKs if it has observed at least 1 packet.
     EmptyClientQuack,
     /// The threshold of the received quACK does not match our own threshold.
-    InvalidThreshold { expected: usize, actual: usize },
+    InvalidThreshold { num_missing: usize, expected: usize, actual: usize },
     /// Number of missing packets exceeds threshold.
     ExceededThreshold {
         num_missing: usize,
         threshold: usize,
+        last_value: u32,
     },
     /// The last value the client received is not an identifier of a known
     /// packet that is currently or was previously in our cache.
@@ -44,7 +45,10 @@ pub enum DecodeError {
         last_value: u32,
     },
     /// The IBLT doesn't have enough symbols to decode.
-    InvalidIBLT,
+    InvalidIBLT {
+        num_missing: usize,
+        num_symbols: usize,
+    },
 }
 
 impl fmt::Display for DecodeError {
@@ -53,16 +57,18 @@ impl fmt::Display for DecodeError {
             DecodeError::EmptyClientQuack => {
                 write!(f, "Empty client quack")
             }
-            DecodeError::InvalidThreshold { expected, actual } => {
-                write!(f, "Invalid threshold {} != {}", expected, actual)
+            DecodeError::InvalidThreshold { num_missing, expected, actual } => {
+                write!(f, "Invalid threshold {} != {} (missing {})",
+                    expected, actual, num_missing)
             }
             DecodeError::ExceededThreshold {
                 num_missing,
                 threshold,
+                last_value,
             } => write!(
                 f,
-                "Number of missing packets exceeds threshold {} > {}",
-                num_missing, threshold
+                "Number of missing packets exceeds threshold {} > {} (last_value={})",
+                num_missing, threshold, last_value,
             ),
             DecodeError::MissingLastValue { identifier } => {
                 write!(f, "Missing last value {}", identifier)
@@ -71,8 +77,9 @@ impl fmt::Display for DecodeError {
                 write!(f, "Received more than sent {} > {}: last value {}",
                     num_recv, num_send, last_value)
             }
-            DecodeError::InvalidIBLT => {
-                write!(f, "IBLT doesn't have enough symbols to decode")
+            DecodeError::InvalidIBLT { num_missing, num_symbols } => {
+                write!(f, "IBLT decode error num_missing={} num_symbols = {}",
+                    num_missing, num_symbols)
             }
         }
     }

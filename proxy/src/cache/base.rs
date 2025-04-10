@@ -125,6 +125,11 @@ impl QuackCache {
         self.packet_cache.get(i)
     }
 
+    /// Get the i-th ID (0-indexing) in the ordered cache view.
+    pub fn get_id(&self, i: usize) -> Option<u32> {
+        self.id_cache.get(i).copied()
+    }
+
     /// Evict the recently decoded packets from the cache.
     ///
     /// The evicted packets have all been decided to be either received or
@@ -255,14 +260,18 @@ impl QuackCache {
         // based on a hint, but estimated wrong.
         let num_missing = (proxy_quack.count() - client_quack.count()) as usize;
         if num_missing > proxy_quack.threshold() {
+            debug!("proxy_count={} client_count={} num_to_add={}",
+                proxy_quack.count(), client_quack.count(), last_index);
             return Err(DecodeError::ExceededThreshold {
                 num_missing,
                 threshold: proxy_quack.threshold(),
+                last_value: proxy_quack.last_value().unwrap(),
             });
         }
         let threshold = std::cmp::min(proxy_quack.threshold(), client_quack.threshold());
         if num_missing > threshold {
             return Err(DecodeError::InvalidThreshold {
+                num_missing,
                 expected: proxy_quack.threshold(),
                 actual: threshold,
             });
@@ -288,7 +297,10 @@ impl QuackCache {
                 let missing = if let Some(missing) = difference_quack.decode() {
                     missing.into_iter().collect::<HashSet<u32>>()
                 } else {
-                    return Err(DecodeError::InvalidIBLT);
+                    return Err(DecodeError::InvalidIBLT {
+                        num_missing,
+                        num_symbols: threshold,
+                    });
                 };
                 self.id_cache
                     .iter()
@@ -549,6 +561,7 @@ mod tests {
             DecodeError::ExceededThreshold {
                 num_missing: 5,
                 threshold: DEFAULT_THRESHOLD,
+                last_value: 9,
             }
         );
     }

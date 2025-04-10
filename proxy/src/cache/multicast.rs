@@ -310,11 +310,13 @@ impl QuackCacheMulticast {
             return Err(DecodeError::ExceededThreshold {
                 num_missing,
                 threshold: proxy_quack.threshold(),
+                last_value: proxy_quack.last_value().unwrap(),
             });
         }
         let threshold = std::cmp::min(proxy_quack.threshold(), client_quack.threshold());
         if num_missing > threshold {
             return Err(DecodeError::InvalidThreshold {
+                num_missing,
                 expected: proxy_quack.threshold(),
                 actual: threshold,
             });
@@ -341,7 +343,10 @@ impl QuackCacheMulticast {
                     let missing = if let Some(missing) = difference_quack.decode() {
                         missing.into_iter().collect::<HashSet<u32>>()
                     } else {
-                        return Err(DecodeError::InvalidIBLT);
+                        return Err(DecodeError::InvalidIBLT {
+                            num_missing,
+                            num_symbols: threshold,
+                        });
                     };
                     indexes.iter()
                         .take(num_acked)
@@ -666,6 +671,7 @@ mod tests {
             DecodeError::ExceededThreshold {
                 num_missing: 5,
                 threshold: DEFAULT_THRESHOLD,
+                last_value: 9,
             }
         );
     }
