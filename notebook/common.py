@@ -1,4 +1,5 @@
 import os
+import math
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -37,6 +38,15 @@ def data_size_str(data_size):
         return f'{int(data_size/1e6)}M'
     elif data_size < 1e12:
         return f'{int(data_size/1e6)}G'
+
+def plot_title_and_legend(title, labels, ncol=3, base_height=1.15,
+                          row_height=0.1, title_height=0.12):
+    legend_height = base_height
+    legend_height += row_height * (math.ceil(len(labels) / ncol) - 1)
+    if title:
+        plt.title(title)
+        legend_height += title_height
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, legend_height), ncol=ncol)
 
 def save_pdf(output_filename, bbox_inches='tight'):
     from matplotlib.backends.backend_pdf import PdfPages
