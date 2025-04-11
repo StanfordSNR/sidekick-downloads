@@ -159,6 +159,7 @@ class MediaBenchmark:
         if self.quacker is not None:
             q = self.quacker
             target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
+            assert q.optimistic  # cache policy hardcoded in endpoint
             cmd += f'--quacker '\
                    f'--threshold {q.threshold} '\
                    f'--frequency-pkts {q.freq_pkts} '\

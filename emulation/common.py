@@ -49,10 +49,13 @@ class QuackerConfig:
     freq_pkts: int
     # The UDP port that the quackee on the proxy is listening to for quACKs.
     quackee_port: int
+    # Whether to use the optimistic cache policy (or reset policy)
+    optimistic: bool
 
     def from_args(args):
         return QuackerConfig(args.riblt, args.quack_hint, args.quack_nack,
-            args.threshold, args.freq_ms, args.freq_pkts, args.quackee_port)
+            args.threshold, args.freq_ms, args.freq_pkts, args.quackee_port,
+            args.cache_policy == 'optimistic')
 
 def TRACE(val):
     # LOG(val, 'TRACE')

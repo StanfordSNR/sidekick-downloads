@@ -375,7 +375,7 @@ class PicoQUICBenchmark(HTTPDownloadBenchmark):
             assert not q.send_on_nack  # picoquic doesn't send nacks
             target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
             cmd += f'{q.threshold} {q.freq_pkts} {q.freq_ms} {target_addr} '
-            cmd += f'{int(q.riblt)} {int(q.hint)} '
+            cmd += f'{int(q.riblt)} {int(q.hint)} {int(q.optimistic)} '
 
         # Add the data size parameter
         cmd += f'{self.data_size}.html '

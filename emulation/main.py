@@ -275,6 +275,8 @@ def parse_args(argv=None):
              'proxy is listening on for quacks')
     proxy_config.add_argument('--cache-capacity', type=int, metavar='KB', default=65536,
         help='Default proxy cache capacity per connection')
+    proxy_config.add_argument('--cache-policy', choices=['optimistic', 'reset'], default='optimistic',
+        help='Proxy cache overflow policy')
 
     ###########################################################################
     # HTTP/1.1+TCP benchmark
