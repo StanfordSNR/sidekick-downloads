@@ -200,7 +200,7 @@ class TestNetStatistics(NetworkTestCase):
         cwd = os.getcwd()
         os.chdir('..') # run from sidekick base directory
         net = self.setUpOneHopNetwork(bridge_proxy=False)
-        net.start_sidekick(self.quackee_port, logfile=None)
+        net.start_sidekick(self.quackee_port, cache_capacity=65536, logfile=None)
         self.assertSchemaIsCorrect(net, host_ifaces + proxy_ifaces)
         os.chdir(cwd)
 
@@ -326,7 +326,7 @@ class TestNetworkReachability(NetworkTestCase):
         cwd = os.getcwd()
         os.chdir('..') # run from sidekick base directory
         net = self.setUpOneHopNetwork(bridge_proxy=False)
-        net.start_sidekick(self.quackee_port, logfile=None)
+        net.start_sidekick(self.quackee_port, cache_capacity=65536, logfile=None)
         time.sleep(1)
         self.assertReachable(net.h1, net.h2)
         self.assertReachable(net.h2, net.h1)
@@ -351,7 +351,7 @@ class TestNetworkReachability(NetworkTestCase):
         cwd = os.getcwd()
         os.chdir('..')
         net = self.setUpOneHopNetwork(bridge_proxy=False)
-        net.start_sidekick(self.quackee_port, logfile=None)
+        net.start_sidekick(self.quackee_port, cache_capacity=65536, logfile=None)
         time.sleep(1)
         self.assertReachable(net.p1, net.h1)
         self.assertReachable(net.p1, net.h2)
@@ -851,7 +851,7 @@ class TestPrepopulateArpTable(NetworkTestCase):
 
     def test_arp_one_hop_network_sidekick(self):
         net = self.setUpOneHopNetwork(bridge_proxy=False, router_proxy=False)
-        net.start_sidekick(port=5252, logfile=None)
+        net.start_sidekick(port=5252, cache_capacity=65536, logfile=None)
         net.start_tcpdump(logdir=self.logdir)
         time.sleep(1)
         self.check_arp_table_is_used(net, [net.h1, net.p1, net.h2])
