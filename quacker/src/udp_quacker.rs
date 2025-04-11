@@ -198,7 +198,7 @@ impl UdpQuacker {
             return;
         }
         let mut buf = self.buf;
-        debug!("quack {}", quack.count());
+        debug!("quack {} (hint {})", quack.count(), num_missing);
         let len = quack.serialize_with_hint(&mut buf[..], num_missing);
         self.src_sock.send_to(&buf[..len], self.dst_addr).unwrap();
         self.quacker.send_quack(time_ms);
