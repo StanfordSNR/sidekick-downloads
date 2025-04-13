@@ -6,14 +6,12 @@ pub use multicast::SidekickMulticast;
 
 use sidekick_utils::buffer::AddrKey;
 
-/// Identifies the connection as base or sidekick
+/// Identifies the type of connection the received packet belongs to
 pub enum ConnectionType {
     /// Base connection from server to client
-    BaseStoc { base_conn: AddrKey, sidekick_conn: AddrKey },
+    BaseStoc { sidekick_conn: AddrKey },
     /// Sidekick connection
     Sidekick { sidekick_conn: AddrKey },
-    /// Sidekick configuration packet
-    Discovery,
     /// Some other connection (forward only)
     None
 }

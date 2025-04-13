@@ -139,13 +139,17 @@ impl SidekickMulticast {
             }
             ConnectionType::Sidekick { sidekick_conn } => {
                 trace!("Received sidekick packet from client");
-                self.handle_sidekick_packet_from_client(packet, sidekick_conn);
+                // Check for discovery packet first
+                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data, packet.nbytes)) {
+                    self.handle_discovery_packet(disc, sidekick_conn, &packet);
+                } else {
+                    self.handle_sidekick_packet_from_client(packet, sidekick_conn);
+                }
             }
             ConnectionType::None => {
                 trace!("Forwarding packet from unknown four-tuple");
                 self.stream.forward_packet(&packet, packet.nbytes as usize);
             }
-            ConnectionType::Discovery => {}
         }
     }
 
@@ -192,22 +196,14 @@ impl SidekickMulticast {
     fn connection_type(&mut self, packet: &Packet) -> ConnectionType {
         let addr_key = UdpParser::parse_addr_key(&packet.data);
         if packet.iface == self.stream.client_iface() {
-            // We expect this to be a quACK
             if UdpParser::parse_dst_port(&packet.data) == self.quack_port {
-                // Check for discovery packet first
-                if let Some(disc) = DiscoveryPayload::from_payload(UdpParser::payload(&packet.data, packet.nbytes)) {
-                    self.handle_discovery_packet(disc, addr_key, packet);
-                    return ConnectionType::Discovery;
-                } else {
-                    return ConnectionType::Sidekick { sidekick_conn: addr_key };
-                }
-            } else {
-                return ConnectionType::None;
+                return ConnectionType::Sidekick { sidekick_conn: addr_key };
             }
         } else if packet.iface == self.stream.server_iface() {
             match self.base_connection_stoc {
                 Some(stored_key) if stored_key == addr_key => {
-                    return ConnectionType::BaseStoc { base_conn: addr_key, sidekick_conn: addr_key };
+                    // addr_key is actually the base_conn
+                    return ConnectionType::BaseStoc { sidekick_conn: addr_key };
                 }
                 Some(stored_key) => {
                     trace!("Unknown STOC AddrKey: {} (expected: {})",
