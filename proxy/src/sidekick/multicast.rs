@@ -115,13 +115,6 @@ impl SidekickMulticast {
         }
     }
 
-    /// Handle a packet from the client in the base connection.
-    ///
-    /// Forward it normally.
-    fn handle_base_packet_from_client(&mut self, packet: Packet) {
-        self.stream.forward_packet(&packet, packet.nbytes as usize);
-    }
-
     /// Handle a packet from the server in the base connection.
     ///
     /// Add it to the cache and forward normally.
@@ -140,10 +133,6 @@ impl SidekickMulticast {
             return;
         }
         match self.connection_type(&packet) {
-            ConnectionType::BaseCtos => {
-                trace!("Received base packet from client");
-                self.handle_base_packet_from_client(packet);
-            }
             ConnectionType::BaseStoc => {
                 trace!("Received base packet from server");
                 self.handle_base_packet_from_server(packet);
@@ -156,7 +145,7 @@ impl SidekickMulticast {
                 trace!("Forwarding packet from unknown four-tuple");
                 self.stream.forward_packet(&packet, packet.nbytes as usize);
             }
-            _ => {}
+            ConnectionType::Discovery => {}
         }
     }
 
@@ -213,23 +202,7 @@ impl SidekickMulticast {
                     return ConnectionType::Sidekick(addr_key);
                 }
             } else {
-                // Convert ctos 4-tuple to stoc 4-tuple
-                let flipped_key = UdpParser::flip_addr_key(addr_key);
-                match self.base_connection_stoc {
-                    Some(stored_key) if stored_key == flipped_key => {
-                        return ConnectionType::BaseCtos;
-                    },
-                    Some(stored_key) => {
-                        trace!("Unknown CTOS AddrKey (flipped): {} (expected: {})",
-                               fmt_hex!(flipped_key), fmt_hex!(stored_key));
-                        return ConnectionType::None;
-                    }
-                    None => {
-                        trace!("Received from ctos stream before discovery (flipped AddrKey: {})",
-                               fmt_hex!(flipped_key));
-                        return ConnectionType::None;
-                    }
-                }
+                return ConnectionType::None;
             }
         } else if packet.iface == self.stream.server_iface() {
             match self.base_connection_stoc {
