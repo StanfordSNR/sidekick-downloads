@@ -20,6 +20,9 @@ struct Cli {
     /// Whether to set the cache capacity in packets, instead of bytes (default).
     #[arg(long)]
     cache_capacity_pkts: bool,
+    /// Max quACK threshold for initializing the power table.
+    #[arg(long, default_value_t = 40)]
+    max_threshold: usize,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -50,6 +53,7 @@ async fn main() {
         "Ready to start Sidekick with client {}; expecting server {}",
         args.client_interface, args.server_interface
     );
+    quack::global_config_set_max_power_sum_threshold(args.max_threshold);
     let mut sidekick = Sidekick::new(
         &args.client_interface,
         &args.server_interface,
