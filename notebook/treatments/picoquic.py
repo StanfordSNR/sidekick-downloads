@@ -1,22 +1,28 @@
 from typing import Optional
 from experiment import Treatment
 
-DEFAULT_THRESHOLD = 20
+DEFAULT_FREQ_MS = 25
+DEFAULT_FREQ_PKTS = 8
+DEFAULT_THRESHOLD = lambda freq_pkts: freq_pkts * 5 // 2
 IBLT_MULTIPLIER = 4
 PROTOCOL = 'picoquic'
 
-def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None):
+def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None, reset: bool=False, freq_pkts: Optional[int]=None):
     options = ['--proxy', 'sidekick']
-    options += ['--freq-ms', '25', '--freq-pkts', '8']
+    if not freq_pkts:
+        freq_pkts = DEFAULT_FREQ_PKTS
+    threshold = DEFAULT_THRESHOLD(freq_pkts)
+    options += ['--freq-ms', str(freq_pkts), '--freq-pkts', str(DEFAULT_FREQ_MS)]
     if iblt:
-        threshold = DEFAULT_THRESHOLD * IBLT_MULTIPLIER
-        options += ['--threshold', str(threshold), '--riblt']
+        options += ['--threshold', str(threshold * IBLT_MULTIPLIER), '--riblt']
     else:
-        options += ['--threshold', str(DEFAULT_THRESHOLD)]
+        options += ['--threshold', str(threshold)]
     if hint:
         options += ['--quack-hint']
     if cache_capacity:
         options += ['--cache-capacity', str(cache_capacity)]
+    if reset:
+        options += ['--cache-policy', 'reset']
     return options
 
 def pos(ack_delay: Optional[int]=None):
@@ -25,29 +31,38 @@ def pos(ack_delay: Optional[int]=None):
         options += ['--ack-delay', str(ack_delay)]
     return options
 
-def generate_treatment(ty: str, delay: int, hint: bool, cache_capacity: Optional[int]=None):
+def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]=None, cache_capacity: Optional[int]=None, reset: bool=False):
     label = f'picoquic_{ty}_{delay}ms'
     if hint:
         label += '_hint'
+    if freq_pkts:
+        label += f'_freq{freq_pkts}'
     if cache_capacity:
         label += f'_cache{cache_capacity}'
-    network_options = nos(iblt=ty =='iblt', hint=hint, cache_capacity=cache_capacity)
+    if reset:
+        label += f'_reset'
+    network_options = nos(iblt=ty =='iblt', hint=hint, cache_capacity=cache_capacity, reset=reset, freq_pkts=freq_pkts)
     protocol_options = pos(delay)
     treatment = Treatment(PROTOCOL, label=label,
         network_options=network_options, protocol_options=protocol_options)
     return treatment
-
 
 def generate_treatments():
     treatments = [
         Treatment(PROTOCOL, label=f'picoquic', network_options=[], protocol_options=[]),
         Treatment(PROTOCOL, label=f'picoquic_30ms', network_options=[], protocol_options=pos(30)),
         Treatment(PROTOCOL, label=f'picoquic_split', network_options=['--proxy', 'picoquic'], protocol_options=[]),
+        generate_treatment('iblt', 30, True, freq_pkts=10, reset=True),
+        generate_treatment('iblt', 30, True, freq_pkts=10, cache_capacity=48000, reset=True),
+        generate_treatment('iblt', 30, True, freq_pkts=10, cache_capacity=16000, reset=True),
+        generate_treatment('iblt', 30, True, freq_pkts=10, cache_capacity=48000),
+        generate_treatment('iblt', 30, True, freq_pkts=10, cache_capacity=16000),
     ]
     for ty in ['sidekick', 'iblt']:
-        for delay in [0, 10, 20, 30, 60]:
-            treatments.append(generate_treatment(ty, delay, False))
-            treatments.append(generate_treatment(ty, delay, True))
+        for delay in [0, 5, 10, 20, 30, 60]:
+            for freq in [None, 8, 10, 16]:
+                treatments.append(generate_treatment(ty, delay, False, freq_pkts=freq))
+                treatments.append(generate_treatment(ty, delay, True, freq_pkts=freq))
     labels = [treatment.label() for treatment in treatments]
     treatment_map = {}
     for label, treatment in zip(labels, treatments):
