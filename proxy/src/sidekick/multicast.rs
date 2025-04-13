@@ -133,13 +133,13 @@ impl SidekickMulticast {
             return;
         }
         match self.connection_type(&packet) {
-            ConnectionType::BaseStoc => {
+            ConnectionType::BaseStoc { .. } => {
                 trace!("Received base packet from server");
                 self.handle_base_packet_from_server(packet);
             }
-            ConnectionType::Sidekick(conn) => {
+            ConnectionType::Sidekick { sidekick_conn } => {
                 trace!("Received sidekick packet from client");
-                self.handle_sidekick_packet_from_client(packet, conn);
+                self.handle_sidekick_packet_from_client(packet, sidekick_conn);
             }
             ConnectionType::None => {
                 trace!("Forwarding packet from unknown four-tuple");
@@ -199,7 +199,7 @@ impl SidekickMulticast {
                     self.handle_discovery_packet(disc, addr_key, packet);
                     return ConnectionType::Discovery;
                 } else {
-                    return ConnectionType::Sidekick(addr_key);
+                    return ConnectionType::Sidekick { sidekick_conn: addr_key };
                 }
             } else {
                 return ConnectionType::None;
@@ -207,7 +207,7 @@ impl SidekickMulticast {
         } else if packet.iface == self.stream.server_iface() {
             match self.base_connection_stoc {
                 Some(stored_key) if stored_key == addr_key => {
-                    return ConnectionType::BaseStoc;
+                    return ConnectionType::BaseStoc { base_conn: addr_key, sidekick_conn: addr_key };
                 }
                 Some(stored_key) => {
                     trace!("Unknown STOC AddrKey: {} (expected: {})",
