@@ -1,6 +1,8 @@
+use log::warn;
+
 #[cfg(feature = "cycles_base")]
 mod config {
-    pub const PRINT_NUM_PACKETS: u64 = 1000;
+    pub const PRINT_NUM_PACKETS: u64 = 20;
     pub const NUM_MEASUREMENTS: usize = 9;
     pub const HEADERS: [&str; NUM_MEASUREMENTS] = [
         "connection_type", "forward", "handle_base_packet_from_server", // handle_packet
@@ -13,16 +15,16 @@ mod config {
 
 #[cfg(feature = "cycles_quack")]
 mod config {
-    pub const PRINT_NUM_PACKETS: u64 = 500;
-    pub const NUM_MEASUREMENTS: usize = 18;
+    pub const PRINT_NUM_PACKETS: u64 = 20;
+    pub const NUM_MEASUREMENTS: usize = 19;
     pub const HEADERS: [&str; NUM_MEASUREMENTS] = [
         "connection_type", "handle_sidekick_packet_from_client", // handle_packet
         "parse_disc", "parse_quack", "handle_disc", "handle_quack", // handle_sidekick_packet_from_client
         "hash_table", "decode", "retransmit", "evict", "reset", // handle_quack_from_client
         "evict_drain", "evict_nbytes", "evict_missing", // evict
-        "check_valid_quack", "insert", "subtract", "decode", // decode
+        "check_valid_quack", "insert", "subtract", "decode", "map_to_ids", // decode
     ];
-    pub const PRINT_INDEXES: [usize; 18] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+    pub const PRINT_INDEXES: [usize; 9] = [1, 3, 5, 7, 14, 15, 16, 17, 18];
 }
 
 use config::*;
@@ -56,9 +58,9 @@ unsafe fn print_cycles_summary() {
             .map(|&i| HEADERS[i])
             .collect::<Vec<_>>()
             .join(",");
-        println!("{}", headers);
+        warn!("{}", headers);
     }
-    println!("{} (total={},prop={})", cycles_norm, total, count_prop);
+    warn!("{} (total={},prop={})", cycles_norm, total, count_prop);
 }
 
 unsafe fn rdtsc() -> u64 {

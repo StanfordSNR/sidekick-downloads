@@ -243,21 +243,21 @@ impl Sidekick {
     fn handle_base_packet_from_server(
         &mut self, packet: Packet, sidekick_conn: &AddrKey,
     ) {
-        cycles_base_start(3);
+        // cycles_base_start(3);
         if let Some(conn) = self.sidekick_conns.get_mut(sidekick_conn) {
-            cycles_base_stop(3);
+            // cycles_base_stop(3);
             conn.num_tx += 1;
-            cycles_base_start(4);
+            // cycles_base_start(4);
             let add_result = conn.cache.add(packet);
-            cycles_base_stop(4);
+            // cycles_base_stop(4);
             if let Err(packet) = add_result {
-                cycles_base_start(5);
+                // cycles_base_start(5);
                 if Self::reset_sidekick_conn(
                     packet, conn, &mut self.stream, &mut self.buf)
                 {
                     warn!("Reset due to exceeding cache capacity");
                 }
-                cycles_base_stop(5);
+                // cycles_base_stop(5);
             }
         } else {
             error!("Expected sidekick to exist: {:?}", fmt_hex!(sidekick_conn));
@@ -266,7 +266,7 @@ impl Sidekick {
 
     /// Returns the type of connection the received packet belongs to.
     fn connection_type(&self, packet: &Packet) -> ConnectionType {
-        cycles_base_start(0);
+        // cycles_base_start(0);
         cycles_quack_start(0);
         let addr_key = UdpParser::parse_addr_key(&packet.data);
         if packet.iface == self.stream.client_iface() &&
@@ -282,7 +282,7 @@ impl Sidekick {
             // previously initialized.
             if let Some(sidekick_conn) = self.base_to_sidekick.get(&addr_key) {
                 let ty = ConnectionType::BaseStoc { sidekick_conn: *sidekick_conn };
-                cycles_base_stop(0);
+                // cycles_base_stop(0);
                 ty
             } else {
                 ConnectionType::None
@@ -304,12 +304,12 @@ impl Sidekick {
         match conn_type {
             ConnectionType::BaseStoc { sidekick_conn } => {
                 trace!("Received base packet from server");
-                cycles_base_start(1);
+                // cycles_base_start(1);
                 self.stream.forward_packet(&packet, packet.nbytes as usize);
-                cycles_base_stop(1);
-                cycles_base_start(2);
+                // cycles_base_stop(1);
+                // cycles_base_start(2);
                 self.handle_base_packet_from_server(packet, &sidekick_conn);
-                cycles_base_stop(2);
+                // cycles_base_stop(2);
             }
             ConnectionType::Sidekick { sidekick_conn } => {
                 trace!("Received sidekick packet from client");
