@@ -67,7 +67,7 @@ class EmulatedNetwork:
         if disable_checksum:
             # For some reason, this needs to be disabled at the endpoints in
             # the multicast network.
-            self.popen(host, f'ethtool -K {iface} tx off')
+            self.popen(host, f'ethtool -K {iface} tx off rx off')
 
         # Configure the end-host or proxy
         if not netem:
@@ -635,10 +635,10 @@ class OneHopNetwork(EmulatedNetwork):
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
         rtt = 2 * (delay1 + delay2)
         bdp = self._calculate_bdp(delay1, delay2, bw1, bw2)
-        self._config_iface('h1-eth0', False, pacing)
+        self._config_iface('h1-eth0', False, pacing, disable_checksum=proxy == ProxyType.RTUNNEL)
         self._config_iface('p1-eth0', False, pacing)
         self._config_iface('p1-eth1', False, pacing)
-        self._config_iface('h2-eth0', False, pacing)
+        self._config_iface('h2-eth0', False, pacing, disable_checksum=proxy == ProxyType.RTUNNEL)
         self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
         self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
         self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
