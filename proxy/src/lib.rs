@@ -1,12 +1,14 @@
 pub mod cache;
 pub mod stream;
 
-#[cfg(feature = "cycles")]
+#[cfg(any(feature = "cycles_base", feature = "cycles_quack"))]
 pub(crate) mod cycles;
-#[cfg(not(feature = "cycles"))]
+#[cfg(all(not(feature = "cycles_base"), not(feature = "cycles_quack")))]
 pub(crate) mod cycles {
-	pub fn cycles_start(_idx: usize) {}
-	pub fn cycles_stop(_idx: usize) {}
+    pub fn cycles_base_start(_idx: usize) {}
+    pub fn cycles_base_stop(_idx: usize) {}
+    pub fn cycles_quack_start(_idx: usize) {}
+    pub fn cycles_quack_stop(_idx: usize) {}
 }
 
 mod sidekick;

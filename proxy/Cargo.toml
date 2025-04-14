@@ -21,7 +21,8 @@ sidekick-utils = { path = "../sidekick_utils/" }
 
 [features]
 default = []
-cycles = []
+cycles_base = []
+cycles_quack = []
 cache_statistics = []
 
 [[bin]]

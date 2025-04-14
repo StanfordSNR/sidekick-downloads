@@ -115,6 +115,7 @@ impl Sidekick {
         &mut self, quack: QuackWrapper, packet: Packet, sidekick_conn: &AddrKey,
     ) {
         // Validate that the quACK belongs to an initialized sidekick
+        cycles_quack_start(6);
         let conn = match self.sidekick_conns.get_mut(sidekick_conn) {
             Some(conn) => conn,
             None => {
@@ -122,15 +123,19 @@ impl Sidekick {
                 return;
             }
         };
+        cycles_quack_stop(6);
 
         // Decode the quACK
+        cycles_quack_start(7);
         match conn.cache.decode(&quack) {
             Ok(result) => {
+                cycles_quack_stop(7);
                 debug!("quack {} cache_len={} num_symbols={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), conn.cache.len(), quack.threshold(),
                     result.last_index, result.missing_indexes, fmt_hex!(sidekick_conn));
 
                 // Retransmit missing packets
+                cycles_quack_start(8);
                 for (i, &index) in result.missing_indexes.iter().enumerate() {
                     let retx = conn.cache.get(index).unwrap();
                     debug!(
@@ -141,17 +146,23 @@ impl Sidekick {
                     );
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
                 }
+                cycles_quack_stop(8);
 
                 // Update the cache and make retransmission state final
+                cycles_quack_start(9);
                 conn.cache.evict(true);
+                cycles_quack_stop(9);
                 conn.num_retx += result.missing_indexes.len();
             }
             Err(e) => {
+                cycles_quack_stop(7);
                 debug!("quack {} cache_len={} num_symbols={} last_value={}, Sidekick: {}",
                     quack.count(), conn.cache.len(), quack.threshold(),
                     quack.last_value().unwrap(), fmt_hex!(sidekick_conn));
+                cycles_quack_start(10);
                 Self::reset_sidekick_conn(
                     packet, conn, &mut self.stream, &mut self.buf);
+                cycles_quack_stop(10);
                 error!("Failed to decode quACK: {:?}", e);
             }
         }
@@ -207,14 +218,22 @@ impl Sidekick {
     fn handle_sidekick_packet_from_client(
         &mut self, packet: Packet, sidekick_conn: &AddrKey,
     ) {
+        cycles_quack_start(2);
+        cycles_quack_start(3);
         let payload = UdpParser::payload(&packet.data, packet.nbytes);
         if let Some(disc) = DiscoveryPayload::from_payload(payload) {
+            cycles_quack_stop(2);
             // Discovery packet
+            cycles_quack_start(4);
             self.handle_discovery_packet(disc, packet, sidekick_conn);
+            cycles_quack_stop(4);
         } else {
             // QuACKs
             let quack = QuackWrapper::deserialize(payload);
+            cycles_quack_stop(3);
+            cycles_quack_start(5);
             self.handle_quack_from_client(quack, packet, sidekick_conn);
+            cycles_quack_stop(5);
         }
     }
 
@@ -224,15 +243,21 @@ impl Sidekick {
     fn handle_base_packet_from_server(
         &mut self, packet: Packet, sidekick_conn: &AddrKey,
     ) {
-        self.stream.forward_packet(&packet, packet.nbytes as usize);
+        cycles_base_start(3);
         if let Some(conn) = self.sidekick_conns.get_mut(sidekick_conn) {
+            cycles_base_stop(3);
             conn.num_tx += 1;
-            if let Err(packet) = conn.cache.add(packet) {
+            cycles_base_start(4);
+            let add_result = conn.cache.add(packet);
+            cycles_base_stop(4);
+            if let Err(packet) = add_result {
+                cycles_base_start(5);
                 if Self::reset_sidekick_conn(
                     packet, conn, &mut self.stream, &mut self.buf)
                 {
                     warn!("Reset due to exceeding cache capacity");
                 }
+                cycles_base_stop(5);
             }
         } else {
             error!("Expected sidekick to exist: {:?}", fmt_hex!(sidekick_conn));
@@ -241,18 +266,24 @@ impl Sidekick {
 
     /// Returns the type of connection the received packet belongs to.
     fn connection_type(&self, packet: &Packet) -> ConnectionType {
+        cycles_base_start(0);
+        cycles_quack_start(0);
         let addr_key = UdpParser::parse_addr_key(&packet.data);
         if packet.iface == self.stream.client_iface() &&
             UdpParser::parse_dst_port(&packet.data) == self.quack_port
         {
             // Assume packets destined to the quACK port (and the proxy IP)
             // are sidekick packets -- either discovery packets or quACKs.
-            ConnectionType::Sidekick { sidekick_conn: addr_key }
+            let ty = ConnectionType::Sidekick { sidekick_conn: addr_key };
+            cycles_quack_stop(0);
+            ty
         } else if packet.iface == self.stream.server_iface() {
             // The 4-tuple for this base connection has a sidekick that was
             // previously initialized.
             if let Some(sidekick_conn) = self.base_to_sidekick.get(&addr_key) {
-                ConnectionType::BaseStoc { sidekick_conn: *sidekick_conn }
+                let ty = ConnectionType::BaseStoc { sidekick_conn: *sidekick_conn };
+                cycles_base_stop(0);
+                ty
             } else {
                 ConnectionType::None
             }
@@ -269,14 +300,22 @@ impl Sidekick {
             self.stream.forward_packet(&packet, packet.nbytes as usize);
             return;
         }
-        match self.connection_type(&packet) {
+        let conn_type = self.connection_type(&packet);
+        match conn_type {
             ConnectionType::BaseStoc { sidekick_conn } => {
                 trace!("Received base packet from server");
+                cycles_base_start(1);
+                self.stream.forward_packet(&packet, packet.nbytes as usize);
+                cycles_base_stop(1);
+                cycles_base_start(2);
                 self.handle_base_packet_from_server(packet, &sidekick_conn);
+                cycles_base_stop(2);
             }
             ConnectionType::Sidekick { sidekick_conn } => {
                 trace!("Received sidekick packet from client");
+                cycles_quack_start(1);
                 self.handle_sidekick_packet_from_client(packet, &sidekick_conn);
+                cycles_quack_stop(1);
             }
             ConnectionType::None => {
                 trace!("Forwarding packet from unknown four-tuple");

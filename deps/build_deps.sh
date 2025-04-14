@@ -8,8 +8,9 @@ help() {
 	echo "4 = picoquic"
 	echo "5 = sidekick"
 	echo "6 = media"
-	echo "7 = proxy-cycles"
+	echo "7 = proxy-cycles-base"
 	echo "8 = proxy-statistics"
+	echo "9 = proxy-cycles-quack"
 	exit 1
 }
 
@@ -72,14 +73,19 @@ build_media() {
 	cargo build --release --bin multicast_client
 }
 
-build_proxy_cycles() {
+build_proxy_cycles_base() {
 	cd $SIDEKICK_HOME/proxy
-	cargo build --release --bin sidekick --features cycles
+	cargo build --release --bin sidekick --features cycles_base
 }
 
 build_proxy_statistics() {
 	cd $SIDEKICK_HOME/proxy
 	cargo build --release --bin sidekick --features cache_statistics
+}
+
+build_proxy_cycles_quack() {
+	cd $SIDEKICK_HOME/proxy
+	cargo build --release --bin sidekick --features cycles_quack
 }
 
 if [ $1 == "all" ]; then
@@ -102,9 +108,11 @@ elif [ $1 -eq 5 ]; then
 elif [ $1 -eq 6 ]; then
 	build_media
 elif [ $1 -eq 7 ]; then
-	build_proxy_cycles
+	build_proxy_cycles_base
 elif [ $1 -eq 8 ]; then
 	build_proxy_statistics
+elif [ $1 -eq 9 ]; then
+	build_proxy_cycles_quack
 else
 	help
 fi
