@@ -255,6 +255,14 @@ class TestPicoquicBenchmark(CLITestCase):
         self.assertEqual(len(quack_map), 0, 'no quacks are received')
 
 
+class TestReliableTunnel(CLITestCase):
+    def test_picoquic_with_reliable_tunnel(self):
+        self.execute_command_and_check('picoquic', ['--proxy', 'rtunnel'])
+
+    def test_media_with_reliable_tunnel(self):
+        self.execute_command_and_check('media', ['--proxy', 'rtunnel'])
+
+
 class TestMediaBenchmark(CLITestCase):
     def check_media_output(self, output):
         self.assertIsInstance(output.get('client_latencies'), list);

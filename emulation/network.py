@@ -389,7 +389,7 @@ class EmulatedNetwork:
             logfile=logfile)
 
     def start_bridge(
-        self, logfile, timeout=SETUP_TIMEOUT,
+        self, node, logfile, timeout=SETUP_TIMEOUT,
         executable='./proxy/target/release/bridge',
     ):
         condition = threading.Condition()
@@ -398,7 +398,7 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
-        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
+        self.popen(node, f'{executable} --client-interface {node.name}-eth0 --server-interface {node.name}-eth1',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
 
@@ -556,6 +556,9 @@ class OneHopNetwork(EmulatedNetwork):
 
         # Initialize statistics
         self.primary_ifaces = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
+        if proxy == ProxyType.RTUNNEL:
+            self.primary_ifaces.append('e1-eth0')
+            self.primary_ifaces.append('e1-eth1')
         self.iface_to_host = {
             'h1-eth0': self.h1,
             'p1-eth0': self.p1,
@@ -579,10 +582,15 @@ class OneHopNetwork(EmulatedNetwork):
             self.setup_router_node(self.e2, self._mac(11), self._mac(21))
             self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'br0')
             self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'br0')
-        else:
+        elif proxy in [ProxyType.BRIDGE, ProxyType.SIDEKICK, ProxyType.PICOQUIC]:
             # p1 runs a binary that manually bridges the two interfaces
             self.setup_bridging_node(self.e1, mac=self._mac(51))
             self.setup_router_node(self.e2, self._mac(11), self._mac(21))
+        elif proxy == ProxyType.RTUNNEL:
+            # p1 and p2 *both* bridge the interfaces manually
+            self.setup_router_node(self.e2, self._mac(11), self._mac(21))
+        else:
+            raise Exception(f'invalid proxy type: {proxy}')
         self.popen(self.h1, "ip route add default via 172.16.1.1")
         self.popen(self.h2, "ip route add default via 172.16.2.1")
         self._set_arp_table(self.h1, '172.16.1.1', self._mac(11), 'h1-eth0')
@@ -612,6 +620,8 @@ class OneHopNetwork(EmulatedNetwork):
         if proxy is None:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(53), 'h1-eth0')
             self._set_arp_table(self.e2, '172.16.1.11', self._mac(53), 'e2-eth0')
+        elif proxy == ProxyType.RTUNNEL:
+            pass
         elif proxy != ProxyType.PEPSAL:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(40), 'h1-eth0')
             self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'p1-eth0')

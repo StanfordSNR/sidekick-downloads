@@ -456,10 +456,13 @@ def main(args):
         if args.proxy == ProxyType.PEPSAL:
             net.start_tcp_pep(proxy_logfile)
         elif args.proxy == ProxyType.BRIDGE:
-            net.start_bridge(proxy_logfile)
+            net.start_bridge(net.p1, proxy_logfile)
         elif args.proxy == ProxyType.SIDEKICK:
             net.start_sidekick(args.quackee_port, args.cache_capacity,
                 logfile=proxy_logfile)
+        elif args.proxy == ProxyType.RTUNNEL:
+            net.start_bridge(net.e1, f'{proxy_logfile}.e1')
+            net.start_bridge(net.p1, f'{proxy_logfile}.p1')
         elif args.proxy == ProxyType.SIDEKICK_MULTICAST:
             net.start_sidekick_multicast(args.quackee_port, args.cache_capacity,
                 logfile=proxy_logfile)
