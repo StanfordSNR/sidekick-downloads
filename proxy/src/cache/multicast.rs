@@ -1,7 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 #[cfg(feature = "cache_statistics")]
 use std::time::Instant;
-
+#[cfg(feature = "cache_statistics")]
+use sidekick_utils::fmt_hex;
 use log::{trace, debug, error};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
@@ -387,6 +388,12 @@ impl QuackCacheMulticast {
                 missing_indexes,
             }
         };
+
+        #[cfg(feature = "cache_statistics")]
+        {
+            debug!("cache_statistics {:?} virtual_insertions conn={} len={}",
+                Instant::now(), fmt_hex!(conn), state.buffer.insertions.len());
+        }
         Ok(result)
     }
 }

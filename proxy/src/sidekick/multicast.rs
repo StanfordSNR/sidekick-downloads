@@ -104,10 +104,9 @@ impl SidekickMulticast {
         let conn = self.sidekick_conns.get_mut(sidekick_conn).unwrap();
         match base.cache.decode(&quack, sidekick_conn) {
             Ok(result) => {
-                debug!("quack {} cache_len={} num_symbols={} {:?} last_index={} missing={:?}, Sidekick: {}",
+                debug!("quack {} cache_len={} num_symbols={} last_index={} missing={:?}, Sidekick: {}",
                     quack.count(), base.cache.view().len(), quack.threshold(),
-                    base.cache.view_ids(), result.last_index,
-                    result.missing_indexes, fmt_hex!(sidekick_conn));
+                    result.last_index, result.missing_indexes, fmt_hex!(sidekick_conn));
 
                 // Retransmit missing packets
                 for (i, &index) in result.missing_indexes.iter().enumerate() {
