@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::cmp::min;
 
 use log::{debug, error};
@@ -14,8 +14,6 @@ use crate::cache::{DecodeError, DecodeResult};
 /// The indexes that are being inserted must be < the insertion index.
 #[derive(Debug)]
 struct VirtualBuffer {
-    // The first received index in the base buffer
-    _start: usize,
     // *One after* the last received index in the base buffer
     // (the next index to receive)
     next: usize,
@@ -28,7 +26,6 @@ struct VirtualBuffer {
 impl VirtualBuffer {
     fn new(start: usize) -> Self {
         Self {
-            _start: start,
             next: start,
             insertions: VecDeque::new(),
         }
@@ -239,6 +236,53 @@ impl QuackCacheMulticast {
         self.init_conn(conn, q.threshold(), q.riblt());
     }
 
+    fn check_valid_quack(
+        &self, client_quack: &QuackWrapper, conn: &AddrKey,
+    ) -> Result<(Vec<(usize, bool)>, usize), DecodeError> {
+        // Check empty client quACK
+        if client_quack.last_value().is_none() {
+            return Err(DecodeError::EmptyClientQuack);
+        }
+
+        // Fail fast if we don't have enough packets to do subset reconciliation
+        let state = self.conns.get(conn).unwrap();
+        let indexes = state.buffer.iter(self.total()).collect::<Vec<_>>();
+        let client_count = client_quack.count() as usize;
+        let proxy_count = state.quack.count() as usize;
+        if proxy_count + indexes.len() < client_count {
+            return Err(DecodeError::NotASubset {
+                num_recv: client_count as u32,
+                num_send: (proxy_count + indexes.len()) as u32,
+                last_value: client_quack.last_value().unwrap(),
+            });
+        }
+
+        // Check that the last value is already up to date or that it exists
+        let mut num_to_add = 0;
+        let last_value = client_quack.last_value().unwrap();
+        if client_count > proxy_count {
+            num_to_add += client_count - proxy_count;
+        }
+        if num_to_add == 0 && state.quack.last_value() == Some(last_value) {
+            return Ok((indexes, 0));
+        }
+        if num_to_add > 0 {
+            let index = indexes[num_to_add - 1].0 - self.num_evicted;
+            if self.id_cache[index] == last_value {
+                return Ok((indexes, num_to_add));
+            }
+        }
+
+        // Otherwise we have to add some more packets from the id cache.
+        num_to_add += indexes.iter()
+            .skip(num_to_add)
+            .map(|(index, _)| self.id_cache[index - self.num_evicted])
+            .position(|id| id == last_value)
+            .map(|index| index + 1)
+            .ok_or(DecodeError::MissingLastValue { identifier : last_value})?;
+        Ok((indexes, num_to_add))
+    }
+
     /// Given a quACK from the client, determines which packets the proxy has
     /// sent have been definitively received or likely lost.
     ///
@@ -256,10 +300,7 @@ impl QuackCacheMulticast {
     pub fn decode(
         &mut self, client_quack: &QuackWrapper, conn: &AddrKey,
     ) -> Result<DecodeResult, DecodeError> {
-        // Check empty client quACK
-        if client_quack.last_value().is_none() {
-            return Err(DecodeError::EmptyClientQuack);
-        }
+        let (indexes, num_acked) = self.check_valid_quack(client_quack, conn)?;
 
         // Get the state for this connection.
         let end = self.total();
@@ -270,12 +311,7 @@ impl QuackCacheMulticast {
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
         let proxy_quack = &mut state.quack;
-        let mut num_acked = 0;
-        let indexes = state.buffer.iter(end).collect::<Vec<_>>();
-        for &(index, is_insertion) in &indexes {
-            if proxy_quack.last_value() == client_quack.last_value() {
-                break;
-            }
+        for &(index, is_insertion) in indexes.iter().take(num_acked) {
             let id = self.id_cache[index - self.num_evicted];
             proxy_quack.insert(id);
             if is_insertion {
@@ -283,29 +319,12 @@ impl QuackCacheMulticast {
             } else {
                 state.buffer.next += 1;
             }
-            num_acked += 1;
-        }
-        if proxy_quack.last_value() != client_quack.last_value() {
-            return Err(DecodeError::MissingLastValue {
-                identifier: client_quack.last_value().unwrap(),
-            });
-        }
-
-        // Check that we have sent more packets than were received.
-        if proxy_quack.count() < client_quack.count() {
-            return Err(DecodeError::NotASubset {
-                num_recv: client_quack.count(),
-                num_send: proxy_quack.count(),
-                last_value: proxy_quack.last_value().unwrap(),
-            });
         }
 
         // Check that the number of missing packets is within the threshold.
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
-        let proxy_quack = proxy_quack.clone();
-        let difference_quack = proxy_quack.sub(&client_quack);
-        let num_missing = difference_quack.count() as usize;
+        let num_missing = (proxy_quack.count() - client_quack.count()) as usize;
         if num_missing > proxy_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
                 num_missing,
@@ -323,6 +342,7 @@ impl QuackCacheMulticast {
         }
 
         // Decode the quACK using the identifier cache.
+        let difference_quack = proxy_quack.clone().sub(&client_quack);
         let result = if difference_quack.count() == 0 {
             DecodeResult {
                 last_index: state.buffer.next,
@@ -341,7 +361,7 @@ impl QuackCacheMulticast {
                 }
                 QuackWrapper::IBLT(difference_quack) => {
                     let missing = if let Some(missing) = difference_quack.decode() {
-                        missing.into_iter().collect::<HashSet<u32>>()
+                        missing
                     } else {
                         return Err(DecodeError::InvalidIBLT {
                             num_missing,
