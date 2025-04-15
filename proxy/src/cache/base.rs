@@ -89,7 +89,7 @@ impl QuackCache {
 
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) -> Result<(), Packet> {
-        // cycles_base_start(6);
+        cycles_base_start(6);
         while (self.capacity_pkts && (self.len() >= self.capacity)) ||
             (!self.capacity_pkts && (self.nbytes + packet.nbytes > self.capacity))
         {
@@ -107,7 +107,7 @@ impl QuackCache {
                 }
             }
         }
-        // cycles_base_stop(6);
+        cycles_base_stop(6);
 
         self.nbytes += packet.nbytes;
         #[cfg(feature = "cache_statistics")]
@@ -115,14 +115,14 @@ impl QuackCache {
             self.cache_log("add");
         }
 
-        // cycles_base_start(7);
+        cycles_base_start(7);
         let id = self.id_func.to_id(&packet.data);
-        // cycles_base_stop(7);
+        cycles_base_stop(7);
         debug!("insert {}", id);
-        // cycles_base_start(8);
+        cycles_base_start(8);
         self.id_cache.push_back(id);
         self.packet_cache.push_back(packet);
-        // cycles_base_stop(8);
+        cycles_base_stop(8);
         Ok(())
     }
 
