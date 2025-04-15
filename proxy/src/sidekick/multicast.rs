@@ -130,10 +130,6 @@ impl SidekickMulticast {
                         Err(e) => error!("Failed to build retransmit packet: {}", e),
                     }
                 }
-
-                // Update the cache and make retransmission state final
-                let num_evicted = base.cache.evict();
-                trace!("evicting {}", num_evicted);
                 conn.num_retx += result.missing_indexes.len();
             }
             Err(e) => {
