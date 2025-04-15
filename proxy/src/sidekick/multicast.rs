@@ -55,6 +55,7 @@ pub struct SidekickMulticast {
     stream: PacketStream,
     quack_port: u16,
     cache_capacity: usize,
+    cache_capacity_pkts: bool,
 
     /// Multicast base connection state
     base_conn: Option<BaseConn>,
@@ -76,12 +77,14 @@ impl SidekickMulticast {
         server_interface: &str,
         quack_port: u16,
         cache_capacity: usize,
+        cache_capacity_pkts: bool,
     ) -> Self {
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
         Self {
             stream,
             quack_port,
             cache_capacity,
+            cache_capacity_pkts,
             base_conn: None,
             sidekick_conns: HashMap::new(),
             buf: [0; BUFFER_SIZE],
@@ -164,6 +167,7 @@ impl SidekickMulticast {
             let cache = QuackCacheMulticast::new(
                 IdentifierFunc::FixedOffset(UDP_PAYLOAD_OFFSET + disc.id_offset as usize),
                 self.cache_capacity,
+                self.cache_capacity_pkts,
             );
             self.base_conn = Some(BaseConn::new(&base, cache));
         }

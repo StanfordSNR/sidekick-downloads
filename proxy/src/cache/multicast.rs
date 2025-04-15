@@ -105,21 +105,28 @@ pub struct QuackCacheMulticast {
     id_cache: VecDeque<Identifier>,
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
-    /// Cache capacity. Incoming packets >= this capacity will be dropped.
+
+    /// Cache capacity. Incoming packets >= this capacity will be handled
+    /// according to the cache policy.
     capacity: usize,
+    /// Whether to measure cache capacity in terms of packets, otherwise bytes.
+    capacity_pkts: bool,
     /// Per-connection state
     conns: HashMap<AddrKey, ConnState>,
 }
 
 impl QuackCacheMulticast {
     /// Initialize a new multicast cache.
-    pub fn new(id_func: IdentifierFunc, capacity: usize) -> Self {
+    pub fn new(
+        id_func: IdentifierFunc, capacity: usize, capacity_pkts: bool,
+    ) -> Self {
         Self {
             num_evicted: 0,
             packet_cache: VecDeque::with_capacity(capacity),
             id_cache: VecDeque::with_capacity(capacity),
             id_func,
             capacity,
+            capacity_pkts,
             conns: HashMap::new(),
         }
     }
@@ -400,7 +407,8 @@ mod tests {
     const CONN3: AddrKey = [3u8; 12];
 
     fn new_cache() -> QuackCacheMulticast {
-        QuackCacheMulticast::new(IdentifierFunc::FirstByte, DEFAULT_CAPACITY)
+        QuackCacheMulticast::new(
+            IdentifierFunc::FirstByte, DEFAULT_CAPACITY, true)
     }
 
     fn test_packet_view(ids: &[u8]) -> VecDeque<Packet> {
