@@ -49,6 +49,8 @@ pub enum DecodeError {
         num_missing: usize,
         num_symbols: usize,
     },
+    /// An insertion index in the multicast virtual buffer was evicted.
+    InvalidVirtualIndex,
 }
 
 impl fmt::Display for DecodeError {
@@ -80,6 +82,9 @@ impl fmt::Display for DecodeError {
             DecodeError::InvalidIBLT { num_missing, num_symbols } => {
                 write!(f, "IBLT decode error num_missing={} num_symbols = {}",
                     num_missing, num_symbols)
+            }
+            DecodeError::InvalidVirtualIndex => {
+                write!(f, "Insertion index in the virtual buffer was evicted")
             }
         }
     }

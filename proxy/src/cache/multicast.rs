@@ -1,7 +1,9 @@
-use std::collections::{HashSet, HashMap, VecDeque};
-use std::cmp::min;
-
-use log::{debug, error};
+use std::collections::{HashMap, VecDeque};
+#[cfg(feature = "cache_statistics")]
+use std::time::Instant;
+#[cfg(feature = "cache_statistics")]
+use sidekick_utils::fmt_hex;
+use log::{trace, debug, error};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
 use quack::{arithmetic::ModularArithmetic, Quack, PowerSumQuack, QuackWrapper};
@@ -14,8 +16,6 @@ use crate::cache::{DecodeError, DecodeResult};
 /// The indexes that are being inserted must be < the insertion index.
 #[derive(Debug)]
 struct VirtualBuffer {
-    // The first received index in the base buffer
-    _start: usize,
     // *One after* the last received index in the base buffer
     // (the next index to receive)
     next: usize,
@@ -28,7 +28,6 @@ struct VirtualBuffer {
 impl VirtualBuffer {
     fn new(start: usize) -> Self {
         Self {
-            _start: start,
             next: start,
             insertions: VecDeque::new(),
         }
@@ -108,23 +107,39 @@ pub struct QuackCacheMulticast {
     id_cache: VecDeque<Identifier>,
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
-    /// Cache capacity. Incoming packets >= this capacity will be dropped.
+
+    /// The number of bytes in the packet cache.
+    nbytes: usize,
+    /// Cache capacity. Incoming packets >= this capacity will be handled
+    /// according to the cache policy.
     capacity: usize,
+    /// Whether to measure cache capacity in terms of packets, otherwise bytes.
+    capacity_pkts: bool,
     /// Per-connection state
     conns: HashMap<AddrKey, ConnState>,
 }
 
 impl QuackCacheMulticast {
     /// Initialize a new multicast cache.
-    pub fn new(id_func: IdentifierFunc, capacity: usize) -> Self {
+    pub fn new(
+        id_func: IdentifierFunc, capacity: usize, capacity_pkts: bool,
+    ) -> Self {
         Self {
             num_evicted: 0,
             packet_cache: VecDeque::with_capacity(capacity),
             id_cache: VecDeque::with_capacity(capacity),
             id_func,
+            nbytes: 0,
             capacity,
+            capacity_pkts,
             conns: HashMap::new(),
         }
+    }
+
+    #[cfg(feature = "cache_statistics")]
+    fn cache_log(&self, event: &str) {
+        debug!("cache_statistics {:?} {} nbytes={} len={}",
+            Instant::now(), event, self.size(), self.len());
     }
 
     /// Identifier function used for the multicast connection.
@@ -147,6 +162,11 @@ impl QuackCacheMulticast {
         self.packet_cache.len()
     }
 
+    /// The number of bytes in the cache.
+    pub fn size(&self) -> usize {
+        self.nbytes
+    }
+
     /// The total number of packets that have ever been in the cache, including
     /// those that were evicted.
     pub fn total(&self) -> usize {
@@ -167,9 +187,20 @@ impl QuackCacheMulticast {
 
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) {
-        if self.len() >= self.capacity {
-            debug!("At capacity {}; dropping packet", self.capacity);
-            return;
+        while (self.capacity_pkts && (self.len() >= self.capacity)) ||
+            (!self.capacity_pkts && (self.nbytes + packet.nbytes > self.capacity))
+        {
+            let packet = self.packet_cache.pop_front().unwrap();
+            self.nbytes -= packet.nbytes;
+            let id = self.id_cache.pop_front().unwrap();
+            self.num_evicted += 1;
+            trace!("Evicting optimistically {}", id);
+        }
+
+        self.nbytes += packet.nbytes;
+        #[cfg(feature = "cache_statistics")]
+        {
+            self.cache_log("add");
         }
         let id = self.id_func.to_id(&packet.data);
         debug!("insert {}", id);
@@ -199,44 +230,59 @@ impl QuackCacheMulticast {
         }
     }
 
-    /// Evict the recently decoded packets from the cache.
-    ///
-    /// Since the packets are shared by multiple connections, only evict the
-    /// packets that have been decided to be *received* based on the decode
-    /// results of *all* subscribed connections.
-    ///
-    /// Note that packets that have been decided to be lost stay in the cache
-    /// until they are ultimately retransmitted. Since we can only evict a
-    /// prefix packets, and the packets awaiting retransmission to individual
-    /// clients are not reordered in the base cache, packets with an index
-    /// *greater* than that of the lost packet will stick around until it is
-    /// quACKed. The connection may be reset if it falls too far behind.
-    ///
-    /// Returns the number of evicted packets.
-    pub fn evict(&mut self) -> usize {
-        // Find the number of packets to evict.
-        // All of the packets have been received by all current connections.
-        let n = {
-            let mut n = self.total();
-            for buffer in self.conns.values().map(|state| &state.buffer) {
-                n = min(n, buffer.next);
-                n = min(n, buffer.insertions.iter().map(|(_, idx)| *idx)
-                                            .min().unwrap_or(n));
-            }
-            n - self.num_evicted
-        };
-
-        // Remove these packets from the cache
-        self.id_cache.drain(0..n);
-        self.packet_cache.drain(0..n);
-        self.num_evicted += n;
-        n
-    }
-
     /// Reset the state for this connection.
     pub fn reset(&mut self, conn: &AddrKey) {
         let q = &self.conns.get(conn).unwrap().quack;
         self.init_conn(conn, q.threshold(), q.riblt());
+    }
+
+    fn check_valid_quack(
+        &self, client_quack: &QuackWrapper, conn: &AddrKey,
+    ) -> Result<(Vec<(usize, bool)>, usize), DecodeError> {
+        // Check empty client quACK
+        if client_quack.last_value().is_none() {
+            return Err(DecodeError::EmptyClientQuack);
+        }
+
+        // Fail fast if we don't have enough packets to do subset reconciliation
+        let state = self.conns.get(conn).unwrap();
+        let indexes = state.buffer.iter(self.total()).collect::<Vec<_>>();
+        let client_count = client_quack.count() as usize;
+        let proxy_count = state.quack.count() as usize;
+        if proxy_count + indexes.len() < client_count {
+            return Err(DecodeError::NotASubset {
+                num_recv: client_count as u32,
+                num_send: (proxy_count + indexes.len()) as u32,
+                last_value: client_quack.last_value().unwrap(),
+            });
+        }
+
+        // Check that the last value is already up to date or that it exists
+        let mut num_to_add = 0;
+        let last_value = client_quack.last_value().unwrap();
+        if client_count > proxy_count {
+            num_to_add += client_count - proxy_count;
+        }
+        if num_to_add == 0 && state.quack.last_value() == Some(last_value) {
+            return Ok((indexes, 0));
+        }
+        if num_to_add > 0 {
+            let id = self.get_id(indexes[num_to_add - 1].0)
+                .ok_or(DecodeError::InvalidVirtualIndex)?;
+            if id == last_value {
+                return Ok((indexes, num_to_add));
+            }
+        }
+
+        // Otherwise we have to add some more packets from the id cache.
+        for (i, &(index, _)) in indexes.iter().skip(num_to_add).enumerate() {
+            let id = self.get_id(index).ok_or(DecodeError::InvalidVirtualIndex)?;
+            if id == last_value {
+                num_to_add += i + 1;
+                return Ok((indexes, num_to_add));
+            }
+        }
+        Err(DecodeError::MissingLastValue { identifier : last_value})
     }
 
     /// Given a quACK from the client, determines which packets the proxy has
@@ -256,10 +302,7 @@ impl QuackCacheMulticast {
     pub fn decode(
         &mut self, client_quack: &QuackWrapper, conn: &AddrKey,
     ) -> Result<DecodeResult, DecodeError> {
-        // Check empty client quACK
-        if client_quack.last_value().is_none() {
-            return Err(DecodeError::EmptyClientQuack);
-        }
+        let (indexes, num_acked) = self.check_valid_quack(client_quack, conn)?;
 
         // Get the state for this connection.
         let end = self.total();
@@ -270,12 +313,8 @@ impl QuackCacheMulticast {
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
         let proxy_quack = &mut state.quack;
-        let mut num_acked = 0;
-        let indexes = state.buffer.iter(end).collect::<Vec<_>>();
-        for &(index, is_insertion) in &indexes {
-            if proxy_quack.last_value() == client_quack.last_value() {
-                break;
-            }
+        for &(index, is_insertion) in indexes.iter().take(num_acked) {
+            // note: unsafe indexing checked in check_valid_quack
             let id = self.id_cache[index - self.num_evicted];
             proxy_quack.insert(id);
             if is_insertion {
@@ -283,29 +322,12 @@ impl QuackCacheMulticast {
             } else {
                 state.buffer.next += 1;
             }
-            num_acked += 1;
-        }
-        if proxy_quack.last_value() != client_quack.last_value() {
-            return Err(DecodeError::MissingLastValue {
-                identifier: client_quack.last_value().unwrap(),
-            });
-        }
-
-        // Check that we have sent more packets than were received.
-        if proxy_quack.count() < client_quack.count() {
-            return Err(DecodeError::NotASubset {
-                num_recv: client_quack.count(),
-                num_send: proxy_quack.count(),
-                last_value: proxy_quack.last_value().unwrap(),
-            });
         }
 
         // Check that the number of missing packets is within the threshold.
         // Note that it's possible for weird behavior to occur with overflows,
         // but the state is invalid in either case.
-        let proxy_quack = proxy_quack.clone();
-        let difference_quack = proxy_quack.sub(&client_quack);
-        let num_missing = difference_quack.count() as usize;
+        let num_missing = (proxy_quack.count() - client_quack.count()) as usize;
         if num_missing > proxy_quack.threshold() {
             return Err(DecodeError::ExceededThreshold {
                 num_missing,
@@ -323,6 +345,7 @@ impl QuackCacheMulticast {
         }
 
         // Decode the quACK using the identifier cache.
+        let difference_quack = proxy_quack.clone().sub(&client_quack);
         let result = if difference_quack.count() == 0 {
             DecodeResult {
                 last_index: state.buffer.next,
@@ -341,7 +364,7 @@ impl QuackCacheMulticast {
                 }
                 QuackWrapper::IBLT(difference_quack) => {
                     let missing = if let Some(missing) = difference_quack.decode() {
-                        missing.into_iter().collect::<HashSet<u32>>()
+                        missing
                     } else {
                         return Err(DecodeError::InvalidIBLT {
                             num_missing,
@@ -365,6 +388,12 @@ impl QuackCacheMulticast {
                 missing_indexes,
             }
         };
+
+        #[cfg(feature = "cache_statistics")]
+        {
+            debug!("cache_statistics {:?} virtual_insertions conn={} len={}",
+                Instant::now(), fmt_hex!(conn), state.buffer.insertions.len());
+        }
         Ok(result)
     }
 }
@@ -380,11 +409,8 @@ mod tests {
     const CONN3: AddrKey = [3u8; 12];
 
     fn new_cache() -> QuackCacheMulticast {
-        QuackCacheMulticast::new(IdentifierFunc::FirstByte, DEFAULT_CAPACITY)
-    }
-
-    fn test_packet_view(ids: &[u8]) -> VecDeque<Packet> {
-        ids.iter().map(|&id| test_packet(&[id])).collect::<VecDeque<_>>()
+        QuackCacheMulticast::new(
+            IdentifierFunc::FirstByte, DEFAULT_CAPACITY, true)
     }
 
     fn test_packet(data: &[u8]) -> Packet {
@@ -400,6 +426,7 @@ mod tests {
         let cache = new_cache();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.total(), 0);
+        assert_eq!(cache.size(), 0);
         assert_eq!(cache.view(), &[]);
         assert_eq!(cache.view_ids(), &[]);
         assert_eq!(cache.get(0), None);
@@ -415,19 +442,13 @@ mod tests {
         cache.add(packet2.clone());
 
         assert_eq!(cache.len(), 2);
+        assert_eq!(cache.size(), 6);
         assert_eq!(cache.total(), 2);
         assert_eq!(cache.view(), &[packet1.clone(), packet2.clone()]);
         assert_eq!(cache.view_ids(), &[1, 4]);
         assert_eq!(cache.get(0), Some(&packet1));
         assert_eq!(cache.get(1), Some(&packet2));
         assert_eq!(cache.get(2), None);
-
-        assert_eq!(cache.evict(), 2);
-        assert_eq!(cache.len(), 0);
-        assert_eq!(cache.total(), 2);
-        assert_eq!(cache.view(), &[]);
-        assert_eq!(cache.view_ids(), &[]);
-        assert_eq!(cache.get(0), None);
     }
 
     #[test]
@@ -439,11 +460,13 @@ mod tests {
 
         assert_eq!(cache.total(), DEFAULT_CAPACITY);
         assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.size(), DEFAULT_CAPACITY);
 
-        // Adding the extra packet should have no impact
+        // Adding the extra packet should optimistically evict a packet
         cache.add(test_packet(&[DEFAULT_CAPACITY as _]));
-        assert_eq!(cache.total(), DEFAULT_CAPACITY);
+        assert_eq!(cache.total(), DEFAULT_CAPACITY + 1);
         assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.size(), DEFAULT_CAPACITY);
     }
 
     #[test]
@@ -459,27 +482,29 @@ mod tests {
             cache.add(test_packet(&[i as _]));
         }
         assert_eq!(cache.len(), num_packets);
+        assert_eq!(cache.size(), num_packets);
 
         // all packets are acked
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), num_packets);
-        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.len(), num_packets);
+        assert_eq!(cache.size(), num_packets);
 
         // add more packets - a strict prefix is acked
         q.insert(43);
         cache.add(test_packet(&[43]));
-        cache.add(test_packet(&[27]));
-        cache.add(test_packet(&[36]));
+        cache.add(test_packet(&[27, 27]));
+        cache.add(test_packet(&[36, 36, 36]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 1);
-        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.len(), num_packets + 3);
+        assert_eq!(cache.size(), num_packets + 6);
 
         // decode the same quack twice in a row
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.len(), num_packets + 3);
+        assert_eq!(cache.size(), num_packets + 6);
     }
 
     #[test]
@@ -498,27 +523,29 @@ mod tests {
             cache.add(test_packet(&[i as _]));
         }
         assert_eq!(cache.len(), num_packets);
+        assert_eq!(cache.size(), num_packets);
 
         // all packets are acked
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), num_packets);
-        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.len(), num_packets);
+        assert_eq!(cache.size(), num_packets);
 
         // add more packets - a strict prefix is acked
         q.insert(43);
         cache.add(test_packet(&[43]));
-        cache.add(test_packet(&[27]));
-        cache.add(test_packet(&[36]));
+        cache.add(test_packet(&[27, 27]));
+        cache.add(test_packet(&[36, 36, 36]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 1);
-        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.len(), num_packets + 3);
+        assert_eq!(cache.size(), num_packets + 6);
 
         // decode the same quack twice in a row
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.len(), num_packets + 3);
+        assert_eq!(cache.size(), num_packets + 6);
     }
 
     #[test]
@@ -531,7 +558,7 @@ mod tests {
         cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 0..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _, i as _]));
         }
 
         // remove "missing" packets from the quack
@@ -542,25 +569,25 @@ mod tests {
         // detect missing packets
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
-        assert_eq!(cache.evict(), 5);
-        assert_eq!(cache.len(), 5);
+        assert_eq!(cache.len(), 10);
+        assert_eq!(cache.size(), 2*10);
 
         // missing packets are considered retransmitted
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 0);
-        assert_eq!(cache.len(), 5);
+        assert_eq!(cache.len(), 10);
+        assert_eq!(cache.size(), 2*10);
 
         // add more packets to the suffix - retxed packets are now missing
         q.insert(5);
         q.insert(11);
         cache.add(test_packet(&[10]));
-        cache.add(test_packet(&[11]));
-        cache.add(test_packet(&[12]));
+        cache.add(test_packet(&[11, 11]));  // acked
+        cache.add(test_packet(&[12, 12, 12]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![6, 8, 10]);
-        assert_eq!(cache.evict(), 1);
-        assert_eq!(cache.len(), 7);
+        assert_eq!(cache.len(), 13);
+        assert_eq!(cache.size(), 2*10+1+2+3);
     }
 
     #[test]
@@ -576,7 +603,7 @@ mod tests {
         cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 3..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _, i as _]));
         }
 
         // remove "missing" packets from the quack
@@ -587,25 +614,25 @@ mod tests {
         // detect missing packets
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
-        assert_eq!(cache.evict(), 5);
-        assert_eq!(cache.len(), 5);
+        assert_eq!(cache.len(), 10);
+        assert_eq!(cache.size(), 3+2*7);
 
         // missing packets are considered retransmitted
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 0);
-        assert_eq!(cache.len(), 5);
+        assert_eq!(cache.len(), 10);
+        assert_eq!(cache.size(), 3+2*7);
 
         // add more packets to the suffix - retxed packets are now missing
         q.insert(5);
         q.insert(11);
         cache.add(test_packet(&[10]));
-        cache.add(test_packet(&[11]));
-        cache.add(test_packet(&[12]));
+        cache.add(test_packet(&[11, 11]));  // acked
+        cache.add(test_packet(&[12, 12, 12]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![6, 8, 10]);
-        assert_eq!(cache.evict(), 1);
-        assert_eq!(cache.len(), 7);
+        assert_eq!(cache.len(), 13);
+        assert_eq!(cache.size(), 3+2*7+1+2+3);
     }
 
     #[test]
@@ -626,14 +653,12 @@ mod tests {
         q.insert(3);
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![2]);
-        assert_eq!(cache.evict(), 2);
 
         // lose a packet after this eviction
         cache.add(test_packet(&[5]));
         q.insert(5);
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![4, 2]);
-        assert_eq!(cache.evict(), 0);
 
         // can we get these packets?
         assert_eq!(cache.get(4), Some(&test_packet(&[4])));
@@ -710,6 +735,7 @@ mod tests {
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
         assert_eq!(cache.len(), 4);
+        assert_eq!(cache.size(), 4);
 
         // create a quack with missing packets
         let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
@@ -719,13 +745,13 @@ mod tests {
         // decode and evict
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![2]);
-        assert_eq!(cache.evict(), 2);
-        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.len(), 4);
+        assert_eq!(cache.size(), 4);
 
         // reset and evict
         cache.reset(&CONN1);
-        assert_eq!(cache.evict(), 2);
-        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.len(), 4);
+        assert_eq!(cache.size(), 4);
     }
 
     #[test]
@@ -759,33 +785,23 @@ mod tests {
         q3.insert(5);
         q3.insert(6);
 
-        assert_eq!(cache.view(), &test_packet_view(&[0, 1, 2, 3, 4, 5, 6, 7]));
         let res = cache.decode(&q1, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![4, 5]);
-        assert_eq!(cache.evict(), 2);
-
-        assert_eq!(cache.view(), &test_packet_view(&[2, 3, 4, 5, 6, 7]));
         let res = cache.decode(&q2, &CONN2).unwrap();
         assert_eq!(res.missing_indexes, vec![4]);
-        assert_eq!(cache.evict(), 0);
-
-        assert_eq!(cache.view(), &test_packet_view(&[2, 3, 4, 5, 6, 7]));
         let res = cache.decode(&q3, &CONN3).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
-        assert_eq!(cache.evict(), 2);
 
         cache.add(test_packet(&[8]));
         q1.insert(8);
         q2.insert(8);
         q3.insert(8);
 
-        assert_eq!(cache.view(), &test_packet_view(&[4, 5, 6, 7, 8]));
         let res = cache.decode(&q1, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![7, 4, 5]);
         let res = cache.decode(&q2, &CONN2).unwrap();
         assert_eq!(res.missing_indexes, vec![6, 7, 4]);
         let res = cache.decode(&q3, &CONN3).unwrap();
         assert_eq!(res.missing_indexes, vec![7]);
-        assert_eq!(cache.evict(), 0);
     }
 }
