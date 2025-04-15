@@ -266,20 +266,22 @@ impl QuackCacheMulticast {
             return Ok((indexes, 0));
         }
         if num_to_add > 0 {
-            let index = indexes[num_to_add - 1].0 - self.num_evicted;
-            if self.id_cache[index] == last_value {
+            let id = self.get_id(indexes[num_to_add - 1].0)
+                .ok_or(DecodeError::InvalidVirtualIndex)?;
+            if id == last_value {
                 return Ok((indexes, num_to_add));
             }
         }
 
         // Otherwise we have to add some more packets from the id cache.
-        num_to_add += indexes.iter()
-            .skip(num_to_add)
-            .map(|(index, _)| self.id_cache[index - self.num_evicted])
-            .position(|id| id == last_value)
-            .map(|index| index + 1)
-            .ok_or(DecodeError::MissingLastValue { identifier : last_value})?;
-        Ok((indexes, num_to_add))
+        for (i, &(index, _)) in indexes.iter().skip(num_to_add).enumerate() {
+            let id = self.get_id(index).ok_or(DecodeError::InvalidVirtualIndex)?;
+            if id == last_value {
+                num_to_add += i + 1;
+                return Ok((indexes, num_to_add));
+            }
+        }
+        Err(DecodeError::MissingLastValue { identifier : last_value})
     }
 
     /// Given a quACK from the client, determines which packets the proxy has
@@ -311,6 +313,7 @@ impl QuackCacheMulticast {
         // corrupted either by an early eviction or network packet corruption.
         let proxy_quack = &mut state.quack;
         for &(index, is_insertion) in indexes.iter().take(num_acked) {
+            // note: unsafe indexing checked in check_valid_quack
             let id = self.id_cache[index - self.num_evicted];
             proxy_quack.insert(id);
             if is_insertion {
