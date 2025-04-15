@@ -98,7 +98,7 @@ async fn listen_incoming(
         assert_eq!(*from_addr, addr);
 
         let current_time = current_time_ms();
-        let mut sent_quack = false;
+        let mut should_quack = false;
         let mut inserted = false;
         if let Some((ref quacker, _)) = quacker {
             let mut quacker = quacker.lock().await;
@@ -120,7 +120,7 @@ async fn listen_incoming(
             // Insert the received packet into the quACK.
             else if is_multicast
             {
-                sent_quack = quacker.insert(current_time, data.identifier);
+                should_quack = quacker.insert(current_time, data.identifier);
                 inserted = true;
             }
         }
@@ -144,7 +144,7 @@ async fn listen_incoming(
         }
 
         // Explicitly send a quACK when missing data.
-        if num_missing > 0 && !sent_quack {
+        if should_quack || num_missing > 0 {
             if let Some((ref quacker, ref config)) = quacker {
                 let mut quacker = quacker.lock().await;
                 if config.hint {
