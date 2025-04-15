@@ -2,7 +2,7 @@ use log::warn;
 
 #[cfg(feature = "cycles_base")]
 mod config {
-    pub const PRINT_NUM_PACKETS: u64 = 20;
+    pub const PRINT_NUM_PACKETS: u64 = 1000;
     pub const NUM_MEASUREMENTS: usize = 9;
     pub const HEADERS: [&str; NUM_MEASUREMENTS] = [
         "connection_type", "forward", "handle_base_packet_from_server", // handle_packet
@@ -15,7 +15,7 @@ mod config {
 
 #[cfg(feature = "cycles_quack")]
 mod config {
-    pub const PRINT_NUM_PACKETS: u64 = 20;
+    pub const PRINT_NUM_PACKETS: u64 = 200;
     pub const NUM_MEASUREMENTS: usize = 19;
     pub const HEADERS: [&str; NUM_MEASUREMENTS] = [
         "connection_type", "handle_sidekick_packet_from_client", // handle_packet
