@@ -81,6 +81,7 @@ build_proxy_cycles_base() {
 build_proxy_statistics() {
 	cd $SIDEKICK_HOME/proxy
 	cargo build --release --bin sidekick --features cache_statistics
+	cargo build --release --bin sidekick_multicast --features cache_statistics
 }
 
 build_proxy_cycles_quack() {
