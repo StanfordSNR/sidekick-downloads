@@ -52,6 +52,8 @@ def generate_treatments():
         Treatment(PROTOCOL, label=f'picoquic', network_options=[], protocol_options=[]),
         Treatment(PROTOCOL, label=f'picoquic_30ms', network_options=[], protocol_options=pos(30)),
         Treatment(PROTOCOL, label=f'picoquic_split', network_options=['--proxy', 'picoquic'], protocol_options=[]),
+        Treatment(PROTOCOL, label=f'picoquic_rtunnel', network_options=['--proxy', 'rtunnel'], protocol_options=[]),
+        Treatment(PROTOCOL, label=f'picoquic_rtunnel_30ms', network_options=['--proxy', 'rtunnel'], protocol_options=['--ack-delay', '30']),
         generate_treatment('iblt', 30, True, reset=True),
         generate_treatment('iblt', 30, True, cache_capacity=48000, reset=True),
         generate_treatment('iblt', 30, True, cache_capacity=16000, reset=True),

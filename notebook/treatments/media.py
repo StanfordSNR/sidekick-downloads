@@ -47,6 +47,8 @@ def generate_treatments():
     # Baseline and cache policy treatments
     treatments = [
         Treatment(PROTOCOL, label='baseline', network_options=[], protocol_options=[]),
+        Treatment(PROTOCOL, label='baseline_rtunnel', network_options=['--proxy', 'rtunnel'], protocol_options=[]),
+        Treatment(PROTOCOL, label='baseline_rtunnel_delay45', network_options=['--proxy', 'rtunnel'], protocol_options=['--ack-delay', '45']),
         generate_treatment('psum', 45, True, True, 10000),
         generate_treatment('iblt', 45, True, True, 10000),
         generate_treatment('iblt', 45, True, True, 2000),
