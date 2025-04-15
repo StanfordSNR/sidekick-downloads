@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 #[cfg(feature = "cache_statistics")]
 use std::time::Instant;
 use log::{trace, debug};
@@ -293,7 +293,7 @@ impl QuackCache {
 
         // Decode the quACK using the identifier cache.
         cycles_quack_start(16);
-        let difference_quack = proxy_quack.clone().sub(&client_quack);
+        let difference_quack = proxy_quack.sub(&client_quack);
         cycles_quack_stop(16);
         cycles_quack_start(17);
         let missing_indexes = match difference_quack {
