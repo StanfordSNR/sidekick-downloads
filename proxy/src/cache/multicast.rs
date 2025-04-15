@@ -1,7 +1,9 @@
 use std::collections::{HashMap, VecDeque};
+#[cfg(feature = "cache_statistics")]
+use std::time::Instant;
 use std::cmp::min;
 
-use log::{debug, error};
+use log::{trace, debug, error};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::identifier::{Identifier, IdentifierFunc};
 use quack::{arithmetic::ModularArithmetic, Quack, PowerSumQuack, QuackWrapper};
@@ -106,6 +108,8 @@ pub struct QuackCacheMulticast {
     /// The function used for calculating identifiers from packets.
     id_func: IdentifierFunc,
 
+    /// The number of bytes in the packet cache.
+    nbytes: usize,
     /// Cache capacity. Incoming packets >= this capacity will be handled
     /// according to the cache policy.
     capacity: usize,
@@ -125,10 +129,17 @@ impl QuackCacheMulticast {
             packet_cache: VecDeque::with_capacity(capacity),
             id_cache: VecDeque::with_capacity(capacity),
             id_func,
+            nbytes: 0,
             capacity,
             capacity_pkts,
             conns: HashMap::new(),
         }
+    }
+
+    #[cfg(feature = "cache_statistics")]
+    fn cache_log(&self, event: &str) {
+        debug!("cache_statistics {:?} {} nbytes={} len={}",
+            Instant::now(), event, self.size(), self.len());
     }
 
     /// Identifier function used for the multicast connection.
@@ -151,6 +162,11 @@ impl QuackCacheMulticast {
         self.packet_cache.len()
     }
 
+    /// The number of bytes in the cache.
+    pub fn size(&self) -> usize {
+        self.nbytes
+    }
+
     /// The total number of packets that have ever been in the cache, including
     /// those that were evicted.
     pub fn total(&self) -> usize {
@@ -171,9 +187,22 @@ impl QuackCacheMulticast {
 
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) {
-        if self.len() >= self.capacity {
-            debug!("At capacity {}; dropping packet", self.capacity);
-            return;
+        while (self.capacity_pkts && (self.len() >= self.capacity)) ||
+            (!self.capacity_pkts && (self.nbytes + packet.nbytes > self.capacity))
+        {
+            let packet = self.packet_cache.pop_front().unwrap();
+            self.nbytes -= packet.nbytes;
+            let id = self.id_cache.pop_front().unwrap();
+            trace!("Evicting optimistically {}", id);
+            // self.quack.insert(id);
+            // TODO: how to handle optimistic evicts without updating every quack?
+            panic!("cache at capacity");
+        }
+
+        self.nbytes += packet.nbytes;
+        #[cfg(feature = "cache_statistics")]
+        {
+            self.cache_log("add");
         }
         let id = self.id_func.to_id(&packet.data);
         debug!("insert {}", id);
@@ -234,6 +263,12 @@ impl QuackCacheMulticast {
         self.id_cache.drain(0..n);
         self.packet_cache.drain(0..n);
         self.num_evicted += n;
+        self.nbytes =
+            self.packet_cache.iter().map(|packet| packet.nbytes).sum();
+        #[cfg(feature = "cache_statistics")]
+        {
+            self.cache_log("evict");
+        }
         n
     }
 
@@ -428,6 +463,7 @@ mod tests {
         let cache = new_cache();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.total(), 0);
+        assert_eq!(cache.size(), 0);
         assert_eq!(cache.view(), &[]);
         assert_eq!(cache.view_ids(), &[]);
         assert_eq!(cache.get(0), None);
@@ -443,6 +479,7 @@ mod tests {
         cache.add(packet2.clone());
 
         assert_eq!(cache.len(), 2);
+        assert_eq!(cache.size(), 6);
         assert_eq!(cache.total(), 2);
         assert_eq!(cache.view(), &[packet1.clone(), packet2.clone()]);
         assert_eq!(cache.view_ids(), &[1, 4]);
@@ -452,6 +489,7 @@ mod tests {
 
         assert_eq!(cache.evict(), 2);
         assert_eq!(cache.len(), 0);
+        assert_eq!(cache.size(), 0);
         assert_eq!(cache.total(), 2);
         assert_eq!(cache.view(), &[]);
         assert_eq!(cache.view_ids(), &[]);
@@ -467,11 +505,13 @@ mod tests {
 
         assert_eq!(cache.total(), DEFAULT_CAPACITY);
         assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.size(), DEFAULT_CAPACITY);
 
-        // Adding the extra packet should have no impact
+        // Adding the extra packet should optimistically evict a packet
         cache.add(test_packet(&[DEFAULT_CAPACITY as _]));
-        assert_eq!(cache.total(), DEFAULT_CAPACITY);
+        assert_eq!(cache.total(), DEFAULT_CAPACITY + 1);
         assert_eq!(cache.len(), DEFAULT_CAPACITY);
+        assert_eq!(cache.size(), DEFAULT_CAPACITY);
     }
 
     #[test]
@@ -487,27 +527,31 @@ mod tests {
             cache.add(test_packet(&[i as _]));
         }
         assert_eq!(cache.len(), num_packets);
+        assert_eq!(cache.size(), num_packets);
 
         // all packets are acked
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(), num_packets);
         assert_eq!(cache.len(), 0);
+        assert_eq!(cache.size(), 0);
 
         // add more packets - a strict prefix is acked
         q.insert(43);
         cache.add(test_packet(&[43]));
-        cache.add(test_packet(&[27]));
-        cache.add(test_packet(&[36]));
+        cache.add(test_packet(&[27, 27]));
+        cache.add(test_packet(&[36, 36, 36]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(), 1);
         assert_eq!(cache.len(), 2);
+        assert_eq!(cache.size(), 5);
 
         // decode the same quack twice in a row
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.len(), 2);
+        assert_eq!(cache.size(), 5);
     }
 
     #[test]
@@ -526,27 +570,31 @@ mod tests {
             cache.add(test_packet(&[i as _]));
         }
         assert_eq!(cache.len(), num_packets);
+        assert_eq!(cache.size(), num_packets);
 
         // all packets are acked
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(), num_packets);
         assert_eq!(cache.len(), 0);
+        assert_eq!(cache.size(), 0);
 
         // add more packets - a strict prefix is acked
         q.insert(43);
         cache.add(test_packet(&[43]));
-        cache.add(test_packet(&[27]));
-        cache.add(test_packet(&[36]));
+        cache.add(test_packet(&[27, 27]));
+        cache.add(test_packet(&[36, 36, 36]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(), 1);
         assert_eq!(cache.len(), 2);
+        assert_eq!(cache.size(), 5);
 
         // decode the same quack twice in a row
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.len(), 2);
+        assert_eq!(cache.size(), 5);
     }
 
     #[test]
@@ -559,7 +607,7 @@ mod tests {
         cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 0..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _, i as _]));
         }
 
         // remove "missing" packets from the quack
@@ -572,23 +620,26 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
         assert_eq!(cache.evict(), 5);
         assert_eq!(cache.len(), 5);
+        assert_eq!(cache.size(), 2 * 5);
 
         // missing packets are considered retransmitted
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(), 0);
         assert_eq!(cache.len(), 5);
+        assert_eq!(cache.size(), 2 * 5);
 
         // add more packets to the suffix - retxed packets are now missing
         q.insert(5);
         q.insert(11);
         cache.add(test_packet(&[10]));
-        cache.add(test_packet(&[11]));
-        cache.add(test_packet(&[12]));
+        cache.add(test_packet(&[11, 11]));  // acked
+        cache.add(test_packet(&[12, 12, 12]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![6, 8, 10]);
         assert_eq!(cache.evict(), 1);
         assert_eq!(cache.len(), 7);
+        assert_eq!(cache.size(), 2*5+1+3);
     }
 
     #[test]
@@ -604,7 +655,7 @@ mod tests {
         cache.init_conn(&CONN1, DEFAULT_THRESHOLD, false);
         for i in 3..num_packets {
             q.insert(i as _);
-            cache.add(test_packet(&[i as _]));
+            cache.add(test_packet(&[i as _, i as _]));
         }
 
         // remove "missing" packets from the quack
@@ -617,23 +668,26 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![5, 6, 8]);
         assert_eq!(cache.evict(), 5);
         assert_eq!(cache.len(), 5);
+        assert_eq!(cache.size(), 2 * 5);
 
         // missing packets are considered retransmitted
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![]);
         assert_eq!(cache.evict(), 0);
         assert_eq!(cache.len(), 5);
+        assert_eq!(cache.size(), 2 * 5);
 
         // add more packets to the suffix - retxed packets are now missing
         q.insert(5);
         q.insert(11);
         cache.add(test_packet(&[10]));
-        cache.add(test_packet(&[11]));
-        cache.add(test_packet(&[12]));
+        cache.add(test_packet(&[11, 11]));  // acked
+        cache.add(test_packet(&[12, 12, 12]));
         let res = cache.decode(&q, &CONN1).unwrap();
         assert_eq!(res.missing_indexes, vec![6, 8, 10]);
         assert_eq!(cache.evict(), 1);
         assert_eq!(cache.len(), 7);
+        assert_eq!(cache.size(), 2*5+1+3);
     }
 
     #[test]
@@ -738,6 +792,7 @@ mod tests {
         cache.add(test_packet(&[2]));
         cache.add(test_packet(&[3]));
         assert_eq!(cache.len(), 4);
+        assert_eq!(cache.size(), 4);
 
         // create a quack with missing packets
         let mut q = QuackWrapper::new(DEFAULT_THRESHOLD, false);
@@ -749,11 +804,13 @@ mod tests {
         assert_eq!(res.missing_indexes, vec![2]);
         assert_eq!(cache.evict(), 2);
         assert_eq!(cache.len(), 2);
+        assert_eq!(cache.size(), 2);
 
         // reset and evict
         cache.reset(&CONN1);
         assert_eq!(cache.evict(), 2);
         assert_eq!(cache.len(), 0);
+        assert_eq!(cache.size(), 0);
     }
 
     #[test]
