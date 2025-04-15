@@ -53,6 +53,9 @@ struct Cli {
     quacker: bool,
     #[command(flatten)]
     quacker_config: Option<QuackerConfig>,
+    /// Whether to send quACKs when sending a NACK.
+    #[arg(long)]
+    send_on_nack: bool,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -66,6 +69,7 @@ async fn listen_incoming(
     sock: Sockets, quacker: Option<(Arc<Mutex<UdpQuacker>>, QuackerConfig)>,
     client_id: String, nack_frequency: Duration, nack_delay: Option<Duration>,
     timeout: Duration, mut sidekick_rx: mpsc::Receiver<Vec<u8>>,
+    send_on_nack: bool,
 ) -> io::Result<()> {
     let mut buf1 = [0u8; PAYLOAD_SIZE];
     let mut buf2 = [0u8; PAYLOAD_SIZE];
@@ -144,11 +148,12 @@ async fn listen_incoming(
         }
 
         // Explicitly send a quACK when missing data.
-        if should_quack || num_missing > 0 {
+        if should_quack || (send_on_nack && num_missing > 0) {
             if let Some((ref quacker, ref config)) = quacker {
                 let mut quacker = quacker.lock().await;
                 if config.hint {
-                    quacker.send_quack_with_hint(current_time, num_missing);
+                    // Add a small buffer of 4 for missing NACKs
+                    quacker.send_quack_with_hint(current_time, num_missing + 4);
                 } else {
                     quacker.send_quack(current_time);
                 }
@@ -334,7 +339,7 @@ async fn main() -> io::Result<()> {
         };
         listen_incoming(
             sock, quacker, args.client_id, nack_frequency, nack_delay, timeout,
-            sidekick_rx,
+            sidekick_rx, args.send_on_nack,
         ).await?;
     }
 
