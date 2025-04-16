@@ -37,6 +37,8 @@ if [ $1 == "on" ]; then
 		exit 0
 	elif [[ "$2" == "bridge" ]]; then
 		./bin/$2 --client-interface eth1 --server-interface eth0
+	elif [[ "$2" == "sidekick" ]]; then
+		./bin/$2 --client-interface eth1 --server-interface eth0 --quack-port 5252
 	else
 		./bin/$2
 	fi
