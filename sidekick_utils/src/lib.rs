@@ -15,7 +15,7 @@ pub const DEFAULT_MTU: usize = 1500;
 pub const ID_BUFFER_SIZE: usize = ID_OFFSET + 4;
 
 // Proxy must be able to receive and forward complete packets
-pub const BUFFER_SIZE: usize = (DEFAULT_MTU + 14 + 8).next_power_of_two();
+pub const BUFFER_SIZE: usize = DEFAULT_MTU;
 
 #[macro_export]
 macro_rules! fmt_hex {

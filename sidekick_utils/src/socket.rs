@@ -1,6 +1,7 @@
 use libc::*;
 use log::{debug, error};
 use std::ffi::CString;
+use std::io::Error;
 use crate::BUFFER_SIZE;
 
 #[derive(Debug, Clone)]
@@ -126,7 +127,7 @@ impl Socket {
         };
         if n < 0 {
             error!("failed to recv: {}", n);
-            return Err(format!("recv: {}", n));
+            return Err(format!("recvfrom: {} {}", n, Error::last_os_error()));
         }
         Ok(n)
     }
@@ -136,7 +137,7 @@ impl Socket {
     pub fn send(&self, buf: &[u8; BUFFER_SIZE], nbytes: usize) -> Result<isize, String> {
         let n = unsafe { write(self.fd, buf.as_ptr() as *const c_void, nbytes) };
         if n < 0 {
-            return Err(format!("write: {}", n));
+            return Err(format!("write: {} {}", n, Error::last_os_error()));
         }
         Ok(n)
     }
