@@ -217,3 +217,23 @@ sudo make install
 cd $SIDEKICK_HOME/deps
 ./build_deps.sh 6
 ```
+
+# Running cycle experiments
+
+Getting accurate cycle measurements will benefit from isolating the CPU running the sidekick proxy. We can pin this process to a core at runtime, but forcing isolation likely requires modifying GRUB and rebooting.
+
+Choose a CPU to isolate. This must be the CPU ID passed in to both the GRUB settings and as the `--cpu-id` argument for the `sidekick` application. (Check available CPUs with `lscpu`.)
+
+To update GRUB:
+
+```
+GRUB_CMDLINE_LINUX="isolcpus=3" # replace "3" with chosen CPU ID
+sudo update-grub
+sudo reboot now
+```
+
+Alternatively, we can try to isolate the CPU at runtime. However, this only guarantees partial isolation and may fail if some processes cannot be migrated from the core. To do this, install `cpuset` and pass `--isol-cpu` as an argument to the `sidekick` application.
+
+```
+sudo apt-get install -y cpuset
+```

@@ -2,6 +2,7 @@ use clap::Parser;
 use flexi_logger::{Logger, WriteMode, FileSpec};
 use std::{fs::File, path::Path};
 use proxy::Sidekick;
+use proxy::pin_to_cpu;
 
 #[derive(Parser)]
 struct Cli {
@@ -29,6 +30,17 @@ struct Cli {
     /// stdout/stderr can interfere with Mininet's packet buffers.
     #[arg(long, short = 'f')]
     logfile: Option<String>,
+    /// CPU ID to pin process to, if any
+    #[arg(long, default_value_t = 3)]
+    cpu_id: usize,
+    /// Whether to use `cset` to isolate the process on cpu_id
+    /// Note that this should only be used if GRUB hasn't been
+    /// updated with "isolcpus", which is a more reliable approach
+    /// but requires changing boot parameters.
+    /// This may fail entirely depending on what other processes
+    /// are running, in which case updating GRUB is the only option.
+    #[arg(long, default_value_t = false)]
+    isol_cpu: bool,
 }
 
 #[tokio::main]
@@ -49,6 +61,7 @@ async fn main() {
     } else {
         env_logger::init();
     }
+    pin_to_cpu(args.cpu_id, args.isol_cpu);
     eprintln!(
         "Ready to start Sidekick with client {}; expecting server {}",
         args.client_interface, args.server_interface
