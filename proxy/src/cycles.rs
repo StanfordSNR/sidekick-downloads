@@ -10,7 +10,7 @@ mod config {
         "check_capacity", "parse_id", "push", // add
 
     ];
-    pub const PRINT_INDEXES: [usize; 8] = [0, 1, 2, 3, 4, 6, 7, 8];
+    pub const PRINT_INDEXES: [usize; 8] = [0, 2, 3, 4, 6, 7, 8];
 }
 
 #[cfg(feature = "cycles_quack")]
