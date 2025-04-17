@@ -12,7 +12,7 @@ use sidekick_utils::packet::{
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
 use log::{trace, debug, info, warn, error};
-use quack::{Quack, QuackWrapper};
+use quack::{Quack, QuackWrapper, arithmetic::ModularInteger};
 use crate::cycles::*;
 
 struct SidekickConn {
@@ -53,9 +53,10 @@ pub struct Sidekick {
     base_to_sidekick: HashMap<AddrKey, AddrKey>,
     /// Sidekick connection address key to connection state.
     sidekick_conns: HashMap<AddrKey, SidekickConn>,
-
     /// A buffer to use for constructing packets
     buf: [u8; BUFFER_SIZE],
+    /// Pre-alloc'd buffer to store current received quacks
+    quack: QuackWrapper,
 }
 
 impl Sidekick {
@@ -72,6 +73,13 @@ impl Sidekick {
         cache_capacity: usize,
         cache_capacity_pkts: bool,
     ) -> Self {
+        // Ideally, this is what will be passed into QuackWrapper::deserialize_prealloc.
+        // This function expects the vector to be of length:
+        // "(buf.len() - 8) / std::mem::size_of::<ModularInteger<u32>>()"
+        // Here, `buf` is the received packet. It excludes the first element which
+        // is used to identify the type of quack.
+        let init_threshold = (BUFFER_SIZE - 1 - 8) /
+                                     std::mem::size_of::<ModularInteger<u32>>();
         let stream = PacketStream::new(client_interface.into(), server_interface.into());
         Self {
             stream,
@@ -81,6 +89,7 @@ impl Sidekick {
             base_to_sidekick: HashMap::new(),
             sidekick_conns: HashMap::new(),
             buf: [0u8; BUFFER_SIZE],
+            quack: QuackWrapper::new(init_threshold, false),
         }
     }
 
@@ -112,7 +121,7 @@ impl Sidekick {
     /// from the cache. If the quACK can't be decoded, send a Reset packet
     /// back to the client on the sidekick connection.
     fn handle_quack_from_client(
-        &mut self, quack: QuackWrapper, packet: Packet, sidekick_conn: &AddrKey,
+        &mut self, packet: Packet, sidekick_conn: &AddrKey,
     ) {
         // Validate that the quACK belongs to an initialized sidekick
         cycles_quack_start(6);
@@ -127,11 +136,11 @@ impl Sidekick {
 
         // Decode the quACK
         cycles_quack_start(7);
-        match conn.cache.decode(&quack) {
+        match conn.cache.decode(&self.quack) {
             Ok(result) => {
                 cycles_quack_stop(7);
                 debug!("quack {} cache_len={} num_symbols={} last_index={} missing={:?}, Sidekick: {}",
-                    quack.count(), conn.cache.len(), quack.threshold(),
+                    self.quack.count(), conn.cache.len(), self.quack.threshold(),
                     result.last_index, result.missing_indexes, fmt_hex!(sidekick_conn));
 
                 // Retransmit missing packets
@@ -157,8 +166,8 @@ impl Sidekick {
             Err(e) => {
                 cycles_quack_stop(7);
                 debug!("quack {} cache_len={} num_symbols={} last_value={}, Sidekick: {}",
-                    quack.count(), conn.cache.len(), quack.threshold(),
-                    quack.last_value().unwrap(), fmt_hex!(sidekick_conn));
+                    self.quack.count(), conn.cache.len(), self.quack.threshold(),
+                    self.quack.last_value().unwrap(), fmt_hex!(sidekick_conn));
                 cycles_quack_start(10);
                 Self::reset_sidekick_conn(
                     packet, conn, &mut self.stream, &mut self.buf);
@@ -229,10 +238,10 @@ impl Sidekick {
             cycles_quack_stop(4);
         } else {
             // QuACKs
-            let quack = QuackWrapper::deserialize(payload);
+            self.quack.deserialize_prealloc(payload);
             cycles_quack_stop(3);
             cycles_quack_start(5);
-            self.handle_quack_from_client(quack, packet, sidekick_conn);
+            self.handle_quack_from_client(packet, sidekick_conn);
             cycles_quack_stop(5);
         }
     }
