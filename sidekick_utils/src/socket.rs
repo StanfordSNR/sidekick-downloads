@@ -127,8 +127,8 @@ impl Socket {
             )
         };
         if n < 0 {
-            error!("failed to recv: {}", n);
-            return Err(format!("recvfrom: {} {}", n, Error::last_os_error()));
+            error!("failed to recv: {} {}", self.interface, n);
+            return Err(format!("recvfrom: {} {} {}", self.interface, n, Error::last_os_error()));
         }
         Ok(n)
     }
@@ -154,8 +154,8 @@ impl Socket {
         if n < 0 {
             Err(format!("recvmsg: {} {}", n, Error::last_os_error()))
         } else if (msg.msg_flags & MSG_TRUNC) != 0 {
-            warn!("recvmsg: exceeds buffer size {} > {}", n, buf.len());
-            Err(format!("recvmsg: exceeds buffer size {} > {}", n, buf.len()))
+            warn!("recvmsg: {} exceeds buffer size {} > {}", self.interface, n, buf.len());
+            Err(format!("recvmsg: {} exceeds buffer size {} > {}", self.interface, n, buf.len()))
         } else {
             Ok(n as usize)
         }
@@ -166,7 +166,7 @@ impl Socket {
     pub fn send(&self, buf: &[u8; BUFFER_SIZE], nbytes: usize) -> Result<isize, String> {
         let n = unsafe { write(self.fd, buf.as_ptr() as *const c_void, nbytes) };
         if n < 0 {
-            return Err(format!("write: {} {}", n, Error::last_os_error()));
+            return Err(format!("write: {} {} {}", self.interface, n, Error::last_os_error()));
         }
         Ok(n)
     }
