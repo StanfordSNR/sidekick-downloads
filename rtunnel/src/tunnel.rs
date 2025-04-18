@@ -33,6 +33,7 @@ pub struct Tunnel {
 
     // Sender
     next_seqno: u32,
+    max_num_retx: usize,
     max_seqno_acked: u32,
     /// Sent packets waiting for an ACK
     cache: HashMap<u32, CachedItem>,
@@ -57,7 +58,7 @@ fn parse_mac(mac_str: &str) -> Result<[u8; 6], String> {
 impl Tunnel {
     pub fn new(
         sock: Socket, conn: Arc<UdpSocket>, send_addr: SocketAddr,
-        src_mac: String, dst_mac: String,
+        src_mac: String, dst_mac: String, max_num_retx: usize,
     ) -> Result<Self, String> {
         let mut eth_header = [0u8; 14];
         eth_header[0..6].copy_from_slice(&parse_mac(&dst_mac)?[..]);
@@ -70,6 +71,7 @@ impl Tunnel {
             send_addr,
             eth_header,
             next_seqno: 0,
+            max_num_retx,
             max_seqno_acked: 0,
             cache: HashMap::with_capacity(BLOCK_SIZE as usize),
             ack: BlockAck::new(),
@@ -114,8 +116,12 @@ impl Tunnel {
         let mut retx = vec![];
         while block != 0 {
             if block & 1 == 1 {
-                if self.cache.remove(&seqno).is_some() {
-                    debug!("evict {}", seqno);
+                if let Some(item) = self.cache.remove(&seqno) {
+                    if item.num_retx == 0 {
+                        debug!("acked {}", seqno);
+                    } else {
+                        debug!("acked {} ({} retries)", seqno, item.num_retx);
+                    }
                 }
                 max_acked = seqno;
             } else {
@@ -125,14 +131,21 @@ impl Tunnel {
             seqno += 1;
         }
 
-        // retransmit anything that wasn't acked if the max seqno acked increased
-        if max_acked > self.max_seqno_acked {
-            self.max_seqno_acked = max_acked;
-            for seqno in retx.into_iter().take_while(|&seqno| seqno < max_acked) {
-                if let Some(item) = self.cache.get_mut(&seqno) {
-                    debug!("retransmit {}", seqno);
-                    self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
-                    item.num_retx += 1;
+        // don't send extra retransmissions if nothing new was acked
+        if max_acked <= self.max_seqno_acked {
+            return Ok(());
+        }
+
+        // otherwise retransmit anything that wasn't acked
+        self.max_seqno_acked = max_acked;
+        for seqno in retx.into_iter().take_while(|&seqno| seqno < max_acked) {
+            if let Some(item) = self.cache.get_mut(&seqno) {
+                debug!("retransmit {}", seqno);
+                self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
+                item.num_retx += 1;
+
+                if item.num_retx >= self.max_num_retx {
+                    self.cache.remove(&seqno);
                 }
             }
         }

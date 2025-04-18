@@ -36,6 +36,9 @@ struct Cli {
     /// Hardcoded MAC address of the dst iface
     #[arg(long)]
     dst_mac: String,
+    /// Maximum number of times to try a retransmit before dropping the packet
+    #[arg(long, default_value_t = 1000)]
+    max_num_retx: usize,
     /// Logfile to write rust logs to (optional)
     /// This should be set for loglevel = TRACE. Excessively logging to
     /// stdout/stderr can interfere with Mininet's packet buffers.
@@ -129,7 +132,9 @@ async fn main() -> Result<(), String> {
     // Initialize socket loop handler
     let send_addr: SocketAddr =
         format!("{}:{}", args.ip, args.port).parse().unwrap();
-    let tunnel = Tunnel::new(sock, conn, send_addr, args.src_mac, args.dst_mac)?;
+    let tunnel = Tunnel::new(
+        sock, conn, send_addr, args.src_mac, args.dst_mac, args.max_num_retx,
+    )?;
     eprintln!("Ready to proxy {} and {}:{}", args.iface, args.ip, args.port);
     handle_incoming(rx, tunnel).await?;
     Ok(())
