@@ -25,7 +25,7 @@ pub struct BlockAck {
 impl BlockAck {
     pub fn new() -> Self {
         Self {
-            seqno: 32,
+            seqno: BLOCK_SIZE,
             block: 0,
         }
     }
@@ -52,11 +52,11 @@ impl BlockAck {
         // Above the block range
         else {
             if seqno - self.seqno >= BLOCK_SIZE {
-                self.block = 1 << 31;
+                self.block = 1 << (BLOCK_SIZE - 1);
             } else {
                 let num_to_shift = seqno - self.seqno + 1;
                 self.block >>= num_to_shift;
-                self.block |= 1 << 31;
+                self.block |= 1 << (BLOCK_SIZE - 1);
             }
             self.seqno = seqno + 1;
             Some(true)

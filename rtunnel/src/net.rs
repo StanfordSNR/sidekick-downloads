@@ -1,6 +1,6 @@
 use sidekick_utils::BUFFER_SIZE;
 
-use crate::ack::BlockAck;
+use crate::ack::{BlockAck, BLOCK_SIZE};
 
 const ETHERNET_HEADER_LEN: usize = 14;
 
@@ -25,7 +25,7 @@ impl Packet {
     pub fn parse_outer(udp_payload: &[u8]) -> Self {
         let is_ack = udp_payload[0] != 0;
         if is_ack {
-            assert_eq!(udp_payload.len(), 9);
+            assert_eq!(udp_payload.len(), (5 + BLOCK_SIZE / 8) as usize);
             let seqno = u32::from_be_bytes([
                 udp_payload[1],
                 udp_payload[2],
@@ -62,10 +62,11 @@ impl Packet {
                 5 + ip_datagram.len()
             }
             Packet::Ack(ack) => {
+                let len = (5 + BLOCK_SIZE / 8) as usize;
                 buf[0] = 1; // is_ack
                 buf[1..5].copy_from_slice(&u32::to_be_bytes(ack.seqno)[..]);
-                buf[5..9].copy_from_slice(&u32::to_be_bytes(ack.block)[..]);
-                9
+                buf[5..len].copy_from_slice(&u64::to_be_bytes(ack.block)[..]);
+                len
             }
         }
     }
