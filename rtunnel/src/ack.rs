@@ -30,22 +30,36 @@ impl BlockAck {
         }
     }
 
-    pub fn ack(&mut self, seqno: u32) {
+    /// Returns whether the seqno is a new one. Also returns false if it is
+    /// below range.
+    pub fn ack(&mut self, seqno: u32) -> bool {
         // Below the block range, doesn't matter anymore
         if seqno + BLOCK_SIZE < self.seqno {
+            false
         }
         // Within the block range
         else if seqno < self.seqno {
             let min_seqno = self.seqno - BLOCK_SIZE;
             let num_to_shift = seqno - min_seqno;
-            self.block |= 1 << num_to_shift;
+            let mask = 1 << num_to_shift;
+            if self.block & mask == 0 {
+                self.block |= mask;
+                true
+            } else {
+                false
+            }
         }
         // Above the block range
         else {
-            let num_to_shift = seqno - self.seqno + 1;
-            self.block >>= num_to_shift;
-            self.block |= 1 << 31;
+            if seqno - self.seqno >= BLOCK_SIZE {
+                self.block = 1 << 31;
+            } else {
+                let num_to_shift = seqno - self.seqno + 1;
+                self.block >>= num_to_shift;
+                self.block |= 1 << 31;
+            }
             self.seqno = seqno + 1;
+            true
         }
     }
 }
@@ -57,13 +71,13 @@ mod test {
     #[test]
     fn test_ack_within_range() {
         let mut ack = BlockAck::new();
-        ack.ack(0);
+        assert!(ack.ack(0));
         assert_eq!(ack.seqno, 32);
         assert_eq!(ack.block, 1);
-        ack.ack(1);
+        assert!(ack.ack(1));
         assert_eq!(ack.seqno, 32);
         assert_eq!(ack.block, 1 | (1 << 1));
-        ack.ack(31);
+        assert!(ack.ack(31));
         assert_eq!(ack.seqno, 32);
         assert_eq!(ack.block, 1 | (1 << 1) | (1 << 31));
     }
@@ -71,13 +85,13 @@ mod test {
     #[test]
     fn test_ack_above_range() {
         let mut ack = BlockAck::new();
-        ack.ack(0);
+        assert!(ack.ack(0));
         assert_eq!(ack.seqno, 32);
         assert_eq!(ack.block, 1);
-        ack.ack(32);
+        assert!(ack.ack(32));
         assert_eq!(ack.seqno, 33);
         assert_eq!(ack.block, 1 << 31);
-        ack.ack(34);
+        assert!(ack.ack(34));
         assert_eq!(ack.seqno, 35);
         assert_eq!(ack.block, (1 << 31) | (1 << 29));
     }
@@ -85,11 +99,20 @@ mod test {
     #[test]
     fn test_ack_below_range() {
         let mut ack = BlockAck::new();
-        ack.ack(32);
+        assert!(ack.ack(32));
         assert_eq!(ack.seqno, 33);
         assert_eq!(ack.block, 1 << 31);
-        ack.ack(0);
+        assert!(!ack.ack(0));
         assert_eq!(ack.seqno, 33);
         assert_eq!(ack.block, 1 << 31);
+    }
+
+    #[test]
+    fn test_new_and_old_acks() {
+        let mut ack = BlockAck::new();
+        assert!(ack.ack(0));
+        assert!(ack.ack(64));
+        assert!(!ack.ack(64));
+        assert!(!ack.ack(0));
     }
 }

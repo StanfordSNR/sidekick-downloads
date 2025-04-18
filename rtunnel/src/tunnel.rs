@@ -140,17 +140,21 @@ impl Tunnel {
     ) -> Result<(), String> {
         // update the block ack and send it
         let mut buf = [0u8; BUFFER_SIZE];
-        self.ack.ack(seqno);
+        let is_new = self.ack.ack(seqno);
         let len = Packet::Ack(self.ack).serialize(&mut buf);
         self.conn.send_to(&buf[..len], self.send_addr).await.unwrap();
 
         // write the datagram to the raw socket, filling in the L2 headers
-        let len = 14 + ip_datagram.len();
-        buf[0..14].copy_from_slice(&self.eth_header);
-        buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
-        debug!("recv {}", seqno);
-        trace!("sending {} inner bytes to {}", len, self.sock.interface);
-        self.sock.send(&buf, len)?;
+        if is_new {
+            let len = 14 + ip_datagram.len();
+            buf[0..14].copy_from_slice(&self.eth_header);
+            buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
+            debug!("recv {}", seqno);
+            trace!("sending {} inner bytes to {}", len, self.sock.interface);
+            self.sock.send(&buf, len)?;
+        } else {
+            debug!("recv {} (drop)", seqno);
+        }
         Ok(())
     }
 }
