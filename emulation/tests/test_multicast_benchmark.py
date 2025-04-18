@@ -47,11 +47,11 @@ class MulticastTestCase(unittest.TestCase):
 
     def setUpMulticastNetwork(
         self, num_clients, delay1=1, delay2=10, loss1=0, loss2=0,
-        bw1=50, bw2=10, qdisc='red', pacing=False, bridge_proxy=True
+        bw1=50, bw2=10, qdisc='red', pacing=False, proxy=None,
     ) -> MulticastNetwork:
         self.stopNetwork()
         self.net = MulticastNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                                    qdisc, pacing, num_clients, bridge_proxy)
+                                    qdisc, pacing, num_clients, proxy=proxy)
         self.stopped = False
 
     def setUpMulticastBenchmark(self, num_clients) -> MulticastBenchmark:

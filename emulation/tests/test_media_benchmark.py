@@ -46,12 +46,11 @@ class MediaTestCase(unittest.TestCase):
 
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
-        jitter1=None, jitter2=None, qdisc='red', pacing=False,
-        bridge_proxy=True
+        jitter1=None, jitter2=None, qdisc='red', pacing=False
     ) -> OneHopNetwork:
         self.stopNetwork()
         self.net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                                 jitter1, jitter2, qdisc, pacing, bridge_proxy)
+                                 jitter1, jitter2, qdisc, pacing)
         self.stopped = False
 
     def setUpMediaBenchmark(self) -> MediaBenchmark:

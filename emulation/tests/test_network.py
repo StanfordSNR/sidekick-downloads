@@ -93,11 +93,10 @@ class NetworkTestCase(unittest.TestCase):
     def setUpOneHopNetwork(
         self, delay1=1, delay2=10, loss1=0, loss2=0, bw1=50, bw2=10,
         jitter1=None, jitter2=None, qdisc='red', pacing=False, setup_time=0,
-        bridge_proxy=True, router_proxy=False, cache=True,
+        cache=True, proxy=None,
     ) -> OneHopNetwork:
         net = OneHopNetwork(delay1, delay2, loss1, loss2, bw1, bw2,
-                            jitter1, jitter2, qdisc, pacing,
-                            bridge_proxy=bridge_proxy, router_proxy=router_proxy)
+                            jitter1, jitter2, qdisc, pacing, proxy=proxy)
         if cache:
             self.stopNetwork()
             self.net = net
@@ -199,7 +198,7 @@ class TestNetStatistics(NetworkTestCase):
         # one-hop network with a sidekick
         cwd = os.getcwd()
         os.chdir('..') # run from sidekick base directory
-        net = self.setUpOneHopNetwork(bridge_proxy=False)
+        net = self.setUpOneHopNetwork(proxy=ProxyType.SIDEKICK)
         net.start_sidekick(self.quackee_port, cache_capacity=65536, logfile=None)
         self.assertSchemaIsCorrect(net, host_ifaces + proxy_ifaces)
         os.chdir(cwd)
@@ -325,7 +324,7 @@ class TestNetworkReachability(NetworkTestCase):
     def test_one_hop_hosts_are_reachable_sidekick(self):
         cwd = os.getcwd()
         os.chdir('..') # run from sidekick base directory
-        net = self.setUpOneHopNetwork(bridge_proxy=False)
+        net = self.setUpOneHopNetwork(proxy=ProxyType.SIDEKICK)
         net.start_sidekick(self.quackee_port, cache_capacity=65536, logfile=None)
         time.sleep(1)
         self.assertReachable(net.h1, net.h2)
@@ -350,7 +349,7 @@ class TestNetworkReachability(NetworkTestCase):
     def test_one_hop_proxy_is_reachable_sidekick(self):
         cwd = os.getcwd()
         os.chdir('..')
-        net = self.setUpOneHopNetwork(bridge_proxy=False)
+        net = self.setUpOneHopNetwork(proxy=ProxyType.SIDEKICK)
         net.start_sidekick(self.quackee_port, cache_capacity=65536, logfile=None)
         time.sleep(1)
         self.assertReachable(net.p1, net.h1)
@@ -838,19 +837,19 @@ class TestPrepopulateArpTable(NetworkTestCase):
             self.check_pcap(lines, len(hosts) - 1)
 
     def test_arp_one_hop_network_bridge_proxy(self):
-        net = self.setUpOneHopNetwork(bridge_proxy=True, router_proxy=False)
+        net = self.setUpOneHopNetwork(proxy=None)
         net.start_tcpdump(logdir=self.logdir)
         time.sleep(1)
         self.check_arp_table_is_used(net, [net.h1, net.p1, net.h2])
 
     def test_arp_one_hop_network_router_proxy(self):
-        net = self.setUpOneHopNetwork(bridge_proxy=False, router_proxy=True)
+        net = self.setUpOneHopNetwork(proxy=ProxyType.PEPSAL)
         net.start_tcpdump(logdir=self.logdir)
         time.sleep(1)
         self.check_arp_table_is_used(net, [net.h1, net.h2])
 
     def test_arp_one_hop_network_sidekick(self):
-        net = self.setUpOneHopNetwork(bridge_proxy=False, router_proxy=False)
+        net = self.setUpOneHopNetwork(proxy=ProxyType.SIDEKICK)
         net.start_sidekick(port=5252, cache_capacity=65536, logfile=None)
         net.start_tcpdump(logdir=self.logdir)
         time.sleep(1)

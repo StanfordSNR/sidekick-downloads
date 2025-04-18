@@ -528,23 +528,16 @@ e2 also handles L3 routing from h1 to h2.
 """
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
-                 qdisc, pacing, bridge_proxy=True, router_proxy=False,
-                 perf=False, debug=False):
+                 qdisc, pacing, perf: bool=False, debug: bool=False,
+                 proxy: Optional[ProxyType]=None):
         """
-        Note that bridge_proxy and router_proxy cannot both be True. If both
-        are False, it means that the proxy that runs on the proxy node must
-        take care of bridging. The e2 node is the router by default.
-
         Parameters:
         - pacing: Whether Linux should be configured to use pacing (for BBR).
-        - bridge_proxy: Whether the proxy node should act as a transparent bridge.
-        - router_proxy: Whether the proxy node should act as a router.
         - perf: Whether to collect perf reports when a process with a logfile is
           started.
         - debug: Whether to set the debug environment variable RUST_LOG=debug
           for Rust processes when running popen.
         """
-        assert not (bridge_proxy and router_proxy)
         super().__init__(perf=perf, debug=debug)
 
         # Add hosts, switches, and network emulation nodes
@@ -575,52 +568,51 @@ class OneHopNetwork(EmulatedNetwork):
         }
         self.reset_statistics()
 
-        # Setup routing and forwarding (e2 acts as router)
-        if router_proxy:
+        # Setup routing and forwarding
+        if proxy == ProxyType.PEPSAL:
+            self.setup_bridging_node(self.e1, mac=self._mac(51))
             self.setup_router_node(self.p1, self._mac(11), self._mac(21))
+            self.setup_bridging_node(self.e2, mac=self._mac(52))
+        elif proxy is None:
+            self.setup_bridging_node(self.e1, mac=self._mac(51))
+            self.setup_bridging_node(self.p1, mac=self._mac(53))
+            self.setup_router_node(self.e2, self._mac(11), self._mac(21))
+            self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'br0')
+            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'br0')
         else:
+            # p1 runs a binary that manually bridges the two interfaces
+            self.setup_bridging_node(self.e1, mac=self._mac(51))
             self.setup_router_node(self.e2, self._mac(11), self._mac(21))
         self.popen(self.h1, "ip route add default via 172.16.1.1")
         self.popen(self.h2, "ip route add default via 172.16.2.1")
         self._set_arp_table(self.h1, '172.16.1.1', self._mac(11), 'h1-eth0')
         self._set_arp_table(self.h2, '172.16.2.1', self._mac(21), 'h2-eth0')
 
-        # Set up transparent bridging
-        if router_proxy:
-            self.setup_bridging_node(self.e1, mac=self._mac(51))
-            self.setup_bridging_node(self.e2, mac=self._mac(52))
-        elif bridge_proxy:
-            self.setup_bridging_node(self.e1, mac=self._mac(51))
-            self.setup_bridging_node(self.p1, mac=self._mac(53))
-            self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'br0')
-            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'br0')
-        else:
-            self.setup_bridging_node(self.e1, mac=self._mac(51))
-
         # Configure IP addresses
-        if not router_proxy:
+        if proxy is None:
             self.popen(self.p1, "ifconfig p1-eth0 0")
             self.popen(self.p1, "ifconfig p1-eth1 0")
-            if bridge_proxy:
-                # IP needs to be assigned to bridge; put on same subnet as h1
-                self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev br0")
-                # Don't forward packets destined for the proxy
-                self.popen(self.p1, f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
-                self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
-            else:
-                self.popen(self.p1, f"ip link set dev p1-eth0 address {self._mac(40)}")
-                self.popen(self.p1, f"ip link set dev p1-eth1 address {self._mac(41)}")
-                self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev p1-eth0")
-                self.popen(self.p1, f"ip addr add {self._ip(1, 12)} dev p1-eth1")
-                self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
-                self.popen(self.p1, 'ip link set dev p1-eth0 up')
-                self.popen(self.p1, 'ip link set dev p1-eth1 up')
+            # IP needs to be assigned to bridge; put on same subnet as h1
+            self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev br0")
+            # Don't forward packets destined for the proxy
+            self.popen(self.p1, f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
+            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
+        elif proxy != ProxyType.PEPSAL:
+            self.popen(self.p1, "ifconfig p1-eth0 0")
+            self.popen(self.p1, "ifconfig p1-eth1 0")
+            self.popen(self.p1, f"ip link set dev p1-eth0 address {self._mac(40)}")
+            self.popen(self.p1, f"ip link set dev p1-eth1 address {self._mac(41)}")
+            self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev p1-eth0")
+            self.popen(self.p1, f"ip addr add {self._ip(1, 12)} dev p1-eth1")
+            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
+            self.popen(self.p1, 'ip link set dev p1-eth0 up')
+            self.popen(self.p1, 'ip link set dev p1-eth1 up')
 
         # Prepopulate the ARP table
-        if bridge_proxy:
+        if proxy is None:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(53), 'h1-eth0')
             self._set_arp_table(self.e2, '172.16.1.11', self._mac(53), 'e2-eth0')
-        elif not router_proxy:
+        elif proxy != ProxyType.PEPSAL:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(40), 'h1-eth0')
             self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'p1-eth0')
             self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'p1-eth1')
@@ -682,11 +674,11 @@ bandwidth, jitter). e2 also handles L3 routing from h0 to the other hosts.
 """
 class MulticastNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, qdisc, pacing,
-                 num_clients, bridge_proxy=True, perf=False, debug=False):
+                 num_clients, perf=False, debug=False,
+                 proxy: Optional[ProxyType]=None):
         """
         Parameters:
         - num_clients: Number of data receivers.
-        - bridge_proxy: Whether the proxy node should act as a transparent bridge.
         - perf: Whether to collect perf reports when a process with a logfile is
           started.
         - debug: Whether to set the debug environment variable RUST_LOG=debug
@@ -735,14 +727,14 @@ class MulticastNetwork(EmulatedNetwork):
             self.popen(host, f'ip route add default via 172.16.{i+1}.1')
 
         # Set up transparent bridging
-        if bridge_proxy:
+        if proxy is None:
             self.setup_bridging_node(self.e1)
             self.setup_bridging_node(self.p1)
         else:
             self.setup_bridging_node(self.e1)
 
         # Configure IP addresses
-        if bridge_proxy:
+        if proxy is None:
             # IP needs to be assigned to bridge; put on same subnet as h1
             self.popen(self.p1, f"ip addr add 192.168.1.11/24 dev br0")
             # Don't forward packets destined for the proxy

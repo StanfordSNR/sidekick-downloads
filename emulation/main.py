@@ -431,9 +431,7 @@ def main(args):
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
-            perf=args.perf, debug=args.debug,
-            bridge_proxy=args.proxy is None,
-            router_proxy=args.proxy == ProxyType.PEPSAL)
+            perf=args.perf, debug=args.debug, proxy=args.proxy)
     elif args.topology == 'direct':
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
@@ -446,7 +444,7 @@ def main(args):
         net = MulticastNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.qdisc, pacing,
             num_clients=num_clients, perf=args.perf, debug=args.debug,
-            bridge_proxy=args.proxy is None)
+            proxy=args.proxy)
     else:
         raise NotImplementedError(args.topology)
 
