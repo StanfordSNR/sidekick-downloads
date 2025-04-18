@@ -675,7 +675,15 @@ class OneHopNetwork(EmulatedNetwork):
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(53), 'h1-eth0')
             self._set_arp_table(self.e2, '172.16.1.11', self._mac(53), 'e2-eth0')
         elif tunnel:
-            pass
+            self._set_arp_table(self.h1, '172.16.1.21', self._mac(42), 'h1-eth0')
+            self._set_arp_table(self.p0, self.h1.IP(), self.h1.MAC(), 'p0-eth0')
+            self._set_arp_table(self.p0, '172.16.1.11', self._mac(40), 'p0-eth1')
+            self._set_arp_table(self.p1, '172.16.1.21', self._mac(43), 'p1-eth0')
+            self._set_arp_table(self.p1, '172.16.1.22', self._mac(43), 'p1-eth0')
+            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'p1-eth1')
+            self._set_arp_table(self.e2, '172.16.1.12', self._mac(41), 'e2-eth0')
+            self._set_arp_table(self.e2, '172.16.1.11', self._mac(41), 'e2-eth0')
+            self._set_arp_table(self.e2, '172.16.1.21', self._mac(41), 'e2-eth0')
         elif proxy != ProxyType.PEPSAL:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(40), 'h1-eth0')
             self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'p1-eth0')
