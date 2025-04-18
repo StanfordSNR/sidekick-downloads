@@ -420,12 +420,18 @@ class EmulatedNetwork:
         if src_node == self.e1:
             dst_node = self.p1
             iface = 'e1-eth0'
+            src_mac = '00:00:00:00:00:42'  # e1-eth0
+            dst_mac = '00:00:00:00:01:01'  # h1-eth0
         elif src_node == self.p1:
             dst_node = self.e1
             iface = 'p1-eth1'
+            src_mac = '00:00:00:00:00:41'  # p1-eth1
+            dst_mac = '00:00:00:00:00:11'  # e2-eth0
+
 
         cmd = f'{executable} --iface {iface} '
         cmd += f'--ip {dst_node.IP()} --port {port} '
+        cmd += f'--src-mac {src_mac} --dst-mac {dst_mac} '
         self.popen(src_node, cmd, background=True, console_logger=DEBUG,
                    logfile=f'{logfile}.{src_node.name}', func=notify_when_ready)
 

@@ -30,6 +30,12 @@ struct Cli {
     /// Port to send AND receive encapsulated datagrams.
     #[arg(long)]
     port: u16,
+    /// Hardcoded MAC address of the src (host) iface
+    #[arg(long)]
+    src_mac: String,
+    /// Hardcoded MAC address of the dst iface
+    #[arg(long)]
+    dst_mac: String,
     /// Logfile to write rust logs to (optional)
     /// This should be set for loglevel = TRACE. Excessively logging to
     /// stdout/stderr can interfere with Mininet's packet buffers.
@@ -122,7 +128,7 @@ async fn main() -> Result<(), String> {
     // Initialize socket loop handler
     let send_addr: SocketAddr =
         format!("{}:{}", args.ip, args.port).parse().unwrap();
-    let tunnel = Tunnel::new(sock, conn, send_addr);
+    let tunnel = Tunnel::new(sock, conn, send_addr, args.src_mac, args.dst_mac)?;
     eprintln!("Ready to proxy {} and {}:{}", args.iface, args.ip, args.port);
     handle_incoming(rx, tunnel).await?;
     Ok(())
