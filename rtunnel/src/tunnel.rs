@@ -1,15 +1,28 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use log::debug;
+use log::{trace, debug};
 use tokio::net::UdpSocket;
 use sidekick_utils::socket::Socket;
 use sidekick_utils::BUFFER_SIZE;
 
-use crate::ack::BlockAck;
+use crate::ack::{BlockAck, BLOCK_SIZE};
 use crate::net::Packet;
 
-const ETHERNET_HEADER_LEN: usize = 14;
+struct CachedItem {
+    datagram: Vec<u8>,
+    num_retx: usize,
+}
+
+impl CachedItem {
+    fn new(datagram: Vec<u8>) -> Self {
+        Self {
+            datagram,
+            num_retx: 0,
+        }
+    }
+}
 
 pub struct Tunnel {
     // Network parameters
@@ -20,6 +33,8 @@ pub struct Tunnel {
 
     // Sender
     next_seqno: u32,
+    /// Sent packets waiting for an ACK
+    cache: HashMap<u32, CachedItem>,
 
     // Receiver
     ack: BlockAck,
@@ -54,6 +69,7 @@ impl Tunnel {
             send_addr,
             eth_header,
             next_seqno: 0,
+            cache: HashMap::with_capacity(BLOCK_SIZE as usize),
             ack: BlockAck::new(),
         })
     }
@@ -63,12 +79,24 @@ impl Tunnel {
         &mut self, ip_datagram: Vec<u8>,
     ) -> Result<(), String> {
         // if there's too many unacked packets, drop it
-        // else store the packet for retransmission
+        if self.cache.len() >= (BLOCK_SIZE as usize) {
+            debug!("dropping datagram");
+            return Ok(());
+        }
+
+        // else encapsulate the packet and forward it
         let mut buf = [0u8; BUFFER_SIZE];
-        let packet = Packet::Outer { seqno: self.next_seqno, ip_datagram };
+        let packet = Packet::Outer {
+            seqno: self.next_seqno,
+            ip_datagram,
+    };
         let len = packet.serialize(&mut buf);
-        debug!("sending {} outer bytes to {:?}", 42 + len, self.send_addr);
+        trace!("sending {} outer bytes to {:?}", 42 + len, self.send_addr);
+        debug!("send {}", self.next_seqno);
         self.conn.send_to(&buf[..len], self.send_addr).await.unwrap();
+
+        // and store the encapsulated packet
+        self.cache.insert(self.next_seqno, CachedItem::new(buf[..len].to_vec()));
         self.next_seqno += 1;
         Ok(())
     }
@@ -77,10 +105,32 @@ impl Tunnel {
     pub async fn handle_block_ack(
         &mut self, ack: BlockAck,
     ) -> Result<(), String> {
-        // remove acked packets from the cache
-        // for unacked packets, retransmit and increase the counter
-        // if the counter is at the max, discard it
-        debug!("received block ack {:?}", ack);
+        // remove everything that was acked from the cache
+        let mut block = ack.block;
+        let mut seqno = ack.seqno - BLOCK_SIZE;
+        let mut max_acked = 0;
+        let mut retx = vec![];
+        while block != 0 {
+            if block & 1 == 1 {
+                if self.cache.remove(&seqno).is_some() {
+                    debug!("evict {}", seqno);
+                }
+                max_acked = seqno;
+            } else {
+                retx.push(seqno);
+            }
+            block >>= 1;
+            seqno += 1;
+        }
+
+        // retransmit anything that wasn't acked
+        for seqno in retx.into_iter().take_while(|&seqno| seqno < max_acked) {
+            if let Some(item) = self.cache.get_mut(&seqno) {
+                debug!("retransmit {}", seqno);
+                self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
+                item.num_retx += 1;
+            }
+        }
         Ok(())
     }
 
@@ -98,7 +148,8 @@ impl Tunnel {
         let len = 14 + ip_datagram.len();
         buf[0..14].copy_from_slice(&self.eth_header);
         buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
-        debug!("sending {} inner bytes to {}", len, self.sock.interface);
+        debug!("recv {}", seqno);
+        trace!("sending {} inner bytes to {}", len, self.sock.interface);
         self.sock.send(&buf, len)?;
         Ok(())
     }
