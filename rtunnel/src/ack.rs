@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[cfg(feature = "ack64")]
 pub const BLOCK_SIZE: u32 = 64;
 #[cfg(not(feature = "ack64"))]
@@ -26,6 +28,34 @@ pub struct BlockAck {
     pub block: u64,
     #[cfg(not(feature = "ack64"))]
     pub block: u32,
+}
+
+#[cfg(feature = "ack64")]
+fn format_bits(n: u64) -> String {
+    let bits = format!("{:064b}", n); // Pad to 64 bits
+    bits.chars()
+        .collect::<Vec<_>>()
+        .chunks(8)
+        .map(|chunk| chunk.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(not(feature = "ack64"))]
+fn format_bits(n: u32) -> String {
+    let bits = format!("{:032b}", n); // Pad to 32 bits
+    bits.chars()
+        .collect::<Vec<_>>()
+        .chunks(8)
+        .map(|chunk| chunk.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+impl fmt::Display for BlockAck {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.seqno, format_bits(self.block))
+    }
 }
 
 impl BlockAck {

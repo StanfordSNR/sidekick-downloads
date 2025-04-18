@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use log::{trace, debug};
+use log::debug;
 use tokio::net::UdpSocket;
 use sidekick_utils::socket::Socket;
 use sidekick_utils::BUFFER_SIZE;
@@ -70,7 +70,9 @@ impl Tunnel {
     ) -> Result<(), String> {
         // if there's too many unacked packets, drop it
         if self.cache.len() >= (BLOCK_SIZE as usize) {
-            debug!("dropping datagram");
+            let mut seqnos: Vec<_> = self.cache.keys().collect();
+            seqnos.sort();
+            debug!("[sender] cache is full, dropping datagram cache={:?}", seqnos);
             return Ok(());
         }
 
@@ -78,10 +80,9 @@ impl Tunnel {
         let packet = Packet::Outer {
             seqno: self.next_seqno,
             ip_datagram,
-    };
+        };
         let len = packet.serialize(&mut self.buf);
-        trace!("sending {} outer bytes to {:?}", 42 + len, self.send_addr);
-        debug!("send {} ({} bytes)", self.next_seqno, 42 + len);
+        debug!("[sender] send {} ({} bytes)", self.next_seqno, 42 + len);
         self.conn.send_to(&self.buf[..len], self.send_addr).await.unwrap();
 
         // and store the encapsulated packet
@@ -105,9 +106,9 @@ impl Tunnel {
             if ack.block & (1 << i) != 0 {
                 if let Some(item) = self.cache.remove(&seqno) {
                     if item.num_retx == 0 {
-                        debug!("acked {}", seqno);
+                        debug!("[sender] acked {}", seqno);
                     } else {
-                        debug!("acked {} ({} retries)", seqno, item.num_retx);
+                        debug!("[sender] acked {} ({} retries)", seqno, item.num_retx);
                     }
                 }
                 max_acked = seqno;
@@ -125,7 +126,7 @@ impl Tunnel {
         self.max_seqno_acked = max_acked;
         for seqno in retx.into_iter().take_while(|&seqno| seqno < max_acked) {
             if let Some(item) = self.cache.get_mut(&seqno) {
-                debug!("retransmit {} ({} bytes)", seqno, item.datagram.len());
+                debug!("[sender] retransmit {} ({} bytes)", seqno, item.datagram.len());
                 self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
                 item.num_retx += 1;
 
@@ -139,7 +140,8 @@ impl Tunnel {
         let errant_seqnos: Vec<u32> =
             self.cache.keys().filter(|&&seqno| seqno < min_seqno).copied().collect();
         for seqno in errant_seqnos {
-            self.cache.remove(&seqno);
+            let item = self.cache.remove(&seqno).unwrap();
+            debug!("[sender] acked {} below block range ({} retries)", seqno, item.num_retx)
         }
         Ok(())
     }
@@ -151,6 +153,7 @@ impl Tunnel {
         // update the block ack and send it
         let is_new = self.ack.ack(seqno);
         let len = Packet::Ack(self.ack).serialize(&mut self.buf);
+        debug!("[receiver] ack {}", self.ack);
         self.conn.send_to(&self.buf[..len], self.send_addr).await.unwrap();
 
         // write the datagram to the raw socket, filling in the L2 headers
@@ -161,7 +164,7 @@ impl Tunnel {
                 self.buffer.send(seqno, ip_datagram)?;
             }
         } else {
-            debug!("recv {} ({} bytes, drop)", seqno, len);
+            debug!("[receiver] drop {} ({} bytes) duplicate ack", seqno, len);
         }
         Ok(())
     }

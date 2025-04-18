@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use log::{trace, debug};
+use log::debug;
 
 use sidekick_utils::socket::Socket;
 use sidekick_utils::BUFFER_SIZE;
@@ -58,7 +58,8 @@ impl SockSendBuffer {
     ) -> Result<(), String> {
         // Drop packets that are way too stale
         if seqno < self.next_seqno {
-            debug!("dropping stale {}", seqno);
+            debug!("[receiver] drop {} < {} below dejitter buffer range",
+                seqno, self.next_seqno);
             return Ok(());
         }
 
@@ -68,7 +69,7 @@ impl SockSendBuffer {
         }
 
         // Add the packet to the buffer
-        debug!("buffer {}", seqno);
+        debug!("[receiver] buffer {}", seqno);
         let index = (seqno - self.next_seqno) as usize;
         self.buffer[index] = Some(ip_datagram);
 
@@ -99,8 +100,7 @@ impl SockSendBuffer {
         let len = 14 + ip_datagram.len();
         self.buf[0..14].copy_from_slice(&self.eth_header);
         self.buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
-        debug!("recv {} ({} bytes)", seqno, len);
-        trace!("sending {} inner bytes to {}", len, self.sock.interface);
+        debug!("[receiver] send {} ({} bytes)", seqno, len);
         self.sock.send(&self.buf, len)?;
         Ok(())
     }
