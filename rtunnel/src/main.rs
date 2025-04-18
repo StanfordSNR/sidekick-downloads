@@ -40,6 +40,9 @@ struct Cli {
     /// Maximum number of times to try a retransmit before dropping the packet
     #[arg(long, default_value_t = 1000)]
     max_num_retx: usize,
+    /// Whether to order packets in a dejitter buffer before forwarding
+    #[arg(long)]
+    ordered: bool,
     /// Logfile to write rust logs to (optional)
     /// This should be set for loglevel = TRACE. Excessively logging to
     /// stdout/stderr can interfere with Mininet's packet buffers.
@@ -135,6 +138,7 @@ async fn main() -> Result<(), String> {
         format!("{}:{}", args.ip, args.port).parse().unwrap();
     let tunnel = Tunnel::new(
         sock, conn, send_addr, args.src_mac, args.dst_mac, args.max_num_retx,
+        args.ordered,
     )?;
     eprintln!("Ready to proxy {} and {}:{}", args.iface, args.ip, args.port);
     handle_incoming(rx, tunnel).await?;

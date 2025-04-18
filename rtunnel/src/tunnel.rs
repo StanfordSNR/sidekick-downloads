@@ -40,13 +40,14 @@ pub struct Tunnel {
 
     // Receiver
     ack: BlockAck,
+    ordered: bool,
     buffer: SockSendBuffer,
 }
 
 impl Tunnel {
     pub fn new(
         sock: Socket, conn: Arc<UdpSocket>, send_addr: SocketAddr,
-        src_mac: String, dst_mac: String, max_num_retx: usize,
+        src_mac: String, dst_mac: String, max_num_retx: usize, ordered: bool,
     ) -> Result<Self, String> {
         Ok(Self {
             conn,
@@ -57,6 +58,7 @@ impl Tunnel {
             max_seqno_acked: 0,
             cache: HashMap::with_capacity(BLOCK_SIZE as usize),
             ack: BlockAck::new(),
+            ordered,
             buffer: SockSendBuffer::new(sock, src_mac, dst_mac)?,
         })
     }
@@ -152,7 +154,11 @@ impl Tunnel {
 
         // write the datagram to the raw socket, filling in the L2 headers
         if is_new {
-            self.buffer.send(seqno, ip_datagram)?;
+            if self.ordered {
+                self.buffer.buffer_and_send(seqno, ip_datagram)?;
+            } else {
+                self.buffer.send(seqno, ip_datagram)?;
+            }
         } else {
             debug!("recv {} ({} bytes, drop)", seqno, len);
         }
