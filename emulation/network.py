@@ -408,7 +408,7 @@ class EmulatedNetwork:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
     def start_tunnel(
-        self, src_node, logfile, max_num_retx=7, port=9090,
+        self, src_node, logfile, max_num_retx=7, ordered=None, port=9090,
         timeout=SETUP_TIMEOUT, executable='./rtunnel/target/release/rtunnel',
     ):
         condition = threading.Condition()
@@ -432,6 +432,8 @@ class EmulatedNetwork:
         cmd = f'{executable} --max-num-retx {max_num_retx} --iface {iface} '
         cmd += f'--ip {dst_node.IP()} --port {port} '
         cmd += f'--src-mac {src_mac} --dst-mac {dst_mac} '
+        if ordered:
+            cmd += f'--ordered {ordered} '
         logfile = None if logfile is None else f'{logfile}.{src_node.name}'
         self.popen(src_node, cmd, background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
