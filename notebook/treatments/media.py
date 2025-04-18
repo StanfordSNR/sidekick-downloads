@@ -43,12 +43,27 @@ def generate_treatment(ty: str, delay: int, hint: bool, nack: bool, cache_capaci
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
+def generate_rtunnel_treatment(max_num_retx: int, delay: Optional[int]=None):
+    label = f'baseline_rtunnel_retx{max_num_retx}'
+    network_options = ['--proxy', 'rtunnel', '--max-num-retx', str(max_num_retx)]
+    protocol_options = []
+    if delay:
+        label += f'_delay{delay}'
+        protocol_options += ['--ack-delay', str(delay)]
+    treatment = Treatment(PROTOCOL, label=label,
+        network_options=network_options, protocol_options=protocol_options)
+    return treatment
+
 def generate_treatments():
     # Baseline and cache policy treatments
     treatments = [
         Treatment(PROTOCOL, label='baseline', network_options=[], protocol_options=[]),
-        Treatment(PROTOCOL, label='baseline_rtunnel', network_options=['--proxy', 'rtunnel'], protocol_options=[]),
-        Treatment(PROTOCOL, label='baseline_rtunnel_delay45', network_options=['--proxy', 'rtunnel'], protocol_options=['--ack-delay', '45']),
+        generate_rtunnel_treatment(0),
+        generate_rtunnel_treatment(1),
+        generate_rtunnel_treatment(7),
+        generate_rtunnel_treatment(0, 45),
+        generate_rtunnel_treatment(1, 45),
+        generate_rtunnel_treatment(7, 45),
         generate_treatment('psum', 45, True, True, 10000),
         generate_treatment('iblt', 45, True, True, 10000),
         generate_treatment('iblt', 45, True, True, 2000),
