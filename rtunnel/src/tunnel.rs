@@ -22,6 +22,7 @@ pub struct Tunnel {
     next_seqno: u32,
 
     // Receiver
+    ack: BlockAck,
 }
 
 fn parse_mac(mac_str: &str) -> Result<[u8; 6], String> {
@@ -53,6 +54,7 @@ impl Tunnel {
             send_addr,
             eth_header,
             next_seqno: 0,
+            ack: BlockAck::new(),
         })
     }
 
@@ -78,7 +80,8 @@ impl Tunnel {
         // remove acked packets from the cache
         // for unacked packets, retransmit and increase the counter
         // if the counter is at the max, discard it
-        unimplemented!()
+        debug!("received block ack {:?}", ack);
+        Ok(())
     }
 
     // encapsulated packets
@@ -86,8 +89,12 @@ impl Tunnel {
         &mut self, seqno: u32, ip_datagram: Vec<u8>,
     ) -> Result<(), String> {
         // update the block ack and send it
-        // decapsulate the custom header and write to sock
         let mut buf = [0u8; BUFFER_SIZE];
+        self.ack.ack(seqno);
+        let len = Packet::Ack(self.ack).serialize(&mut buf);
+        self.conn.send_to(&buf[..len], self.send_addr).await.unwrap();
+
+        // write the datagram to the raw socket, filling in the L2 headers
         let len = 14 + ip_datagram.len();
         buf[0..14].copy_from_slice(&self.eth_header);
         buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());

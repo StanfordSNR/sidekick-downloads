@@ -12,13 +12,14 @@ pub const BLOCK_SIZE: u32 = 32;
 /// 0, 27 have been received. 1-26, 28+ have not been received.
 ///
 /// seqno must be at least the block size.
+#[derive(Debug, Clone, Copy)]
 pub struct BlockAck {
     /// Seqno of 1 + the most significant bit in the block.
     /// If the seqno is greater than the block size, it is equal to one more
     /// than the largest acknowledged packet.
-    seqno: u32,
+    pub seqno: u32,
     /// Default is BLOCK_SIZE packets
-    block: u32,
+    pub block: u32,
 }
 
 impl BlockAck {
