@@ -5,8 +5,6 @@ use log::{trace, debug};
 use sidekick_utils::socket::Socket;
 use sidekick_utils::BUFFER_SIZE;
 
-const CAPACITY: u32 = crate::ack::BLOCK_SIZE;
-
 pub struct SockSendBuffer {
     // Raw socket
     sock: Socket,
@@ -16,7 +14,9 @@ pub struct SockSendBuffer {
     // Dejitter buffer
     /// The seqno of the first IP datagram in the buffer
     next_seqno: u32,
-    /// Length CAPACITY
+    /// Max number of packets in the dejitter buffer
+    capacity: u32,
+    /// Length capacity at all times
     buffer: VecDeque<Option<Vec<u8>>>,
 }
 
@@ -35,7 +35,7 @@ fn parse_mac(mac_str: &str) -> Result<[u8; 6], String> {
 
 impl SockSendBuffer {
     pub fn new(
-        sock: Socket, src_mac: String, dst_mac: String,
+        sock: Socket, src_mac: String, dst_mac: String, capacity: u32,
     ) -> Result<Self, String> {
         let mut eth_header = [0u8; 14];
         eth_header[0..6].copy_from_slice(&parse_mac(&dst_mac)?[..]);
@@ -48,7 +48,8 @@ impl SockSendBuffer {
             eth_header,
             buf: [0u8; BUFFER_SIZE],
             next_seqno: 0,
-            buffer: VecDeque::from(vec![None; CAPACITY as usize]),
+            capacity,
+            buffer: VecDeque::from(vec![None; capacity as usize]),
         })
     }
 
@@ -62,7 +63,7 @@ impl SockSendBuffer {
         }
 
         // Pop packets from the buffer until this seqno is in range
-        while seqno >= self.next_seqno + CAPACITY {
+        while seqno >= self.next_seqno + self.capacity {
             self.pop_and_send()?;
         }
 

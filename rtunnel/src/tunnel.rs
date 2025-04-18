@@ -47,7 +47,8 @@ pub struct Tunnel {
 impl Tunnel {
     pub fn new(
         sock: Socket, conn: Arc<UdpSocket>, send_addr: SocketAddr,
-        src_mac: String, dst_mac: String, max_num_retx: usize, ordered: bool,
+        src_mac: String, dst_mac: String, max_num_retx: usize,
+        ordered: Option<u32>,
     ) -> Result<Self, String> {
         Ok(Self {
             conn,
@@ -58,8 +59,8 @@ impl Tunnel {
             max_seqno_acked: 0,
             cache: HashMap::with_capacity(BLOCK_SIZE as usize),
             ack: BlockAck::new(),
-            ordered,
-            buffer: SockSendBuffer::new(sock, src_mac, dst_mac)?,
+            ordered: ordered.is_some(),
+            buffer: SockSendBuffer::new(sock, src_mac, dst_mac, ordered.unwrap_or(1))?,
         })
     }
 

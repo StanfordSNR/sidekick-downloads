@@ -40,9 +40,10 @@ struct Cli {
     /// Maximum number of times to try a retransmit before dropping the packet
     #[arg(long, default_value_t = 1000)]
     max_num_retx: usize,
-    /// Whether to order packets in a dejitter buffer before forwarding
+    /// If provided, orders packets in a dejitter buffer before forwarding
+    /// with the given number of packets as the max capacity
     #[arg(long)]
-    ordered: bool,
+    ordered: Option<u32>,
     /// Logfile to write rust logs to (optional)
     /// This should be set for loglevel = TRACE. Excessively logging to
     /// stdout/stderr can interfere with Mininet's packet buffers.
