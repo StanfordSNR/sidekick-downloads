@@ -1,6 +1,8 @@
 use libc::*;
-use log::{debug, error};
+use log::{debug, warn, error};
 use std::ffi::CString;
+use std::io::Error;
+use std::mem::{size_of, zeroed};
 use crate::BUFFER_SIZE;
 
 #[derive(Debug, Clone)]
@@ -125,10 +127,38 @@ impl Socket {
             )
         };
         if n < 0 {
-            error!("failed to recv: {}", n);
-            return Err(format!("recv: {}", n));
+            error!("failed to recv: {} {}", self.interface, n);
+            return Err(format!("recvfrom: {} {} {}", self.interface, n, Error::last_os_error()));
         }
         Ok(n)
+    }
+
+    pub fn recvmsg(
+        &self,
+        addr: &mut sockaddr_ll,
+        buf: &mut [u8; BUFFER_SIZE],
+    ) -> Result<usize, String> {
+        let mut iov = iovec {
+            iov_base: buf.as_mut_ptr() as *mut _,
+            iov_len: buf.len(),
+        };
+
+        let mut msg: msghdr = unsafe { zeroed() };
+        msg.msg_name = addr as *mut _ as *mut _;
+        msg.msg_namelen = size_of::<sockaddr_ll>() as u32;
+        msg.msg_iov = &mut iov;
+        msg.msg_iovlen = 1;
+
+        // Use MSG_TRUNC to detect truncated packets
+        let n = unsafe { recvmsg(self.fd, &mut msg, MSG_TRUNC) };
+        if n < 0 {
+            Err(format!("recvmsg: {} {}", n, Error::last_os_error()))
+        } else if (msg.msg_flags & MSG_TRUNC) != 0 {
+            warn!("recvmsg: {} exceeds buffer size {} > {}", self.interface, n, buf.len());
+            Err(format!("recvmsg: {} exceeds buffer size {} > {}", self.interface, n, buf.len()))
+        } else {
+            Ok(n as usize)
+        }
     }
 
     /// Write `BUFFER_SIZE` bytes to buffer.
@@ -136,7 +166,7 @@ impl Socket {
     pub fn send(&self, buf: &[u8; BUFFER_SIZE], nbytes: usize) -> Result<isize, String> {
         let n = unsafe { write(self.fd, buf.as_ptr() as *const c_void, nbytes) };
         if n < 0 {
-            return Err(format!("write: {}", n));
+            return Err(format!("write: {} {} {}", self.interface, n, Error::last_os_error()));
         }
         Ok(n)
     }

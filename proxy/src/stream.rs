@@ -97,7 +97,7 @@ async fn poll_packets(socket: ProxySocket, tx: mpsc::Sender<Packet>) {
            socket.interface(), socket.id(), socket.fd());
     loop {
         let mut packet = Packet::new(socket.id());
-        let nbytes = match socket.recvfrom(&mut addr, &mut packet.data) {
+        let nbytes = match socket.recvmsg(&mut addr, &mut packet.data) {
             Ok(nbytes) => {
                 trace!("Received {} bytes on {}", nbytes, socket.interface());
                 nbytes
@@ -162,6 +162,14 @@ impl ProxySocket {
         buf: &mut [u8; BUFFER_SIZE],
     ) -> Result<isize, String> {
         self.socket.recvfrom(addr, buf)
+    }
+
+    pub fn recvmsg(
+        &self,
+        addr: &mut sockaddr_ll,
+        buf: &mut [u8; BUFFER_SIZE],
+    ) -> Result<usize, String> {
+        self.socket.recvmsg(addr, buf)
     }
 
     pub fn fd(&self) -> i32 {

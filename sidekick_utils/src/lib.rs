@@ -15,7 +15,8 @@ pub const DEFAULT_MTU: usize = 1500;
 pub const ID_BUFFER_SIZE: usize = ID_OFFSET + 4;
 
 // Proxy must be able to receive and forward complete packets
-pub const BUFFER_SIZE: usize = (DEFAULT_MTU + 14 + 8).next_power_of_two();
+// 14 more bytes for the Ethernet header, and 4 more bytes for the VLAN tag
+pub const BUFFER_SIZE: usize = DEFAULT_MTU + 14 + 4;
 
 #[macro_export]
 macro_rules! fmt_hex {
