@@ -101,7 +101,9 @@ impl Tunnel {
         self.conn.send_to(&self.buf[..len], self.send_addr).await.unwrap();
 
         // and store the encapsulated packet
-        self.cache.insert(self.next_seqno, CachedItem::new(self.buf[..len].to_vec()));
+        if self.max_num_retx > 0 {
+            self.cache.insert(self.next_seqno, CachedItem::new(self.buf[..len].to_vec()));
+        }
         self.next_seqno += 1;
         Ok(())
     }
