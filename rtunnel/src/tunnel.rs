@@ -150,6 +150,13 @@ impl Tunnel {
                 }
             }
         }
+
+        // remove anything not in the block ack range from the cache
+        let errant_seqnos: Vec<u32> =
+            self.cache.keys().filter(|&&seqno| seqno < min_seqno).copied().collect();
+        for seqno in errant_seqnos {
+            self.cache.remove(&seqno);
+        }
         Ok(())
     }
 
