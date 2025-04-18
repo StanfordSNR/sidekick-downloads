@@ -33,6 +33,7 @@ pub struct Tunnel {
 
     // Sender
     next_seqno: u32,
+    max_seqno_acked: u32,
     /// Sent packets waiting for an ACK
     cache: HashMap<u32, CachedItem>,
 
@@ -69,6 +70,7 @@ impl Tunnel {
             send_addr,
             eth_header,
             next_seqno: 0,
+            max_seqno_acked: 0,
             cache: HashMap::with_capacity(BLOCK_SIZE as usize),
             ack: BlockAck::new(),
         })
@@ -123,12 +125,15 @@ impl Tunnel {
             seqno += 1;
         }
 
-        // retransmit anything that wasn't acked
-        for seqno in retx.into_iter().take_while(|&seqno| seqno < max_acked) {
-            if let Some(item) = self.cache.get_mut(&seqno) {
-                debug!("retransmit {}", seqno);
-                self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
-                item.num_retx += 1;
+        // retransmit anything that wasn't acked if the max seqno acked increased
+        if max_acked > self.max_seqno_acked {
+            self.max_seqno_acked = max_acked;
+            for seqno in retx.into_iter().take_while(|&seqno| seqno < max_acked) {
+                if let Some(item) = self.cache.get_mut(&seqno) {
+                    debug!("retransmit {}", seqno);
+                    self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
+                    item.num_retx += 1;
+                }
             }
         }
         Ok(())
