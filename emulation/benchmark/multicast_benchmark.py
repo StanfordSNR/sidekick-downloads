@@ -151,6 +151,7 @@ class MulticastBenchmark:
         """
         cmd = f'./media/target/release/multicast_client '\
               f'--nack-frequency {self.net.rtt} '\
+              f'--frequency {self.frequency} '\
               f'--addr {self.server.IP()}:{self.port} '\
               f'--timeout {self.duration} '
 

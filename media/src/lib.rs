@@ -12,5 +12,5 @@ pub const INITIAL_SEQNO: u32 = 0;
 pub const TIMEOUT_SEQNO: u32 = u32::MAX;
 
 pub use statistics::Statistics;
-pub use buffer::BufferedPackets;
+pub use buffer::{PlayResult, BufferedPackets};
 pub use packet::Packet;

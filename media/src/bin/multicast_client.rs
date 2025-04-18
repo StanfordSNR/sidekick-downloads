@@ -17,7 +17,7 @@ use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
-use media::{Packet, BufferedPackets, Statistics};
+use media::{PlayResult, Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
 use media::sidekick::{parse_addr_key, QuackerConfig};
 
@@ -30,6 +30,9 @@ struct Cli {
     /// The unique client ID.
     #[arg(long)]
     client_id: String,
+    /// Frequency at which the server sends data packets, in ms.
+    #[arg(long)]
+    frequency: u64,
     /// The NACK frequency, in ms. Typically the end-to-end RTT.
     #[arg(long)]
     nack_frequency: u64,
@@ -69,12 +72,13 @@ async fn listen_incoming(
     sock: Sockets, quacker: Option<(Arc<Mutex<UdpQuacker>>, QuackerConfig)>,
     client_id: String, nack_frequency: Duration, nack_delay: Option<Duration>,
     timeout: Duration, mut sidekick_rx: mpsc::Receiver<Vec<u8>>,
-    send_on_nack: bool,
+    send_on_nack: bool, frequency: Duration,
 ) -> io::Result<()> {
     let mut buf1 = [0u8; PAYLOAD_SIZE];
     let mut buf2 = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let mut discovery_sent = current_time_ms();
+    let mut min_time_seqno: Option<PlayResult> = None;
     let start = Instant::now();
     loop {
         let (len, addr, is_multicast) =
@@ -135,8 +139,19 @@ async fn listen_incoming(
         if buffer.recv_seqno(data.seqno, now) {
             stats.add_spurious();
         }
-        while let Some(time_recv) = buffer.pop_seqno() {
-            stats.add_value(now - time_recv);
+        while let Some(res) = buffer.pop_seqno() {
+            if min_time_seqno.is_none() || res.time_recv < min_time_seqno.unwrap().time_recv {
+                min_time_seqno = Some(res);
+            }
+            // // dejitter buffer delay
+            // let stat = now - res.time_recv;
+            // playback delay
+            let stat = {
+                let min_time_seqno = min_time_seqno.unwrap();
+                let num_seqnos = res.seqno - min_time_seqno.seqno;
+                now - (min_time_seqno.time_recv + frequency * num_seqnos)
+            };
+            stats.add_value(stat);
         }
 
         // Send NACKs for missing data.
@@ -309,6 +324,7 @@ async fn main() -> io::Result<()> {
     } else {
         env_logger::init();
     }
+    let frequency = Duration::from_millis(args.frequency);
     let nack_frequency = Duration::from_millis(args.nack_frequency);
     let mut sock = Sockets::new(args.multicast_ip, args.multicast_port, args.addr).await?;
 
@@ -339,7 +355,7 @@ async fn main() -> io::Result<()> {
         };
         listen_incoming(
             sock, quacker, args.client_id, nack_frequency, nack_delay, timeout,
-            sidekick_rx, args.send_on_nack,
+            sidekick_rx, args.send_on_nack, frequency,
         ).await?;
     }
 

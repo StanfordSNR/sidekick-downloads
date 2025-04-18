@@ -16,7 +16,7 @@ use tokio::time::{Instant, Duration};
 use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
-use media::{Packet, BufferedPackets, Statistics};
+use media::{PlayResult, Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
 use media::sidekick::{parse_addr_key, QuackerConfig};
 
@@ -92,6 +92,7 @@ async fn listen_incoming(
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let mut discovery_sent = current_time_ms();
+    let mut min_time_seqno: Option<PlayResult> = None;
     loop {
         // Parse the incoming packet.
         let (len, addr) = sock.recv_from(&mut buf).await?;
@@ -178,8 +179,19 @@ async fn listen_incoming(
                 stats.add_spurious();
             }
             debug!("receive data {}", data.seqno);
-            while let Some(time_recv) = buffer.pop_seqno() {
-                stats.add_value(now - time_recv);
+            while let Some(res) = buffer.pop_seqno() {
+                if min_time_seqno.is_none() || res.time_recv < min_time_seqno.unwrap().time_recv {
+                    min_time_seqno = Some(res);
+                }
+                // // dejitter buffer delay
+                // let stat = now - res.time_recv;
+                // playback delay
+                let stat = {
+                    let min_time_seqno = min_time_seqno.unwrap();
+                    let num_seqnos = res.seqno - min_time_seqno.seqno;
+                    now - (min_time_seqno.time_recv + frequency * num_seqnos)
+                };
+                stats.add_value(stat);
             }
         }
 
