@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 from experiment import Treatment
 
@@ -61,27 +62,43 @@ def generate_treatments():
     # Baseline and cache policy treatments
     treatments = [
         Treatment(PROTOCOL, label='baseline', network_options=[], protocol_options=[]),
-        generate_rtunnel_treatment(0),
-        generate_rtunnel_treatment(1),
-        generate_rtunnel_treatment(7),
-        generate_rtunnel_treatment(0, 45),
-        generate_rtunnel_treatment(1, 45),
-        generate_rtunnel_treatment(7, 45),
-        generate_treatment('psum', 45, True, True, 10000),
-        generate_treatment('iblt', 45, True, True, 10000),
-        generate_treatment('iblt', 45, True, True, 2000),
     ]
-    # Various delays, hint, nack
-    for ty in ['psum', 'iblt']:
-        for delay in [0, 5, 10, 15, 30, 45, 90]:
-            treatments.append(generate_treatment(ty, delay, False, False))
-            treatments.append(generate_treatment(ty, delay, True, False))
-            treatments.append(generate_treatment(ty, delay, False, True))
-            treatments.append(generate_treatment(ty, delay, True, True))
     labels = [treatment.label() for treatment in treatments]
     treatment_map = {}
     for label, treatment in zip(labels, treatments):
         treatment_map[label] = treatment
     return labels, treatment_map
 
-labels, treatment_map = generate_treatments()
+labels, _treatment_map = generate_treatments()
+
+def treatment_map(label, treatments=_treatment_map):
+    if label in treatments:
+        return treatments[label]
+
+    # Generate an rtunnel treatment on the fly
+    pattern = re.compile(
+        r'^baseline_rtunnel_retx(?P<max_num_retx>\d+)'
+        r'(?:_ordered(?P<ordered>\d+))?'
+        r'(?:_delay(?P<delay>\d+))?'
+    )
+    match = pattern.fullmatch(label)
+    if match:
+        match = match.groupdict()
+        return generate_rtunnel_treatment(match['max_num_retx'], match['ordered'], match['delay'])
+
+    # Generate a different treatment on the fly
+    pattern = re.compile(
+        r'^(?P<ty>(iblt|psum))_'
+        r'delay(?P<delay>\d+)'
+        r'(?:_hint)?'
+        r'(?:_nack)?'
+        r'(?:_cache(?P<cache_capacity>\d+))?'
+    )
+    match = pattern.fullmatch(label)
+    if match:
+        match = match.groupdict()
+        return generate_treatment(
+            match['ty'], match['delay'], 'hint' in label, 'nack' in label,
+            cache_capacity=match['cache_capacity'],
+        )
+    raise Exception(label)
