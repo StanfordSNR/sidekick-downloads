@@ -538,12 +538,13 @@ class OneHopNetwork(EmulatedNetwork):
         - debug: Whether to set the debug environment variable RUST_LOG=debug
           for Rust processes when running popen.
         """
+        assert proxy != ProxyType.SIDEKICK_MULTICAST
         super().__init__(perf=perf, debug=debug)
 
         # Add hosts, switches, and network emulation nodes
         self.h1 = self.net.addHost('h1', ip=self._ip(1, 10), mac=self._mac(101))
         self.h2 = self.net.addHost('h2', ip=self._ip(2, 10), mac=self._mac(102))
-        self.e1 = self.net.addHost('e1')
+        self.e1 = self.net.addHost('e1', ip=self._ip(1, 21))
         self.e2 = self.net.addHost('e2')
         self.p1 = self.net.addHost('p1', ip=self._ip(1, 11))
 
@@ -613,6 +614,21 @@ class OneHopNetwork(EmulatedNetwork):
             self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev p1-eth0")
             self.popen(self.p1, f"ip addr add {self._ip(1, 12)} dev p1-eth1")
             self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
+
+            if proxy == ProxyType.RTUNNEL:
+                self.popen(self.e1, "ifconfig e1-eth0 0")
+                self.popen(self.e1, "ifconfig e1-eth1 0")
+                self.popen(self.e1, f"ip link set dev e1-eth0 address {self._mac(42)}")
+                self.popen(self.e1, f"ip link set dev e1-eth1 address {self._mac(43)}")
+                self.popen(self.e1, f"ip addr add {self._ip(1, 21)} dev e1-eth0")
+                self.popen(self.e1, f"ip addr add {self._ip(1, 22)} dev e1-eth1")
+                self.popen(self.e1, f'ip route add {self.h1.IP()} dev e1-eth0')
+                self.popen(self.h1, f'ip route add 172.16.1.21 dev h1-eth0')
+                self.popen(self.e1, f'ip route add 172.16.1.11 dev e1-eth1')
+                self.popen(self.p1, f'ip route add 172.16.1.22 dev p1-eth0')
+                self.popen(self.e1, 'ip link set dev e1-eth0 up')
+                self.popen(self.e1, 'ip link set dev e1-eth1 up')
+
             self.popen(self.p1, 'ip link set dev p1-eth0 up')
             self.popen(self.p1, 'ip link set dev p1-eth1 up')
 

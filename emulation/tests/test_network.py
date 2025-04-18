@@ -358,6 +358,19 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.h2, net.p1)
         os.chdir(cwd)
 
+    def test_one_hop_reachability_tunnel(self):
+        cwd = os.getcwd()
+        os.chdir('..')
+        net = self.setUpOneHopNetwork(proxy=ProxyType.RTUNNEL)
+        time.sleep(1)
+        self.assertReachable(net.p1, net.h2)
+        self.assertReachable(net.h2, net.p1)
+        self.assertReachable(net.h1, net.e1)
+        self.assertReachable(net.e1, net.h1)
+        self.assertReachable(net.e1, net.p1)
+        self.assertReachable(net.p1, net.e1)
+        os.chdir(cwd)
+
     def test_direct_hosts_are_reachable(self):
         net = self.setUpDirectNetwork()
         self.assertReachable(net.h1, net.h2)
