@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::Parser;
-use log::trace;
+use log::{trace, debug};
 use flexi_logger::{Logger, WriteMode, FileSpec};
 use tokio::task;
 use tokio::sync::mpsc;
@@ -51,7 +51,8 @@ async fn listen_sock(
     loop {
         let len = sock.recvmsg(&mut addr, &mut buf)?;
         assert!(len > 0, "len={}", len);
-        let packet = Packet::new_inner(&buf[..len]);
+        debug!("received {} inner bytes from {}", len, sock.interface);
+        let packet = Packet::parse_inner(&buf[..len]);
         tx.send(packet).await.unwrap();
     }
 }
@@ -62,8 +63,8 @@ async fn listen_conn(
     let mut buf = [0u8; BUFFER_SIZE];
     loop {
         let (len, addr) = conn.recv_from(&mut buf).await.unwrap();
-        trace!("received {} bytes from {:?}", len, addr);
-        let packet = Packet::new_outer(&buf[..len]);
+        debug!("received {} outer bytes from {:?}", 42 + len, addr);
+        let packet = Packet::parse_outer(&buf[..len]);
         tx.send(packet).await.unwrap();
     }
 }

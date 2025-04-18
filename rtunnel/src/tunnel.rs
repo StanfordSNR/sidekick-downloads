@@ -7,15 +7,21 @@ use sidekick_utils::socket::Socket;
 use sidekick_utils::BUFFER_SIZE;
 
 use crate::ack::BlockAck;
+use crate::net::Packet;
 
 const ETHERNET_HEADER_LEN: usize = 14;
 
 pub struct Tunnel {
+    // Network parameters
     sock: Socket,
     conn: Arc<UdpSocket>,
     send_addr: SocketAddr,
-    src_mac: [u8; 6],
-    dst_mac: [u8; 6],
+    eth_header: [u8; 14],
+
+    // Sender
+    next_seqno: u32,
+
+    // Receiver
 }
 
 fn parse_mac(mac_str: &str) -> Result<[u8; 6], String> {
@@ -36,12 +42,17 @@ impl Tunnel {
         sock: Socket, conn: Arc<UdpSocket>, send_addr: SocketAddr,
         src_mac: String, dst_mac: String,
     ) -> Result<Self, String> {
+        let mut eth_header = [0u8; 14];
+        eth_header[0..6].copy_from_slice(&parse_mac(&dst_mac)?[..]);
+        eth_header[6..12].copy_from_slice(&parse_mac(&src_mac)?[..]);
+        eth_header[12] = 0x08;
+        eth_header[13] = 0x00;
         Ok(Self {
             sock,
             conn,
             send_addr,
-            src_mac: parse_mac(&src_mac)?,
-            dst_mac: parse_mac(&dst_mac)?,
+            eth_header,
+            next_seqno: 0,
         })
     }
 
@@ -51,12 +62,12 @@ impl Tunnel {
     ) -> Result<(), String> {
         // if there's too many unacked packets, drop it
         // else store the packet for retransmission
-
-        // take the IP headers and payload
-        // wrap it with its own header with only incrementing outer seqnos
-        // send it as a UDP payload to conn
-        debug!("sending {} bytes to {:?}", ip_datagram.len(), self.send_addr);
-        self.conn.send_to(&ip_datagram[..], self.send_addr).await.unwrap();
+        let mut buf = [0u8; BUFFER_SIZE];
+        let packet = Packet::Outer { seqno: self.next_seqno, ip_datagram };
+        let len = packet.serialize(&mut buf);
+        debug!("sending {} outer bytes to {:?}", 42 + len, self.send_addr);
+        self.conn.send_to(&buf[..len], self.send_addr).await.unwrap();
+        self.next_seqno += 1;
         Ok(())
     }
 
@@ -74,17 +85,14 @@ impl Tunnel {
     pub async fn handle_outer_packet(
         &mut self, seqno: u32, ip_datagram: Vec<u8>,
     ) -> Result<(), String> {
-        // parse the custom header to get the outer seqno
         // update the block ack and send it
         // decapsulate the custom header and write to sock
-        debug!("handling outer packet {} bytes", ip_datagram.len());
         let mut buf = [0u8; BUFFER_SIZE];
-        buf[0..6].copy_from_slice(&self.dst_mac);
-        buf[6..12].copy_from_slice(&self.src_mac);
-        buf[12] = 0x08;
-        buf[13] = 0x00;
+        let len = 14 + ip_datagram.len();
+        buf[0..14].copy_from_slice(&self.eth_header);
         buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
-        self.sock.send(&buf, ip_datagram.len() + ETHERNET_HEADER_LEN)?;
+        debug!("sending {} inner bytes to {}", len, self.sock.interface);
+        self.sock.send(&buf, len)?;
         Ok(())
     }
 }
