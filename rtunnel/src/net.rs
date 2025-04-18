@@ -32,6 +32,18 @@ impl Packet {
                 udp_payload[3],
                 udp_payload[4],
             ]);
+            #[cfg(feature = "ack64")]
+            let block = u64::from_be_bytes([
+                udp_payload[5],
+                udp_payload[6],
+                udp_payload[7],
+                udp_payload[8],
+                udp_payload[9],
+                udp_payload[10],
+                udp_payload[11],
+                udp_payload[12],
+            ]);
+            #[cfg(not(feature = "ack64"))]
             let block = u32::from_be_bytes([
                 udp_payload[5],
                 udp_payload[6],
@@ -65,7 +77,10 @@ impl Packet {
                 let len = (5 + BLOCK_SIZE / 8) as usize;
                 buf[0] = 1; // is_ack
                 buf[1..5].copy_from_slice(&u32::to_be_bytes(ack.seqno)[..]);
+                #[cfg(feature = "ack64")]
                 buf[5..len].copy_from_slice(&u64::to_be_bytes(ack.block)[..]);
+                #[cfg(not(feature = "ack64"))]
+                buf[5..len].copy_from_slice(&u32::to_be_bytes(ack.block)[..]);
                 len
             }
         }

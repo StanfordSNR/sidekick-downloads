@@ -1,3 +1,6 @@
+#[cfg(feature = "ack64")]
+pub const BLOCK_SIZE: u32 = 64;
+#[cfg(not(feature = "ack64"))]
 pub const BLOCK_SIZE: u32 = 32;
 
 /// Example:
@@ -19,6 +22,9 @@ pub struct BlockAck {
     /// than the largest acknowledged packet.
     pub seqno: u32,
     /// Default is BLOCK_SIZE packets
+    #[cfg(feature = "ack64")]
+    pub block: u64,
+    #[cfg(not(feature = "ack64"))]
     pub block: u32,
 }
 

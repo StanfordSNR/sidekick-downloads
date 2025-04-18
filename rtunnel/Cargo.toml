@@ -11,3 +11,7 @@ libc = "0.2.137"
 sidekick-utils = { path = "../sidekick_utils" }
 flexi_logger = "0.29.8"
 env_logger = "0.9.3"
+
+[features]
+default = []
+ack64 = []
