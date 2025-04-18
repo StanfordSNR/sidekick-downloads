@@ -154,7 +154,7 @@ impl Tunnel {
         self.conn.send_to(&self.buf[..len], self.send_addr).await.unwrap();
 
         // write the datagram to the raw socket, filling in the L2 headers
-        if is_new {
+        if is_new.unwrap_or(false) {
             if self.ordered {
                 self.buffer.buffer_and_send(seqno, ip_datagram)?;
             } else {
