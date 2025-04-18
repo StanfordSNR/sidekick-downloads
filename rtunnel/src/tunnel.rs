@@ -30,6 +30,7 @@ pub struct Tunnel {
     conn: Arc<UdpSocket>,
     send_addr: SocketAddr,
     eth_header: [u8; 14],
+    buf: [u8; BUFFER_SIZE],
 
     // Sender
     next_seqno: u32,
@@ -70,6 +71,7 @@ impl Tunnel {
             conn,
             send_addr,
             eth_header,
+            buf: [0u8; BUFFER_SIZE],
             next_seqno: 0,
             max_num_retx,
             max_seqno_acked: 0,
@@ -89,18 +91,17 @@ impl Tunnel {
         }
 
         // else encapsulate the packet and forward it
-        let mut buf = [0u8; BUFFER_SIZE];
         let packet = Packet::Outer {
             seqno: self.next_seqno,
             ip_datagram,
     };
-        let len = packet.serialize(&mut buf);
+        let len = packet.serialize(&mut self.buf);
         trace!("sending {} outer bytes to {:?}", 42 + len, self.send_addr);
         debug!("send {}", self.next_seqno);
-        self.conn.send_to(&buf[..len], self.send_addr).await.unwrap();
+        self.conn.send_to(&self.buf[..len], self.send_addr).await.unwrap();
 
         // and store the encapsulated packet
-        self.cache.insert(self.next_seqno, CachedItem::new(buf[..len].to_vec()));
+        self.cache.insert(self.next_seqno, CachedItem::new(self.buf[..len].to_vec()));
         self.next_seqno += 1;
         Ok(())
     }
@@ -157,19 +158,18 @@ impl Tunnel {
         &mut self, seqno: u32, ip_datagram: Vec<u8>,
     ) -> Result<(), String> {
         // update the block ack and send it
-        let mut buf = [0u8; BUFFER_SIZE];
         let is_new = self.ack.ack(seqno);
-        let len = Packet::Ack(self.ack).serialize(&mut buf);
-        self.conn.send_to(&buf[..len], self.send_addr).await.unwrap();
+        let len = Packet::Ack(self.ack).serialize(&mut self.buf);
+        self.conn.send_to(&self.buf[..len], self.send_addr).await.unwrap();
 
         // write the datagram to the raw socket, filling in the L2 headers
         if is_new {
             let len = 14 + ip_datagram.len();
-            buf[0..14].copy_from_slice(&self.eth_header);
-            buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
+            self.buf[0..14].copy_from_slice(&self.eth_header);
+            self.buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
             debug!("recv {}", seqno);
             trace!("sending {} inner bytes to {}", len, self.sock.interface);
-            self.sock.send(&buf, len)?;
+            self.sock.send(&self.buf, len)?;
         } else {
             debug!("recv {} (drop)", seqno);
         }

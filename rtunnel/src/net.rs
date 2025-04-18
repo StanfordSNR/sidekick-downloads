@@ -52,12 +52,12 @@ impl Packet {
         }
     }
 
-    pub fn serialize(self, buf: &mut [u8; BUFFER_SIZE]) -> usize {
+    pub fn serialize(&self, buf: &mut [u8; BUFFER_SIZE]) -> usize {
         match self {
             Packet::Inner { .. } => panic!("serialize it yourself"),
             Packet::Outer { seqno, ip_datagram } => {
                 buf[0] = 0; // !is_ack
-                buf[1..5].copy_from_slice(&u32::to_be_bytes(seqno)[..]);
+                buf[1..5].copy_from_slice(&u32::to_be_bytes(*seqno)[..]);
                 buf[5..5+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
                 5 + ip_datagram.len()
             }
