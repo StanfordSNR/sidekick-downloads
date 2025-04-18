@@ -407,6 +407,33 @@ class EmulatedNetwork:
             if not notified:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
 
+    def start_tunnel(
+        self, src_node, logfile, port=9090,
+        timeout=SETUP_TIMEOUT, executable='./rtunnel/target/release/rtunnel',
+    ):
+        condition = threading.Condition()
+        def notify_when_ready(line):
+            if 'Ready' in line:
+                with condition:
+                    condition.notify()
+
+        if src_node == self.e1:
+            dst_node = self.p1
+            iface = 'e1-eth0'
+        elif src_node == self.p1:
+            dst_node = self.e1
+            iface = 'p1-eth1'
+
+        cmd = f'{executable} --iface {iface} '
+        cmd += f'--ip {dst_node.IP()} --port {port} '
+        self.popen(src_node, cmd, background=True, console_logger=DEBUG,
+                   logfile=f'{logfile}.{src_node.name}', func=notify_when_ready)
+
+        with condition:
+            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            if not notified:
+                raise TimeoutError(f'start_tunnel timeout {SETUP_TIMEOUT}s')
+
     def start_sidekick(
         self, port: int, cache_capacity: int, logfile: Optional[str],
         timeout=SETUP_TIMEOUT, executable='./proxy/target/release/sidekick',
