@@ -47,10 +47,13 @@ def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
-def generate_rtunnel_treatment(max_num_retx: int, delay: Optional[int]=None):
+def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, delay: Optional[int]=None):
     label = f'picoquic_rtunnel_retx{max_num_retx}'
     network_options = ['--proxy', 'rtunnel', '--max-num-retx', str(max_num_retx)]
     protocol_options = []
+    if ordered:
+        label += f'_ordered{ordered}'
+        network_options += ['--ordered', str(ordered)]
     if delay:
         label += f'_delay{delay}'
         protocol_options += ['--ack-delay', str(delay)]
@@ -66,6 +69,7 @@ def generate_treatments():
         generate_rtunnel_treatment(0),
         generate_rtunnel_treatment(1),
         generate_rtunnel_treatment(7),
+        generate_rtunnel_treatment(100),
         generate_rtunnel_treatment(0, 30),
         generate_rtunnel_treatment(1, 30),
         generate_rtunnel_treatment(7, 30),

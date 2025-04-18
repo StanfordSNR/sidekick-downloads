@@ -43,10 +43,13 @@ def generate_treatment(ty: str, delay: int, hint: bool, nack: bool, cache_capaci
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
-def generate_rtunnel_treatment(max_num_retx: int, delay: Optional[int]=None):
+def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, delay: Optional[int]=None):
     label = f'baseline_rtunnel_retx{max_num_retx}'
     network_options = ['--proxy', 'rtunnel', '--max-num-retx', str(max_num_retx)]
     protocol_options = []
+    if ordered:
+        label += f'_ordered{ordered}'
+        network_options += ['--ordered', str(ordered)]
     if delay:
         label += f'_delay{delay}'
         protocol_options += ['--ack-delay', str(delay)]
