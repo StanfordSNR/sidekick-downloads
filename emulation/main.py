@@ -277,6 +277,8 @@ def parse_args(argv=None):
         help='Default proxy cache capacity per connection')
     proxy_config.add_argument('--cache-policy', choices=['optimistic', 'reset'], default='optimistic',
         help='Proxy cache overflow policy')
+    proxy_config.add_argument('--max-num-retx', type=int, default=7,
+        help='Maximum number of retransmits in the rtunnel proxy')
 
     ###########################################################################
     # HTTP/1.1+TCP benchmark
@@ -461,8 +463,8 @@ def main(args):
             net.start_sidekick(args.quackee_port, args.cache_capacity,
                 logfile=proxy_logfile)
         elif args.proxy == ProxyType.RTUNNEL:
-            net.start_tunnel(net.p0, proxy_logfile)
-            net.start_tunnel(net.p1, proxy_logfile)
+            net.start_tunnel(net.p0, proxy_logfile, max_num_retx=args.max_num_retx)
+            net.start_tunnel(net.p1, proxy_logfile, max_num_retx=args.max_num_retx)
         elif args.proxy == ProxyType.SIDEKICK_MULTICAST:
             net.start_sidekick_multicast(args.quackee_port, args.cache_capacity,
                 logfile=proxy_logfile)
