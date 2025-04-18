@@ -259,6 +259,9 @@ class TestReliableTunnel(CLITestCase):
     def test_picoquic_with_reliable_tunnel(self):
         self.execute_command_and_check('picoquic', ['--proxy', 'rtunnel'])
 
+    def test_picoquic_with_reliable_tunnel_ordered(self):
+        self.execute_command_and_check('picoquic', ['--proxy', 'rtunnel', '--ordered', '32'])
+
     def test_picoquic_with_reliable_tunnel_high_loss(self):
         self.execute_command_and_check('picoquic', ['--proxy', 'rtunnel', '--max-num-retx', '1000', '--loss1', '50'])
 
@@ -268,6 +271,9 @@ class TestReliableTunnel(CLITestCase):
 
     def test_media_with_reliable_tunnel(self):
         self.execute_command_and_check('media', ['--proxy', 'rtunnel'])
+
+    def test_picoquic_with_reliable_tunnel_ordered(self):
+        self.execute_command_and_check('media', ['--proxy', 'rtunnel', '--ordered', '32'])
 
     def test_media_with_reliable_tunnel_high_loss(self):
         self.execute_command_and_check('media', ['--proxy', 'rtunnel', '--max-num-retx', '1000', '--loss1', '50'])

@@ -73,7 +73,7 @@ impl SockSendBuffer {
         self.buffer[index] = Some(ip_datagram);
 
         // Send packets if we can
-        while self.buffer.front().is_some() {
+        while self.buffer.front().unwrap().is_some() {
             let sent = self.pop_and_send()?;
             assert!(sent);
         }
