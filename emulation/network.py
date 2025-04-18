@@ -417,13 +417,13 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
-        if src_node == self.e1:
+        if src_node == self.p0:
             dst_node = self.p1
-            iface = 'e1-eth0'
-            src_mac = '00:00:00:00:00:42'  # e1-eth0
+            iface = 'p0-eth0'
+            src_mac = '00:00:00:00:00:42'  # p0-eth0
             dst_mac = '00:00:00:00:01:01'  # h1-eth0
         elif src_node == self.p1:
-            dst_node = self.e1
+            dst_node = self.p0
             iface = 'p1-eth1'
             src_mac = '00:00:00:00:00:41'  # p1-eth1
             dst_mac = '00:00:00:00:00:11'  # e2-eth0
@@ -572,17 +572,24 @@ class OneHopNetwork(EmulatedNetwork):
           for Rust processes when running popen.
         """
         assert proxy != ProxyType.SIDEKICK_MULTICAST
+        tunnel = proxy == ProxyType.RTUNNEL
         super().__init__(perf=perf, debug=debug)
 
         # Add hosts, switches, and network emulation nodes
         self.h1 = self.net.addHost('h1', ip=self._ip(1, 10), mac=self._mac(101))
         self.h2 = self.net.addHost('h2', ip=self._ip(2, 10), mac=self._mac(102))
-        self.e1 = self.net.addHost('e1', ip=self._ip(1, 21))
+        self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
         self.p1 = self.net.addHost('p1', ip=self._ip(1, 11))
+        if tunnel:
+            self.p0 = self.net.addHost('p0', ip=self._ip(1, 21))
 
         # Add links
-        self.net.addLink(self.h1, self.e1)
+        if tunnel:
+            self.net.addLink(self.h1, self.p0)
+            self.net.addLink(self.p0, self.e1)
+        else:
+            self.net.addLink(self.h1, self.e1)
         self.net.addLink(self.e1, self.p1)
         self.net.addLink(self.p1, self.e2)
         self.net.addLink(self.e2, self.h2)
@@ -590,9 +597,6 @@ class OneHopNetwork(EmulatedNetwork):
 
         # Initialize statistics
         self.primary_ifaces = ['h1-eth0', 'h2-eth0', 'p1-eth0', 'p1-eth1']
-        if proxy == ProxyType.RTUNNEL:
-            self.primary_ifaces.append('e1-eth0')
-            self.primary_ifaces.append('e1-eth1')
         self.iface_to_host = {
             'h1-eth0': self.h1,
             'p1-eth0': self.p1,
@@ -603,6 +607,11 @@ class OneHopNetwork(EmulatedNetwork):
             'e2-eth0': self.e2,
             'e2-eth1': self.e2,
         }
+        if tunnel:
+            self.primary_ifaces.append('p0-eth0')
+            self.primary_ifaces.append('p0-eth1')
+            self.iface_to_host['p0-eth0'] = self.p0
+            self.iface_to_host['p0-eth1'] = self.p0
         self.reset_statistics()
 
         # Setup routing and forwarding
@@ -616,15 +625,11 @@ class OneHopNetwork(EmulatedNetwork):
             self.setup_router_node(self.e2, self._mac(11), self._mac(21))
             self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'br0')
             self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'br0')
-        elif proxy in [ProxyType.BRIDGE, ProxyType.SIDEKICK, ProxyType.PICOQUIC]:
+        else:
             # p1 runs a binary that manually bridges the two interfaces
+            # in the RTUNNEL case, p0 does that too
             self.setup_bridging_node(self.e1, mac=self._mac(51))
             self.setup_router_node(self.e2, self._mac(11), self._mac(21))
-        elif proxy == ProxyType.RTUNNEL:
-            # p1 and p2 *both* bridge the interfaces manually
-            self.setup_router_node(self.e2, self._mac(11), self._mac(21))
-        else:
-            raise Exception(f'invalid proxy type: {proxy}')
         self.popen(self.h1, "ip route add default via 172.16.1.1")
         self.popen(self.h2, "ip route add default via 172.16.2.1")
         self._set_arp_table(self.h1, '172.16.1.1', self._mac(11), 'h1-eth0')
@@ -648,19 +653,19 @@ class OneHopNetwork(EmulatedNetwork):
             self.popen(self.p1, f"ip addr add {self._ip(1, 12)} dev p1-eth1")
             self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
 
-            if proxy == ProxyType.RTUNNEL:
-                self.popen(self.e1, "ifconfig e1-eth0 0")
-                self.popen(self.e1, "ifconfig e1-eth1 0")
-                self.popen(self.e1, f"ip link set dev e1-eth0 address {self._mac(42)}")
-                self.popen(self.e1, f"ip link set dev e1-eth1 address {self._mac(43)}")
-                self.popen(self.e1, f"ip addr add {self._ip(1, 21)} dev e1-eth0")
-                self.popen(self.e1, f"ip addr add {self._ip(1, 22)} dev e1-eth1")
-                self.popen(self.e1, f'ip route add {self.h1.IP()} dev e1-eth0')
+            if tunnel:
+                self.popen(self.p0, "ifconfig p0-eth0 0")
+                self.popen(self.p0, "ifconfig p0-eth1 0")
+                self.popen(self.p0, f"ip link set dev p0-eth0 address {self._mac(42)}")
+                self.popen(self.p0, f"ip link set dev p0-eth1 address {self._mac(43)}")
+                self.popen(self.p0, f"ip addr add {self._ip(1, 21)} dev p0-eth0")
+                self.popen(self.p0, f"ip addr add {self._ip(1, 22)} dev p0-eth1")
+                self.popen(self.p0, f'ip route add {self.h1.IP()} dev p0-eth0')
                 self.popen(self.h1, f'ip route add 172.16.1.21 dev h1-eth0')
-                self.popen(self.e1, f'ip route add 172.16.1.11 dev e1-eth1')
+                self.popen(self.p0, f'ip route add 172.16.1.11 dev p0-eth1')
                 self.popen(self.p1, f'ip route add 172.16.1.22 dev p1-eth0')
-                self.popen(self.e1, 'ip link set dev e1-eth0 up')
-                self.popen(self.e1, 'ip link set dev e1-eth1 up')
+                self.popen(self.p0, 'ip link set dev p0-eth0 up')
+                self.popen(self.p0, 'ip link set dev p0-eth1 up')
 
             self.popen(self.p1, 'ip link set dev p1-eth0 up')
             self.popen(self.p1, 'ip link set dev p1-eth1 up')
@@ -669,7 +674,7 @@ class OneHopNetwork(EmulatedNetwork):
         if proxy is None:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(53), 'h1-eth0')
             self._set_arp_table(self.e2, '172.16.1.11', self._mac(53), 'e2-eth0')
-        elif proxy == ProxyType.RTUNNEL:
+        elif tunnel:
             pass
         elif proxy != ProxyType.PEPSAL:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(40), 'h1-eth0')
@@ -684,10 +689,13 @@ class OneHopNetwork(EmulatedNetwork):
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
         rtt = 2 * (delay1 + delay2)
         bdp = self._calculate_bdp(delay1, delay2, bw1, bw2)
-        self._config_iface('h1-eth0', False, pacing, disable_checksum=proxy == ProxyType.RTUNNEL)
+        self._config_iface('h1-eth0', False, pacing, disable_checksum=tunnel)
+        if tunnel:
+            self._config_iface('p0-eth0', False, pacing)
+            self._config_iface('p0-eth1', False, pacing)
         self._config_iface('p1-eth0', False, pacing)
         self._config_iface('p1-eth1', False, pacing)
-        self._config_iface('h2-eth0', False, pacing, disable_checksum=proxy == ProxyType.RTUNNEL)
+        self._config_iface('h2-eth0', False, pacing, disable_checksum=tunnel)
         self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
         self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
         self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
