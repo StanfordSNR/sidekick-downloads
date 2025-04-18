@@ -111,12 +111,12 @@ impl Tunnel {
         &mut self, ack: BlockAck,
     ) -> Result<(), String> {
         // remove everything that was acked from the cache
-        let mut block = ack.block;
-        let mut seqno = ack.seqno - BLOCK_SIZE;
+        let min_seqno = ack.seqno - BLOCK_SIZE;
         let mut max_acked = 0;
         let mut retx = vec![];
-        while block != 0 {
-            if block & 1 == 1 {
+        for i in 0..BLOCK_SIZE {
+            let seqno = min_seqno + i;
+            if ack.block & (1 << i) != 0 {
                 if let Some(item) = self.cache.remove(&seqno) {
                     if item.num_retx == 0 {
                         debug!("acked {}", seqno);
@@ -128,8 +128,6 @@ impl Tunnel {
             } else {
                 retx.push(seqno);
             }
-            block >>= 1;
-            seqno += 1;
         }
 
         // don't send extra retransmissions if nothing new was acked
