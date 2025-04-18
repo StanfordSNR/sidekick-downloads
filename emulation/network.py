@@ -432,8 +432,9 @@ class EmulatedNetwork:
         cmd = f'{executable} --max-num-retx {max_num_retx} --iface {iface} '
         cmd += f'--ip {dst_node.IP()} --port {port} '
         cmd += f'--src-mac {src_mac} --dst-mac {dst_mac} '
+        logfile = None if logfile is None else f'{logfile}.{src_node.name}'
         self.popen(src_node, cmd, background=True, console_logger=DEBUG,
-                   logfile=f'{logfile}.{src_node.name}', func=notify_when_ready)
+                   logfile=logfile, func=notify_when_ready)
 
         with condition:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
