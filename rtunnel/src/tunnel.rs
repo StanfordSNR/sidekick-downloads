@@ -97,7 +97,7 @@ impl Tunnel {
     };
         let len = packet.serialize(&mut self.buf);
         trace!("sending {} outer bytes to {:?}", 42 + len, self.send_addr);
-        debug!("send {}", self.next_seqno);
+        debug!("send {} ({} bytes)", self.next_seqno, 42 + len);
         self.conn.send_to(&self.buf[..len], self.send_addr).await.unwrap();
 
         // and store the encapsulated packet
@@ -141,7 +141,7 @@ impl Tunnel {
         self.max_seqno_acked = max_acked;
         for seqno in retx.into_iter().take_while(|&seqno| seqno < max_acked) {
             if let Some(item) = self.cache.get_mut(&seqno) {
-                debug!("retransmit {}", seqno);
+                debug!("retransmit {} ({} bytes)", seqno, item.datagram.len());
                 self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
                 item.num_retx += 1;
 
@@ -167,11 +167,11 @@ impl Tunnel {
             let len = 14 + ip_datagram.len();
             self.buf[0..14].copy_from_slice(&self.eth_header);
             self.buf[14..14+ip_datagram.len()].copy_from_slice(ip_datagram.as_slice());
-            debug!("recv {}", seqno);
+            debug!("recv {} ({} bytes)", seqno, len);
             trace!("sending {} inner bytes to {}", len, self.sock.interface);
             self.sock.send(&self.buf, len)?;
         } else {
-            debug!("recv {} (drop)", seqno);
+            debug!("recv {} ({} bytes, drop)", seqno, len);
         }
         Ok(())
     }
