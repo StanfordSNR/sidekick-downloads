@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::time::Instant;
 use std::sync::Arc;
 
 use log::debug;
@@ -13,13 +14,15 @@ use crate::net::Packet;
 
 struct CachedItem {
     datagram: Vec<u8>,
+    time_tx: Instant,
     num_retx: usize,
 }
 
 impl CachedItem {
-    fn new(datagram: Vec<u8>) -> Self {
+    fn new(time_tx: Instant, datagram: Vec<u8>) -> Self {
         Self {
             datagram,
+            time_tx,
             num_retx: 0,
         }
     }
@@ -35,6 +38,7 @@ pub struct Tunnel {
     next_seqno: u32,
     max_num_retx: usize,
     max_seqno_acked: u32,
+    max_time_acked: Instant,
     /// Sent packets waiting for an ACK
     cache: HashMap<u32, CachedItem>,
 
@@ -57,6 +61,7 @@ impl Tunnel {
             next_seqno: 0,
             max_num_retx,
             max_seqno_acked: 0,
+            max_time_acked: Instant::now(),
             cache: HashMap::with_capacity(BLOCK_SIZE as usize),
             ack: BlockAck::new(),
             ordered: ordered.is_some(),
@@ -87,7 +92,11 @@ impl Tunnel {
 
         // and store the encapsulated packet
         if self.max_num_retx > 0 {
-            self.cache.insert(self.next_seqno, CachedItem::new(self.buf[..len].to_vec()));
+            let now = Instant::now();
+            self.cache.insert(
+                self.next_seqno,
+                CachedItem::new(now, self.buf[..len].to_vec()),
+            );
         }
         self.next_seqno += 1;
         Ok(())
@@ -99,6 +108,7 @@ impl Tunnel {
     ) -> Result<(), String> {
         // remove everything that was acked from the cache
         let min_seqno = ack.seqno - BLOCK_SIZE;
+        let now = Instant::now();
         let mut max_acked = 0;
         let mut retx = vec![];
         for i in 0..BLOCK_SIZE {
@@ -110,6 +120,7 @@ impl Tunnel {
                     } else {
                         debug!("[sender] acked {} ({} retries)", seqno, item.num_retx);
                     }
+                    self.max_time_acked = item.time_tx;
                 }
                 max_acked = seqno;
             } else {
@@ -129,6 +140,7 @@ impl Tunnel {
                 debug!("[sender] retransmit {} ({} bytes)", seqno, item.datagram.len());
                 self.conn.send_to(&item.datagram[..], self.send_addr).await.unwrap();
                 item.num_retx += 1;
+                item.time_tx = now;
 
                 if item.num_retx >= self.max_num_retx {
                     self.cache.remove(&seqno);
