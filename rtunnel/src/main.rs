@@ -7,11 +7,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::Parser;
-use log::trace;
+use log::{trace, error};
 use flexi_logger::{Logger, WriteMode, FileSpec};
 use tokio::task;
 use tokio::sync::mpsc;
 use tokio::net::UdpSocket;
+use tokio::runtime::Handle;
 
 use sidekick_utils::BUFFER_SIZE;
 use sidekick_utils::socket::{SockAddr, Socket};
@@ -51,17 +52,22 @@ struct Cli {
     logfile: Option<String>,
 }
 
-async fn listen_sock(
+fn listen_sock(
     tx: mpsc::Sender<Packet>, sock: Socket,
 ) -> Result<(), String> {
     let mut addr = SockAddr::new_sockaddr_ll();
     let mut buf = [0u8; BUFFER_SIZE];
+    let rt = Handle::current();
     loop {
         let len = sock.recvmsg(&mut addr, &mut buf)?;
         assert!(len > 0, "len={}", len);
         trace!("received {} inner bytes from {}", len, sock.interface);
         let packet = Packet::parse_inner(&buf[..len]);
-        tx.send(packet).await.unwrap();
+        rt.block_on(async {
+            if let Err(e) = tx.send(packet).await {
+                error!("channel send failed: {}", e);
+            }
+        });
     }
 }
 
@@ -118,8 +124,8 @@ async fn main() -> Result<(), String> {
         let sock = Socket::new(args.iface.clone())?;
         sock.set_promiscuous()?;
         let sock_clone = sock.clone();
-        task::spawn(async move {
-            listen_sock(tx, sock_clone).await.unwrap()
+        task::spawn_blocking(move || {
+            listen_sock(tx, sock_clone).unwrap()
         });
         sock
     };
