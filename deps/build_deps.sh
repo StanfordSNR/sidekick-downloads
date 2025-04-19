@@ -63,7 +63,7 @@ build_sidekick() {
 	cargo build --release --bin sidekick
 	cargo build --release --bin sidekick_multicast
 	cd $SIDEKICK_HOME/rtunnel
-	cargo build --release --bin rtunnel
+	cargo build --release --bin rtunnel --features ack64
 	cd $SIDEKICK_HOME/quacker
 	cargo build --release --bin quacker
 }
