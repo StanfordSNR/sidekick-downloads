@@ -92,7 +92,8 @@ async fn listen_incoming(
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let mut discovery_sent = current_time_ms();
-    let mut min_time_seqno: Option<PlayResult> = None;
+    let mut time_init: Option<Instant> = None;
+    const FIRST_SEQNO: u32 = 1;
     loop {
         // Parse the incoming packet.
         let (len, addr) = sock.recv_from(&mut buf).await?;
@@ -107,7 +108,7 @@ async fn listen_incoming(
                 continue;
             }
             let stats = Statistics::new();
-            let buffer = BufferedPackets::new(1);
+            let buffer = BufferedPackets::new(FIRST_SEQNO);
             let send_task = if should_loop {
                 let tx = tx.clone();
                 let send_task = task::spawn(async move {
@@ -178,18 +179,19 @@ async fn listen_incoming(
             if buffer.recv_seqno(data.seqno, now) {
                 stats.add_spurious();
             }
+            if time_init.is_none() {
+                let num_seqnos = data.seqno - FIRST_SEQNO;
+                time_init = Some(now - num_seqnos * frequency);
+            }
             debug!("receive data {}", data.seqno);
             while let Some(res) = buffer.pop_seqno() {
-                if min_time_seqno.is_none() || res.time_recv < min_time_seqno.unwrap().time_recv {
-                    min_time_seqno = Some(res);
-                }
                 // // dejitter buffer delay
                 // let stat = now - res.time_recv;
                 // playback delay
                 let stat = {
-                    let min_time_seqno = min_time_seqno.unwrap();
-                    let num_seqnos = res.seqno - min_time_seqno.seqno;
-                    now - (min_time_seqno.time_recv + frequency * num_seqnos)
+                    let num_seqnos = res.seqno - FIRST_SEQNO;
+                    let time_prod = time_init.unwrap() + frequency * num_seqnos;
+                    now - time_prod
                 };
                 stats.add_value(stat);
             }
