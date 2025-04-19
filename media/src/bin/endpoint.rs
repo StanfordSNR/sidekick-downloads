@@ -187,11 +187,17 @@ async fn listen_incoming(
             while let Some(res) = buffer.pop_seqno() {
                 // // dejitter buffer delay
                 // let stat = now - res.time_recv;
-                // playback delay
+                // // playback delay with an infinite length jitter buffer
+                // let stat = {
+                //     let num_seqnos = res.seqno - FIRST_SEQNO;
+                //     let time_prod = time_init.unwrap() + frequency * num_seqnos;
+                //     now - time_prod
+                // };
+                // playback delay with no jitter buffer
                 let stat = {
                     let num_seqnos = res.seqno - FIRST_SEQNO;
                     let time_prod = time_init.unwrap() + frequency * num_seqnos;
-                    now - time_prod
+                    res.time_recv - time_prod
                 };
                 stats.add_value(stat);
             }
