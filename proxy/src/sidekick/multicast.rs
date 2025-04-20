@@ -135,7 +135,7 @@ impl SidekickMulticast {
                 debug!("quack {} cache_len={} num_symbols={} last_value={}, Sidekick: {}",
                     quack.count(), base.cache.len(), quack.threshold(),
                     quack.last_value().unwrap(), fmt_hex!(sidekick_conn));
-                if conn.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
+                if conn.last_reset.elapsed() >= Duration::from_millis(3 * RESET_FREQ_MS) {
                     match ResetPayload::build_packet(&mut self.buf, &packet.data) {
                         Ok(len) => {
                             info!("Sending reset packet");

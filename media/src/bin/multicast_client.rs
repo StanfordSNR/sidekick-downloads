@@ -17,7 +17,7 @@ use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::buffer::AddrKey;
 use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
-use media::{PlayResult, Packet, BufferedPackets, Statistics};
+use media::{Packet, BufferedPackets, Statistics, AudioTimestamper};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
 use media::sidekick::{parse_addr_key, QuackerConfig};
 
@@ -78,7 +78,6 @@ async fn listen_incoming(
     let mut buf2 = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let mut discovery_sent = current_time_ms();
-    let mut min_time_seqno: Option<PlayResult> = None;
     let start = Instant::now();
     loop {
         let (len, addr, is_multicast) =
@@ -97,12 +96,22 @@ async fn listen_incoming(
         }
 
         // Initialize the connection with the first data packet.
+        let now = Instant::now();
         if connection.is_none() {
             let stats = Statistics::new();
             let buffer = BufferedPackets::new(data.seqno);
-            connection = Some((addr, stats, buffer));
+            const FIRST_SEQNO: u32 = 1;
+            let num_seqnos = data.seqno - FIRST_SEQNO;
+            let timestamper = AudioTimestamper::new(
+                FIRST_SEQNO, now - num_seqnos * frequency, frequency);
+            connection = Some((addr, stats, buffer, timestamper));
         }
-        let (from_addr, ref mut stats, ref mut buffer) = connection.as_mut().unwrap();
+        let (
+            from_addr,
+            ref mut stats,
+            ref mut buffer,
+            ref timestamper,
+        ) = connection.as_mut().unwrap();
         assert_eq!(*from_addr, addr);
 
         let current_time = current_time_ms();
@@ -135,22 +144,15 @@ async fn listen_incoming(
 
         // Add the data packet to the dejitter buffer and try to play data.
         assert_ne!(data.seqno, TIMEOUT_SEQNO);
-        let now = Instant::now();
         if buffer.recv_seqno(data.seqno, now) {
             stats.add_spurious();
         }
+
         while let Some(res) = buffer.pop_seqno() {
-            if min_time_seqno.is_none() || res.time_recv < min_time_seqno.unwrap().time_recv {
-                min_time_seqno = Some(res);
-            }
             // // dejitter buffer delay
             // let stat = now - res.time_recv;
             // playback delay
-            let stat = {
-                let min_time_seqno = min_time_seqno.unwrap();
-                let num_seqnos = res.seqno - min_time_seqno.seqno;
-                now - (min_time_seqno.time_recv + frequency * num_seqnos)
-            };
+            let stat = res.time_recv - timestamper.ts(res.seqno);
             stats.add_value(stat);
         }
 
@@ -160,6 +162,7 @@ async fn listen_incoming(
             let nack = Packet::new_nack(seqno);
             let len = nack.fill_payload(&mut buf);
             sock.send_to_server(&buf[..len]).await;
+            stats.add_nack();
         }
 
         // Explicitly send a quACK when missing data.

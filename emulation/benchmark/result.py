@@ -219,6 +219,7 @@ class MulticastBenchmarkResult(BenchmarkResult):
                     'client_ids': [str],
                     'latencies': [[int]],
                     'num_spurious': [int],
+                    'num_nacks': [int],
                 }
             ]
         }
@@ -239,3 +240,6 @@ class MulticastBenchmarkResult(BenchmarkResult):
 
     def set_num_spurious(self, num_spurious: List[int]):
         self.curr_output()['num_spurious'] = num_spurious
+
+    def set_num_nacks(self, num_nacks: List[int]):
+        self.curr_output()['num_nacks'] = num_nacks

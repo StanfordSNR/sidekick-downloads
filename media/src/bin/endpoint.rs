@@ -16,7 +16,7 @@ use tokio::time::{Instant, Duration};
 use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
-use media::{PlayResult, Packet, BufferedPackets, Statistics};
+use media::{Packet, BufferedPackets, Statistics, AudioTimestamper};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
 use media::sidekick::{parse_addr_key, QuackerConfig};
 
@@ -92,7 +92,7 @@ async fn listen_incoming(
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let mut discovery_sent = current_time_ms();
-    let mut time_init: Option<Instant> = None;
+    let mut timestamper: Option<AudioTimestamper> = None;
     const FIRST_SEQNO: u32 = 1;
     loop {
         // Parse the incoming packet.
@@ -179,9 +179,11 @@ async fn listen_incoming(
             if buffer.recv_seqno(data.seqno, now) {
                 stats.add_spurious();
             }
-            if time_init.is_none() {
+            if timestamper.is_none() {
                 let num_seqnos = data.seqno - FIRST_SEQNO;
-                time_init = Some(now - num_seqnos * frequency);
+                timestamper = Some(AudioTimestamper::new(
+                    FIRST_SEQNO, now - num_seqnos * frequency, frequency,
+                ));
             }
             debug!("receive data {}", data.seqno);
             while let Some(res) = buffer.pop_seqno() {
@@ -195,9 +197,7 @@ async fn listen_incoming(
                 // };
                 // playback delay with no jitter buffer
                 let stat = {
-                    let num_seqnos = res.seqno - FIRST_SEQNO;
-                    let time_prod = time_init.unwrap() + frequency * num_seqnos;
-                    res.time_recv - time_prod
+                    res.time_recv - timestamper.as_ref().unwrap().ts(res.seqno)
                 };
                 stats.add_value(stat);
             }
@@ -209,6 +209,7 @@ async fn listen_incoming(
             debug!("nack {}", seqno);
             let nack = Packet::new_nack(seqno);
             tx.send((nack, addr.clone())).await.unwrap();
+            stats.add_nack();
         }
 
         // Explicitly send a quACK when missing data.

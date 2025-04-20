@@ -1,12 +1,13 @@
 import re
 from typing import Optional
-from experiment import Treatment
+from experiment import Treatment, NetworkSetting
 
 DEFAULT_FREQ_MS = 10
 DEFAULT_FREQ_PKTS = 16
 DEFAULT_THRESHOLD = lambda freq_pkts: freq_pkts * 5 // 2
 IBLT_MULTIPLIER = 4
 PROTOCOL = 'picoquic'
+NETWORK_SETTING = NetworkSetting(bw1=50, bw2=20, delay1=2, delay2=30, loss1=4, loss2=0)
 
 def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None, reset: bool=False, freq_pkts: Optional[int]=None):
     options = ['--proxy', 'sidekick']
