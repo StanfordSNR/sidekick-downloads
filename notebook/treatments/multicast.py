@@ -7,7 +7,7 @@ DEFAULT_FREQ_PKTS = 2
 PROTOCOL = 'multicast'
 
 def nos(iblt: bool=False, quack_hint: bool=False, quack_nack: bool=False, cache_capacity: Optional[int]=None):
-    options = ['--debug', '--proxy', 'sidekick-multicast', '--freq-ms', '0']
+    options = ['--proxy', 'sidekick-multicast', '--freq-ms', '0']
     if iblt:
         threshold = DEFAULT_THRESHOLD * IBLT_MULTIPLIER
         options += ['--threshold', str(threshold), '--riblt']
