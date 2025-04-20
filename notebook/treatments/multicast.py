@@ -1,10 +1,11 @@
 from typing import Optional
-from experiment import Treatment
+from experiment import Treatment, NetworkSetting
 
 DEFAULT_THRESHOLD = 8
 IBLT_MULTIPLIER = 4
 DEFAULT_FREQ_PKTS = 2
 PROTOCOL = 'multicast'
+NETWORK_SETTING = NetworkSetting(bw1=20, bw2=50, delay1=30, delay2=10, loss1=0, loss2=10)
 
 def nos(iblt: bool=False, quack_hint: bool=False, quack_nack: bool=False, cache_capacity: Optional[int]=None):
     options = ['--proxy', 'sidekick-multicast', '--freq-ms', '0']
