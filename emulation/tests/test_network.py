@@ -358,6 +358,34 @@ class TestNetworkReachability(NetworkTestCase):
         self.assertReachable(net.h2, net.p1)
         os.chdir(cwd)
 
+    def test_one_hop_reachability_without_tunnel(self):
+        net = self.setUpOneHopNetwork(proxy=ProxyType.RTUNNEL)
+        self.assertReachable(net.p1, net.h2)
+        self.assertReachable(net.h2, net.p1)
+        self.assertReachable(net.h1, net.p0)
+        self.assertReachable(net.p0, net.h1)
+        self.assertReachable(net.p0, net.p1)
+        self.assertReachable(net.p1, net.p0)
+
+    def test_one_hop_reachability_with_tunnel(self):
+        cwd = os.getcwd()
+        os.chdir('..')
+        net = self.setUpOneHopNetwork(proxy=ProxyType.RTUNNEL)
+        net.start_tunnel(net.p0, logfile=None)
+        net.start_tunnel(net.p1, logfile=None)
+        time.sleep(1)
+        self.assertReachable(net.h1, net.p0)
+        self.assertReachable(net.h1, net.h2)
+        self.assertReachable(net.p0, net.h1)
+        self.assertReachable(net.p0, net.p1)
+        self.assertReachable(net.p1, net.p0)
+        self.assertReachable(net.p1, net.h2)
+        self.assertReachable(net.e2, net.h1)
+        self.assertReachable(net.e2, net.h2)
+        self.assertReachable(net.h2, net.p1)
+        self.assertReachable(net.h2, net.h1)
+        os.chdir(cwd)
+
     def test_direct_hosts_are_reachable(self):
         net = self.setUpDirectNetwork()
         self.assertReachable(net.h1, net.h2)
@@ -811,7 +839,7 @@ class TestPrepopulateArpTable(NetworkTestCase):
                 if h1 != h2:
                     self.ping(h1, h2, 1)
 
-    def check_pcap(self, lines, num_pings):
+    def check_pcap(self, iface, lines, num_pings):
         icmp = 0
         arps = []
         for line in lines:
@@ -819,14 +847,26 @@ class TestPrepopulateArpTable(NetworkTestCase):
                 icmp += 1
             elif 'ARP' in line:
                 arps.append(line)
-        self.assertEqual(len(arps), 0, '\n'.join(arps))
+        self.assertEqual(len(arps), 0, f'{iface}\n' + '\n'.join(arps))
         self.assertGreater(icmp, 0, 'tcpdump did not capture the ping, may need to sleep longer')
 
-    def check_arp_table_is_used(self, net: OneHopNetwork, hosts: List[Host]):
-        # for host in hosts + [net.e2]: print(host.name, host.cmd('ip neigh show'))
-        self.ping_all(hosts)
+    def check_arp_table_is_used(
+        self, net: OneHopNetwork, hosts: List[Host], ping_tunnel: bool=False,
+    ):
+        # for host in hosts + [net.e2]: print('BEFORE:', host.name, host.cmd('ip neigh show'))
+        if ping_tunnel:
+            for (host1, host2) in [
+                (net.h1, net.h2),
+                (net.h1, net.p0),
+                (net.p0, net.p1),
+                (net.p1, net.h2),
+            ]:
+                self.ping(host1, host2, 1)
+                self.ping(host2, host1, 1)
+        else:
+            self.ping_all(hosts)
         time.sleep(1)
-        # for host in hosts + [net.e2]: print(host.name, host.cmd('ip neigh show'))
+        # for host in hosts + [net.e2]: print('AFTER:', host.name, host.cmd('ip neigh show'))
         self.stopNetwork()
         for iface in net.primary_ifaces:
             filename = f'{self.logdir}/{iface}.pcap'
@@ -834,7 +874,7 @@ class TestPrepopulateArpTable(NetworkTestCase):
             p = subprocess.run(f'tcpdump -r {filename}', shell=True,
                 text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             lines = p.stdout.split('\n')
-            self.check_pcap(lines, len(hosts) - 1)
+            self.check_pcap(iface, lines, len(hosts) - 1)
 
     def test_arp_one_hop_network_bridge_proxy(self):
         net = self.setUpOneHopNetwork(proxy=None)
@@ -854,3 +894,11 @@ class TestPrepopulateArpTable(NetworkTestCase):
         net.start_tcpdump(logdir=self.logdir)
         time.sleep(1)
         self.check_arp_table_is_used(net, [net.h1, net.p1, net.h2])
+
+    def test_arp_one_hop_network_tunnel(self):
+        net = self.setUpOneHopNetwork(proxy=ProxyType.RTUNNEL)
+        net.start_tunnel(net.p0, logfile=None)
+        net.start_tunnel(net.p1, logfile=None)
+        net.start_tcpdump(logdir=self.logdir)
+        time.sleep(1)
+        self.check_arp_table_is_used(net, [net.h1, net.p0, net.p1, net.h2], ping_tunnel=True)

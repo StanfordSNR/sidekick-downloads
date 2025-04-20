@@ -30,6 +30,7 @@ class ProxyType(Enum):
     SIDEKICK = 'sidekick'
     SIDEKICK_MULTICAST = 'sidekick-multicast'
     PICOQUIC = 'picoquic'
+    RTUNNEL = 'rtunnel'
 
 @dataclass(frozen=True)
 class QuackerConfig:

@@ -25,7 +25,7 @@ const MAGIC: [u8; 6] = *b"SRESET";
 
 /// Suggested number of ms to wait for between sending resets if the state is
 /// still not consistent. Must be at least the RTT.
-pub const RESET_FREQ_MS: u64 = 5;
+pub const RESET_FREQ_MS: u64 = 10;
 
 /// The UDP payload of a Reset packet from the quACK receiver.
 #[derive(Debug, Serialize, Deserialize)]

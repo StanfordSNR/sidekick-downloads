@@ -1,0 +1,17 @@
+[package]
+name = "rtunnel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.0.26", features = ["derive"] }
+tokio = { version = "1", features = ["net", "sync", "rt", "rt-multi-thread", "time", "macros", "io-util"] }
+log = "0.4.17"
+libc = "0.2.137"
+sidekick-utils = { path = "../sidekick_utils" }
+flexi_logger = "0.29.8"
+env_logger = "0.9.3"
+
+[features]
+default = []
+ack64 = []

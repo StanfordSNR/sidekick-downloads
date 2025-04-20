@@ -20,6 +20,14 @@ impl Seqno {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct PlayResult {
+    /// Seqno of the packet that is played
+    pub seqno: u32,
+    /// Time when the packet was first received
+    pub time_recv: Instant,
+}
+
 pub struct BufferedPackets {
     first_seqno: u32,
     /// Next seqno to play, and the seqno of the first packet in the buffer
@@ -76,10 +84,14 @@ impl BufferedPackets {
 
     /// Return the received time of the next packet to play if the next packet
     /// in the sequence is available. Removes that packet from the buffer.
-    pub fn pop_seqno(&mut self) -> Option<Instant> {
+    pub fn pop_seqno(&mut self) -> Option<PlayResult> {
         if !self.buffer.is_empty() && self.buffer.front().unwrap().time_recv.is_some() {
+            let packet = self.buffer.pop_front().unwrap();
             self.next_seqno += 1;
-            Some(self.buffer.pop_front().unwrap().time_recv.unwrap())
+            Some(PlayResult {
+                seqno: packet.seqno,
+                time_recv: packet.time_recv.unwrap(),
+            })
         } else {
             None
         }

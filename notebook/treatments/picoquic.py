@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 from experiment import Treatment
 
@@ -47,26 +48,65 @@ def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
+def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, delay: Optional[int]=None):
+    label = f'picoquic_rtunnel_retx{max_num_retx}'
+    network_options = ['--proxy', 'rtunnel', '--max-num-retx', str(max_num_retx)]
+    protocol_options = []
+    if ordered:
+        label += f'_ordered{ordered}'
+        network_options += ['--ordered', str(ordered)]
+    if delay:
+        label += f'_{delay}ms'
+        protocol_options += ['--ack-delay', str(delay)]
+    treatment = Treatment(PROTOCOL, label=label,
+        network_options=network_options, protocol_options=protocol_options)
+    return treatment
+
 def generate_treatments():
     treatments = [
         Treatment(PROTOCOL, label=f'picoquic', network_options=[], protocol_options=[]),
         Treatment(PROTOCOL, label=f'picoquic_30ms', network_options=[], protocol_options=pos(30)),
         Treatment(PROTOCOL, label=f'picoquic_split', network_options=['--proxy', 'picoquic'], protocol_options=[]),
-        generate_treatment('iblt', 30, True, reset=True),
-        generate_treatment('iblt', 30, True, cache_capacity=48000, reset=True),
-        generate_treatment('iblt', 30, True, cache_capacity=16000, reset=True),
-        generate_treatment('iblt', 30, True, cache_capacity=48000),
-        generate_treatment('iblt', 30, True, cache_capacity=16000),
     ]
-    for ty in ['sidekick', 'iblt']:
-        for delay in [0, 5, 10, 20, 30, 60]:
-            for freq in [None, 8, 10, 16, 32]:
-                treatments.append(generate_treatment(ty, delay, False, freq_pkts=freq))
-                treatments.append(generate_treatment(ty, delay, True, freq_pkts=freq))
     labels = [treatment.label() for treatment in treatments]
     treatment_map = {}
     for label, treatment in zip(labels, treatments):
         treatment_map[label] = treatment
     return labels, treatment_map
 
-labels, treatment_map = generate_treatments()
+labels, _treatment_map = generate_treatments()
+
+def treatment_map(label, treatments=_treatment_map):
+    if label in treatments:
+        return treatments[label]
+
+    # Generate an rtunnel treatment on the fly
+    pattern = re.compile(
+        r'^picoquic_rtunnel_retx(?P<max_num_retx>\d+)'
+        r'(?:_ordered(?P<ordered>\d+))?'
+        r'(?:_(?P<delay>\d+)ms)?'
+    )
+    match = pattern.fullmatch(label)
+    if match:
+        match = match.groupdict()
+        return generate_rtunnel_treatment(match['max_num_retx'], match['ordered'], match['delay'])
+
+    # Generate a different treatment on the fly
+    pattern = re.compile(
+        r'^picoquic_'
+        r'(?P<ty>(iblt|sidekick))_'
+        r'(?P<delay>\d+)ms'
+        r'(?:_hint)?'
+        r'(?:_freq(?P<freq_pkts>\d+))?'
+        r'(?:_cache(?P<cache_capacity>\d+))?'
+        r'(?:_reset)?$'
+    )
+    match = pattern.fullmatch(label)
+    if match:
+        match = match.groupdict()
+        return generate_treatment(
+            match['ty'], match['delay'], 'hint' in label,
+            freq_pkts=match['freq_pkts'],
+            cache_capacity=match['cache_capacity'], reset='reset' in label
+        )
+    raise Exception(label)

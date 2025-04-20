@@ -67,7 +67,7 @@ class EmulatedNetwork:
         if disable_checksum:
             # For some reason, this needs to be disabled at the endpoints in
             # the multicast network.
-            self.popen(host, f'ethtool -K {iface} tx off')
+            self.popen(host, f'ethtool -K {iface} tx off rx off')
 
         # Configure the end-host or proxy
         if not netem:
@@ -389,7 +389,7 @@ class EmulatedNetwork:
             logfile=logfile)
 
     def start_bridge(
-        self, logfile, timeout=SETUP_TIMEOUT,
+        self, node, logfile, timeout=SETUP_TIMEOUT,
         executable='./proxy/target/release/bridge',
     ):
         condition = threading.Condition()
@@ -398,7 +398,7 @@ class EmulatedNetwork:
                 with condition:
                     condition.notify()
 
-        self.popen(self.p1, f'{executable} --client-interface p1-eth0 --server-interface p1-eth1',
+        self.popen(node, f'{executable} --client-interface {node.name}-eth0 --server-interface {node.name}-eth1',
                    background=True, console_logger=DEBUG,
                    logfile=logfile, func=notify_when_ready)
 
@@ -406,6 +406,42 @@ class EmulatedNetwork:
             notified = condition.wait(timeout=SETUP_TIMEOUT)
             if not notified:
                 raise TimeoutError(f'start_bridge timeout {SETUP_TIMEOUT}s')
+
+    def start_tunnel(
+        self, src_node, logfile, max_num_retx=7, ordered=None, port=9090,
+        timeout=SETUP_TIMEOUT, executable='./rtunnel/target/release/rtunnel',
+    ):
+        condition = threading.Condition()
+        def notify_when_ready(line):
+            if 'Ready' in line:
+                with condition:
+                    condition.notify()
+
+        if src_node == self.p0:
+            dst_node = self.p1
+            iface = 'p0-eth0'
+            src_mac = '00:00:00:00:00:42'  # p0-eth0
+            dst_mac = '00:00:00:00:01:01'  # h1-eth0
+        elif src_node == self.p1:
+            dst_node = self.p0
+            iface = 'p1-eth1'
+            src_mac = '00:00:00:00:00:41'  # p1-eth1
+            dst_mac = '00:00:00:00:00:11'  # e2-eth0
+
+
+        cmd = f'{executable} --max-num-retx {max_num_retx} --iface {iface} '
+        cmd += f'--ip {dst_node.IP()} --port {port} '
+        cmd += f'--src-mac {src_mac} --dst-mac {dst_mac} '
+        if ordered:
+            cmd += f'--ordered {ordered} '
+        logfile = None if logfile is None else f'{logfile}.{src_node.name}'
+        self.popen(src_node, cmd, background=True, console_logger=DEBUG,
+                   logfile=logfile, func=notify_when_ready)
+
+        with condition:
+            notified = condition.wait(timeout=SETUP_TIMEOUT)
+            if not notified:
+                raise TimeoutError(f'start_tunnel timeout {SETUP_TIMEOUT}s')
 
     def start_sidekick(
         self, port: int, cache_capacity: int, logfile: Optional[str],
@@ -538,6 +574,8 @@ class OneHopNetwork(EmulatedNetwork):
         - debug: Whether to set the debug environment variable RUST_LOG=debug
           for Rust processes when running popen.
         """
+        assert proxy != ProxyType.SIDEKICK_MULTICAST
+        tunnel = proxy == ProxyType.RTUNNEL
         super().__init__(perf=perf, debug=debug)
 
         # Add hosts, switches, and network emulation nodes
@@ -546,9 +584,15 @@ class OneHopNetwork(EmulatedNetwork):
         self.e1 = self.net.addHost('e1')
         self.e2 = self.net.addHost('e2')
         self.p1 = self.net.addHost('p1', ip=self._ip(1, 11))
+        if tunnel:
+            self.p0 = self.net.addHost('p0', ip=self._ip(1, 21))
 
         # Add links
-        self.net.addLink(self.h1, self.e1)
+        if tunnel:
+            self.net.addLink(self.h1, self.p0)
+            self.net.addLink(self.p0, self.e1)
+        else:
+            self.net.addLink(self.h1, self.e1)
         self.net.addLink(self.e1, self.p1)
         self.net.addLink(self.p1, self.e2)
         self.net.addLink(self.e2, self.h2)
@@ -566,6 +610,11 @@ class OneHopNetwork(EmulatedNetwork):
             'e2-eth0': self.e2,
             'e2-eth1': self.e2,
         }
+        if tunnel:
+            self.primary_ifaces.append('p0-eth0')
+            self.primary_ifaces.append('p0-eth1')
+            self.iface_to_host['p0-eth0'] = self.p0
+            self.iface_to_host['p0-eth1'] = self.p0
         self.reset_statistics()
 
         # Setup routing and forwarding
@@ -581,6 +630,7 @@ class OneHopNetwork(EmulatedNetwork):
             self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'br0')
         else:
             # p1 runs a binary that manually bridges the two interfaces
+            # in the RTUNNEL case, p0 does that too
             self.setup_bridging_node(self.e1, mac=self._mac(51))
             self.setup_router_node(self.e2, self._mac(11), self._mac(21))
         self.popen(self.h1, "ip route add default via 172.16.1.1")
@@ -605,6 +655,21 @@ class OneHopNetwork(EmulatedNetwork):
             self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev p1-eth0")
             self.popen(self.p1, f"ip addr add {self._ip(1, 12)} dev p1-eth1")
             self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
+
+            if tunnel:
+                self.popen(self.p0, "ifconfig p0-eth0 0")
+                self.popen(self.p0, "ifconfig p0-eth1 0")
+                self.popen(self.p0, f"ip link set dev p0-eth0 address {self._mac(42)}")
+                self.popen(self.p0, f"ip link set dev p0-eth1 address {self._mac(43)}")
+                self.popen(self.p0, f"ip addr add {self._ip(1, 21)} dev p0-eth0")
+                self.popen(self.p0, f"ip addr add {self._ip(1, 22)} dev p0-eth1")
+                self.popen(self.p0, f'ip route add {self.h1.IP()} dev p0-eth0')
+                self.popen(self.h1, f'ip route add 172.16.1.21 dev h1-eth0')
+                self.popen(self.p0, f'ip route add 172.16.1.11 dev p0-eth1')
+                self.popen(self.p1, f'ip route add 172.16.1.22 dev p1-eth0')
+                self.popen(self.p0, 'ip link set dev p0-eth0 up')
+                self.popen(self.p0, 'ip link set dev p0-eth1 up')
+
             self.popen(self.p1, 'ip link set dev p1-eth0 up')
             self.popen(self.p1, 'ip link set dev p1-eth1 up')
 
@@ -612,6 +677,16 @@ class OneHopNetwork(EmulatedNetwork):
         if proxy is None:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(53), 'h1-eth0')
             self._set_arp_table(self.e2, '172.16.1.11', self._mac(53), 'e2-eth0')
+        elif tunnel:
+            self._set_arp_table(self.h1, '172.16.1.21', self._mac(42), 'h1-eth0')
+            self._set_arp_table(self.p0, self.h1.IP(), self.h1.MAC(), 'p0-eth0')
+            self._set_arp_table(self.p0, '172.16.1.11', self._mac(40), 'p0-eth1')
+            self._set_arp_table(self.p1, '172.16.1.21', self._mac(43), 'p1-eth0')
+            self._set_arp_table(self.p1, '172.16.1.22', self._mac(43), 'p1-eth0')
+            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'p1-eth1')
+            self._set_arp_table(self.e2, '172.16.1.12', self._mac(41), 'e2-eth0')
+            self._set_arp_table(self.e2, '172.16.1.11', self._mac(41), 'e2-eth0')
+            self._set_arp_table(self.e2, '172.16.1.21', self._mac(41), 'e2-eth0')
         elif proxy != ProxyType.PEPSAL:
             self._set_arp_table(self.h1, '172.16.1.11', self._mac(40), 'h1-eth0')
             self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'p1-eth0')
@@ -625,10 +700,13 @@ class OneHopNetwork(EmulatedNetwork):
         # https://unix.stackexchange.com/questions/100785/bucket-size-in-tbf
         rtt = 2 * (delay1 + delay2)
         bdp = self._calculate_bdp(delay1, delay2, bw1, bw2)
-        self._config_iface('h1-eth0', False, pacing)
+        self._config_iface('h1-eth0', False, pacing, disable_checksum=tunnel)
+        if tunnel:
+            self._config_iface('p0-eth0', False, pacing)
+            self._config_iface('p0-eth1', False, pacing)
         self._config_iface('p1-eth0', False, pacing)
         self._config_iface('p1-eth1', False, pacing)
-        self._config_iface('h2-eth0', False, pacing)
+        self._config_iface('h2-eth0', False, pacing, disable_checksum=tunnel)
         self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
         self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
         self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)

@@ -16,7 +16,7 @@ use tokio::time::{Instant, Duration};
 use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
-use media::{Packet, BufferedPackets, Statistics};
+use media::{PlayResult, Packet, BufferedPackets, Statistics};
 use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
 use media::sidekick::{parse_addr_key, QuackerConfig};
 
@@ -92,6 +92,8 @@ async fn listen_incoming(
     let mut buf = [0u8; PAYLOAD_SIZE];
     let mut connection = None;
     let mut discovery_sent = current_time_ms();
+    let mut time_init: Option<Instant> = None;
+    const FIRST_SEQNO: u32 = 1;
     loop {
         // Parse the incoming packet.
         let (len, addr) = sock.recv_from(&mut buf).await?;
@@ -106,7 +108,7 @@ async fn listen_incoming(
                 continue;
             }
             let stats = Statistics::new();
-            let buffer = BufferedPackets::new(1);
+            let buffer = BufferedPackets::new(FIRST_SEQNO);
             let send_task = if should_loop {
                 let tx = tx.clone();
                 let send_task = task::spawn(async move {
@@ -177,9 +179,27 @@ async fn listen_incoming(
             if buffer.recv_seqno(data.seqno, now) {
                 stats.add_spurious();
             }
+            if time_init.is_none() {
+                let num_seqnos = data.seqno - FIRST_SEQNO;
+                time_init = Some(now - num_seqnos * frequency);
+            }
             debug!("receive data {}", data.seqno);
-            while let Some(time_recv) = buffer.pop_seqno() {
-                stats.add_value(now - time_recv);
+            while let Some(res) = buffer.pop_seqno() {
+                // // dejitter buffer delay
+                // let stat = now - res.time_recv;
+                // // playback delay with an infinite length jitter buffer
+                // let stat = {
+                //     let num_seqnos = res.seqno - FIRST_SEQNO;
+                //     let time_prod = time_init.unwrap() + frequency * num_seqnos;
+                //     now - time_prod
+                // };
+                // playback delay with no jitter buffer
+                let stat = {
+                    let num_seqnos = res.seqno - FIRST_SEQNO;
+                    let time_prod = time_init.unwrap() + frequency * num_seqnos;
+                    res.time_recv - time_prod
+                };
+                stats.add_value(stat);
             }
         }
 
