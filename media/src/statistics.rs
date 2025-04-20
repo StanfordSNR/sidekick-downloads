@@ -5,12 +5,13 @@ use tokio::time::Duration;
 pub struct Statistics {
     values: Vec<Duration>,
     num_spurious: usize,
+    num_nacks: usize,
 }
 
 impl Statistics {
     /// Create a new histogram for adding duration values.
     pub fn new() -> Self {
-        Self { values: Vec::new(), num_spurious: 0 }
+        Self { values: Vec::new(), num_spurious: 0, num_nacks: 0 }
     }
 
     /// Add a new duration value.
@@ -21,6 +22,11 @@ impl Statistics {
     /// Add a spurious retransmission.
     pub fn add_spurious(&mut self) {
         self.num_spurious += 1;
+    }
+
+    /// Add a NACK.
+    pub fn add_nack(&mut self) {
+        self.num_nacks += 1;
     }
 
     /// Print average, p95, and p99 latency statistics.
@@ -35,6 +41,7 @@ impl Statistics {
             (values.len(), values)
         };
         eprintln!("{}Num Spurious: {}", prefix, self.num_spurious);
+        eprintln!("{}Num NACKs: {}", prefix, self.num_nacks);
         eprintln!("{}Num Values: {}", prefix, len);
         eprintln!("{}Median: {:?}", prefix, values[(len as f64 * 0.50) as usize]);
         eprintln!("{}p95: {:?}", prefix, values[(len as f64 * 0.95) as usize]);

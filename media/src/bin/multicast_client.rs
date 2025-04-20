@@ -162,6 +162,7 @@ async fn listen_incoming(
             let nack = Packet::new_nack(seqno);
             let len = nack.fill_payload(&mut buf);
             sock.send_to_server(&buf[..len]).await;
+            stats.add_nack();
         }
 
         // Explicitly send a quACK when missing data.

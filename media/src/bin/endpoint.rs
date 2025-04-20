@@ -209,6 +209,7 @@ async fn listen_incoming(
             debug!("nack {}", seqno);
             let nack = Packet::new_nack(seqno);
             tx.send((nack, addr.clone())).await.unwrap();
+            stats.add_nack();
         }
 
         // Explicitly send a quACK when missing data.

@@ -19,6 +19,7 @@ class MulticastClientOutput:
     client_ids: List[str]
     latencies: List[List[int]]
     num_spurious: List[int]
+    num_nacks: List[int]
     additional_data: any = None
 
 
@@ -160,9 +161,14 @@ class MulticastBenchmark:
         results = manager.dict()
         lock = manager.Lock()
         def parse_result(line):
+            match0 = re.search(r'\[(ID\d+)\] Num NACKs: (\d+)', line)
             match1 = re.search(r'\[(ID\d+)\] Num Spurious: (\d+)', line)
             match2 = re.search(r'\[(ID\d+)\] Raw values = (\[.*\])', line)
-            if match1:
+            if match0:
+                client_id = str(match0.group(1))
+                key = 'num_nacks'
+                val = int(match0.group(2))
+            elif match1:
                 client_id = str(match1.group(1))
                 key = 'num_spurious'
                 val = int(match1.group(2))
@@ -226,9 +232,10 @@ class MulticastBenchmark:
             client_ids = list(sorted(results.keys()))
             latencies = [results[cid]['latencies'] for cid in client_ids]
             num_spurious = [results[cid]['num_spurious'] for cid in client_ids]
+            num_nacks = [results[cid]['num_nacks'] for cid in client_ids]
         output = MulticastClientOutput(
             time_s=end - start, client_ids=client_ids, latencies=latencies,
-            num_spurious=num_spurious,
+            num_spurious=num_spurious, num_nacks=num_nacks,
         )
         return output
 
@@ -280,6 +287,7 @@ class MulticastBenchmark:
             result.set_client_ids(output.client_ids)
             result.set_latencies(output.latencies)
             result.set_num_spurious(output.num_spurious)
+            result.set_num_nacks(output.num_nacks)
             if output.additional_data is not None:
                 result.set_additional_data(output.additional_data)
 
