@@ -89,7 +89,6 @@ impl QuackCache {
 
     /// Add a packet to the cache.
     pub fn add(&mut self, packet: Packet) -> Result<(), Packet> {
-        cycles_base_start(6);
         while (self.capacity_pkts && (self.len() >= self.capacity)) ||
             (!self.capacity_pkts && (self.nbytes + packet.nbytes > self.capacity))
         {
@@ -107,7 +106,6 @@ impl QuackCache {
                 }
             }
         }
-        cycles_base_stop(6);
 
         self.nbytes += packet.nbytes;
         #[cfg(feature = "cache_statistics")]
@@ -115,14 +113,10 @@ impl QuackCache {
             self.cache_log("add");
         }
 
-        cycles_base_start(7);
         let id = self.id_func.to_id(&packet.data);
-        cycles_base_stop(7);
         debug!("insert {}", id);
-        cycles_base_start(8);
         self.id_cache.push_back(id);
         self.packet_cache.push_back(packet);
-        cycles_base_stop(8);
         Ok(())
     }
 
@@ -150,17 +144,12 @@ impl QuackCache {
         let n = last_decode_result.last_index;
 
         // Make received packet decisions final and evict from caches
-        cycles_quack_start(11);
         let ids = self.id_cache.drain(0..n).collect::<Vec<_>>();
         let packets = self.packet_cache.drain(0..n).collect::<Vec<_>>();
-        cycles_quack_stop(11);
-        cycles_quack_start(12);
         self.nbytes =
             self.packet_cache.iter().map(|packet| packet.nbytes).sum();
-        cycles_quack_stop(12);
 
         // Make missing packet decisions final
-        cycles_quack_start(13);
         if retransmit_missing {
             for &index in &last_decode_result.missing_indexes {
                 debug_assert!(index < n);
@@ -173,7 +162,6 @@ impl QuackCache {
                 self.quack.remove(ids[index]);
             }
         }
-        cycles_quack_stop(13);
         #[cfg(feature = "cache_statistics")]
         {
             self.cache_log("evict");
@@ -244,20 +232,16 @@ impl QuackCache {
     pub fn decode(&mut self, client_quack: &QuackWrapper) -> Result<DecodeResult, DecodeError> {
         // Don't modify the state until checking whether the quACK is worth
         // decoding in a preliminary check, in case we're waiting on a reset!!!
-        cycles_quack_start(14);
         let last_index = self.check_valid_quack(client_quack)?;
-        cycles_quack_stop(14);
 
         // Insert ids in the id cache up to the last id received by the client.
         // Assuming the client receives a subset of packets in the cache, if
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
-        cycles_quack_start(15);
         let proxy_quack = &mut self.quack;
         for &id in self.id_cache.iter().take(last_index) {
             proxy_quack.insert(id);
         }
-        cycles_quack_stop(15);
 
         // Check common case when all packets are quACKed.
         if proxy_quack.count() == client_quack.count() {
@@ -292,15 +276,10 @@ impl QuackCache {
         }
 
         // Decode the quACK using the identifier cache.
-        cycles_quack_start(16);
         let difference_quack = proxy_quack.sub(&client_quack);
-        cycles_quack_stop(16);
-        cycles_quack_start(17);
         let missing_indexes = match difference_quack {
             QuackWrapper::PowerSum(difference_quack) => {
                 let coeffs = difference_quack.to_coeffs();
-                cycles_quack_stop(17);
-                cycles_quack_start(18);
                 self.id_cache
                     .iter()
                     .take(last_index)
@@ -318,8 +297,6 @@ impl QuackCache {
                         num_symbols: threshold,
                     });
                 };
-                cycles_quack_stop(17);
-                cycles_quack_start(18);
                 self.id_cache
                     .iter()
                     .take(last_index)
@@ -329,7 +306,6 @@ impl QuackCache {
                     .collect()
             }
         };
-        cycles_quack_stop(18);
         self.last_decode_result = Some(DecodeResult { last_index, missing_indexes });
         Ok(self.last_decode_result.clone().unwrap())
     }
