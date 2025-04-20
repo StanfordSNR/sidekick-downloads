@@ -239,9 +239,11 @@ impl QuackCache {
         // the last value doesn't exist in our cache, then the state is
         // corrupted either by an early eviction or network packet corruption.
         let proxy_quack = &mut self.quack;
+        cycles_quack_start(1);
         for &id in self.id_cache.iter().take(last_index) {
             proxy_quack.insert(id);
         }
+        cycles_quack_stop(1);
 
         // Check common case when all packets are quACKed.
         if proxy_quack.count() == client_quack.count() {
@@ -276,6 +278,7 @@ impl QuackCache {
         }
 
         // Decode the quACK using the identifier cache.
+        cycles_quack_start(2);
         let difference_quack = proxy_quack.sub(&client_quack);
         let missing_indexes = match difference_quack {
             QuackWrapper::PowerSum(difference_quack) => {
@@ -306,6 +309,7 @@ impl QuackCache {
                     .collect()
             }
         };
+        cycles_quack_stop(2);
         self.last_decode_result = Some(DecodeResult { last_index, missing_indexes });
         Ok(self.last_decode_result.clone().unwrap())
     }

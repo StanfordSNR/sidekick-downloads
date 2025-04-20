@@ -148,7 +148,9 @@ impl Sidekick {
                         conn.num_retx + i + 1,
                         conn.num_tx,
                     );
+                    cycles_quack_pause(0);
                     self.stream.forward_packet(&retx, retx.nbytes as usize);
+                    cycles_quack_start(0);
                 }
 
                 // Update the cache and make retransmission state final
@@ -159,8 +161,10 @@ impl Sidekick {
                 debug!("quack {} cache_len={} num_symbols={} last_value={}, Sidekick: {}",
                     self.quack.count(), conn.cache.len(), self.quack.threshold(),
                     self.quack.last_value().unwrap(), fmt_hex!(sidekick_conn));
+                cycles_quack_pause(0);
                 Self::reset_sidekick_conn(
                     packet, conn, &mut self.stream, &mut self.buf);
+                cycles_quack_start(0);
                 error!("Failed to decode quACK: {:?}", e);
             }
         }
@@ -224,6 +228,7 @@ impl Sidekick {
             // QuACKs
             self.quack.deserialize_prealloc(payload);
             self.handle_quack_from_client(packet, sidekick_conn);
+            cycles_quack_stop(0);
         }
     }
 
@@ -237,11 +242,13 @@ impl Sidekick {
             conn.num_tx += 1;
             let add_result = conn.cache.add(packet);
             if let Err(packet) = add_result {
+                cycles_base_pause(0);
                 if Self::reset_sidekick_conn(
                     packet, conn, &mut self.stream, &mut self.buf)
                 {
                     warn!("Reset due to exceeding cache capacity");
                 }
+                cycles_base_start(0);
             }
         } else {
             error!("Expected sidekick to exist: {:?}", fmt_hex!(sidekick_conn));
@@ -280,12 +287,17 @@ impl Sidekick {
             self.stream.forward_packet(&packet, packet.nbytes as usize);
             return;
         }
+        cycles_base_start(0);
+        cycles_quack_start(0);
         let conn_type = self.connection_type(&packet);
         match conn_type {
             ConnectionType::BaseStoc { sidekick_conn } => {
                 trace!("Received base packet from server");
+                cycles_base_pause(0);
                 self.stream.forward_packet(&packet, packet.nbytes as usize);
+                cycles_base_start(0);
                 self.handle_base_packet_from_server(packet, &sidekick_conn);
+                cycles_base_stop(0);
             }
             ConnectionType::Sidekick { sidekick_conn } => {
                 trace!("Received sidekick packet from client");
