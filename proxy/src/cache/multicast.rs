@@ -315,6 +315,13 @@ impl QuackCacheMulticast {
         let proxy_quack = &mut state.quack;
         for &(index, is_insertion) in indexes.iter().take(num_acked) {
             // note: unsafe indexing checked in check_valid_quack
+            // note: UNLESS it is an insertion
+            if is_insertion &&
+                (index < self.num_evicted ||
+                 index - self.num_evicted >= self.id_cache.len())
+            {
+                return Err(DecodeError::InvalidVirtualIndex);
+            }
             let id = self.id_cache[index - self.num_evicted];
             proxy_quack.insert(id);
             if is_insertion {
