@@ -1,28 +1,31 @@
+use log::warn;
+
 #[cfg(feature = "cycles_base")]
 mod config {
     pub const PRINT_NUM_PACKETS: u64 = 1000;
-    pub const NUM_MEASUREMENTS: usize = 9;
+    pub const NUM_MEASUREMENTS: usize = 10;
     pub const HEADERS: [&str; NUM_MEASUREMENTS] = [
+        "transport", // summary
         "connection_type", "forward", "handle_base_packet_from_server", // handle_packet
         "hash_table", "cache_add", "reset", // handle_base_packet_from_server
         "check_capacity", "parse_id", "push", // add
-
     ];
-    pub const PRINT_INDEXES: [usize; 8] = [0, 1, 2, 3, 4, 6, 7, 8];
+    pub const PRINT_INDEXES: [usize; 1] = [0];
 }
 
 #[cfg(feature = "cycles_quack")]
 mod config {
-    pub const PRINT_NUM_PACKETS: u64 = 500;
-    pub const NUM_MEASUREMENTS: usize = 18;
+    pub const PRINT_NUM_PACKETS: u64 = 200;
+    pub const NUM_MEASUREMENTS: usize = 22;
     pub const HEADERS: [&str; NUM_MEASUREMENTS] = [
+        "transport", "encode", "decode", // summary
         "connection_type", "handle_sidekick_packet_from_client", // handle_packet
         "parse_disc", "parse_quack", "handle_disc", "handle_quack", // handle_sidekick_packet_from_client
         "hash_table", "decode", "retransmit", "evict", "reset", // handle_quack_from_client
         "evict_drain", "evict_nbytes", "evict_missing", // evict
-        "check_valid_quack", "insert", "subtract", "decode", // decode
+        "check_valid_quack", "insert", "subtract", "decode", "map_to_ids", // decode
     ];
-    pub const PRINT_INDEXES: [usize; 18] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+    pub const PRINT_INDEXES: [usize; 3] = [0, 1, 2];
 }
 
 use config::*;
@@ -56,9 +59,9 @@ unsafe fn print_cycles_summary() {
             .map(|&i| HEADERS[i])
             .collect::<Vec<_>>()
             .join(",");
-        println!("{}", headers);
+        warn!("{}", headers);
     }
-    println!("{} (total={},prop={})", cycles_norm, total, count_prop);
+    warn!("{} (total={},prop={})", cycles_norm, total, count_prop);
 }
 
 unsafe fn rdtsc() -> u64 {
@@ -67,6 +70,12 @@ unsafe fn rdtsc() -> u64 {
 
 pub fn _cycles_start(idx: usize) {
     unsafe { START[idx] = rdtsc() };
+}
+
+pub fn _cycles_pause(idx: usize) {
+    unsafe {
+        CYCLES[idx] += rdtsc() - START[idx];
+    }
 }
 
 pub fn _cycles_stop(idx: usize) {
@@ -84,15 +93,19 @@ pub fn _cycles_dummy(_idx: usize) {}
 #[cfg(all(feature = "cycles_base", not(feature = "cycles_quack")))]
 pub use {
     _cycles_start as cycles_base_start,
+    _cycles_pause as cycles_base_pause,
     _cycles_stop as cycles_base_stop,
     _cycles_dummy as cycles_quack_start,
+    _cycles_dummy as cycles_quack_pause,
     _cycles_dummy as cycles_quack_stop,
 };
 
 #[cfg(all(feature = "cycles_quack", not(feature = "cycles_base")))]
 pub use {
     _cycles_dummy as cycles_base_start,
+    _cycles_dummy as cycles_base_pause,
     _cycles_dummy as cycles_base_stop,
     _cycles_start as cycles_quack_start,
+    _cycles_pause as cycles_quack_pause,
     _cycles_stop as cycles_quack_stop,
 };
