@@ -5,6 +5,7 @@ import statistics
 import subprocess
 import time
 import sys
+import numpy as np
 
 from collections import defaultdict
 from typing import List, Tuple, Dict, Optional
@@ -201,7 +202,7 @@ class HTTPRawData(HTTPRawDataParser, RawDataExecutor):
 class PlottableDataPoint:
     def __init__(self, raw_data):
         self.raw_data = raw_data
-        self.sorted_data = list(sorted(raw_data))
+        self.sorted_data = np.array(sorted(raw_data))
         self.n = len(raw_data)
         if self.n == 0:
             self.mean = None
@@ -217,8 +218,7 @@ class PlottableDataPoint:
         assert 0 <= pct < 100
         if self.n == 0:
             return None
-        i = int(self.n * pct / 100.0)
-        return self.sorted_data[i]
+        return float(np.percentile(self.sorted_data, pct, method='linear'))
 
 
 class PlottableData:
