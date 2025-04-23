@@ -41,6 +41,9 @@ struct Cli {
     /// Whether to use the optimistic cache policy (default is sidekick-reset).
     #[arg(long)]
     optimistic: bool,
+    /// Reset frequency
+    #[arg(long, default_value_t=30)]
+    reset_freq_ms: u64,
     /// Logfile to write rust logs to (optional)
     /// Must be a complete, valid path including directory.
     /// This should be set for loglevel = TRACE. Excessively logging to
@@ -179,7 +182,7 @@ async fn main() -> Result<(), String> {
     };
     let quacker = Arc::new(Mutex::new(UdpQuacker::new(
         args.threshold, args.frequency_pkts, args.frequency_ms,
-        args.target_addr, args.riblt, cache_policy, sidekick_utils::packet::RESET_FREQ_MS)));
+        args.target_addr, args.riblt, cache_policy, args.reset_freq_ms)));
     if args.frequency_ms > 0 {
         let quacker = quacker.clone();
         tokio::task::spawn(async move {

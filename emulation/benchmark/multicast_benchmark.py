@@ -193,12 +193,14 @@ class MulticastBenchmark:
             client_cmd = f'{cmd} --client-id {self.client_ids[host]} '
             if quackers_remaining > 0:
                 q = self.quacker
+                reset_freq_ms = 30 if self.nack_delay == 0 else self.nack_delay
                 target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
                 # Only clients using the quacker use the nack delay feature
                 client_cmd += f'--nack-delay {self.nack_delay} '
                 client_cmd += f'--quacker '\
                               f'--threshold {q.threshold} '\
                               f'--frequency-pkts {q.freq_pkts} '\
+                              f'--reset-freq-ms {reset_freq_ms} '\
                               f'--frequency-ms {q.freq_ms} '\
                               f'--target-addr {target_addr} '
                 if q.riblt:

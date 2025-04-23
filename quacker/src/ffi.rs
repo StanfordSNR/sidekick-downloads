@@ -11,7 +11,7 @@ pub use sidekick_utils::packet::CachePolicy;
 #[no_mangle]
 pub extern "C" fn udp_quacker_new(
     threshold: usize, freq_pkts: u32, freq_ms: u64, addr: *const c_char, riblt: u8,
-    optimistic_cache_policy: u8,
+    optimistic_cache_policy: u8, reset_freq_ms: u64,
 ) -> *mut UdpQuacker {
     debug_assert!(!addr.is_null());
     let addr = unsafe { CStr::from_ptr(addr) };
@@ -22,7 +22,7 @@ pub extern "C" fn udp_quacker_new(
         CachePolicy::SidekickReset
     };
     let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr,
-                                  riblt != 0, cache_policy, sidekick_utils::packet::RESET_FREQ_MS);
+                                  riblt != 0, cache_policy, reset_freq_ms);
     Box::into_raw(Box::new(quacker))
 }
 

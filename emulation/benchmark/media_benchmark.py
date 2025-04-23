@@ -159,11 +159,13 @@ class MediaBenchmark:
         if self.quacker is not None:
             q = self.quacker
             target_addr = f'{self.proxy.IP()}:{q.quackee_port}'
+            reset_freq_ms = 110 if self.nack_delay == 0 else self.nack_delay
             assert q.optimistic  # cache policy hardcoded in endpoint
             cmd += f'--quacker '\
                    f'--threshold {q.threshold} '\
                    f'--frequency-pkts {q.freq_pkts} '\
                    f'--frequency-ms {q.freq_ms} '\
+                   f'--reset-freq-ms {reset_freq_ms} '\
                    f'--target-addr {target_addr} '
             if q.riblt:
                 cmd += '--riblt '

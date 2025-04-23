@@ -31,6 +31,9 @@ pub struct QuackerConfig {
     /// Whether to send quACKs with a hint for the number of symbols.
     #[arg(long)]
     pub hint: bool,
+    /// QuACK reset frequency, a little more than the RTT.
+    #[arg(long, default_value_t = 0)]
+    pub reset_freq_ms: u64,
 }
 
 impl QuackerConfig {
@@ -44,7 +47,7 @@ impl QuackerConfig {
             self.target_addr,
             self.riblt,
             CachePolicy::Optimistic,
-            sidekick_utils::packet::RESET_FREQ_MS,
+            self.reset_freq_ms,
         )));
 
         // Ensure quACKs are sent at a time interval if specified.
