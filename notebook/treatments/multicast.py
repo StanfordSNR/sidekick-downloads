@@ -1,7 +1,7 @@
 from typing import Optional
 from experiment import Treatment, NetworkSetting
 
-DEFAULT_THRESHOLD = 8
+DEFAULT_THRESHOLD = 10
 IBLT_MULTIPLIER = 4
 DEFAULT_FREQ_PKTS = 2
 PROTOCOL = 'multicast'
