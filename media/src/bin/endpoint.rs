@@ -17,11 +17,12 @@ use quacker::{current_time_ms, Quacker, UdpQuacker};
 use sidekick_utils::packet::{DISCOVERY_FREQ_MS, NUM_DISCOVERY_PKTS};
 
 use media::{Packet, BufferedPackets, Statistics, AudioTimestamper};
-use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO};
+use media::{PAYLOAD_SIZE, NACK_PAYLOAD_SIZE, TIMEOUT_SEQNO, INITIAL_SEQNO};
 use media::sidekick::{parse_addr_key, QuackerConfig};
 
 
 const MPSC_CHANNEL_SIZE: usize = 100;
+const NUM_INIT_MESSAGES: usize = 10;
 const NUM_TIMEOUT_MESSAGES: usize = 100;
 
 #[derive(Debug, Parser)]
@@ -181,6 +182,8 @@ async fn listen_incoming(
                 break;
             }
         }
+        // Ignore the initial seqno
+        else if data.seqno == INITIAL_SEQNO {}
         // Add the data packet to the dejitter buffer and try to play data.
         else {
             // Each seqno represents two frames of data that overlap with
@@ -285,6 +288,20 @@ async fn gen_data_packets(
     Ok(())
 }
 
+async fn gen_init_packets(
+    tx: mpsc::Sender<(Packet, SocketAddr)>,
+    timeout: Duration, to: SocketAddr,
+) -> Result<(), SendError<(Packet, SocketAddr)>> {
+    debug!("send init {}", INITIAL_SEQNO);
+    for _ in 0..NUM_INIT_MESSAGES {
+        let data = Packet::new_data(INITIAL_SEQNO);
+        tx.send((data, to.clone())).await?;
+    }
+    tokio::time::sleep(timeout).await;
+    gen_timeout_packets(tx, to).await?;
+    Ok(())
+}
+
 /// Send the timeout message. Do it a bunch and hope one makes it through.
 async fn gen_timeout_packets(
     tx: mpsc::Sender<(Packet, SocketAddr)>, to: SocketAddr,
@@ -366,7 +383,7 @@ async fn main() -> io::Result<()> {
             let data_task = {
                 task::spawn(async move {
                     let timeout = Duration::from_secs(timeout);
-                    gen_data_packets(tx, Some(timeout), frequency, addr).await.unwrap();
+                    gen_init_packets(tx, timeout, addr).await.unwrap();
                 })
             };
 
