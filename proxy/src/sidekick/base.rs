@@ -6,7 +6,7 @@ use sidekick_utils::{BUFFER_SIZE, UDP_PAYLOAD_OFFSET, fmt_hex};
 use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::packet::{
-    DiscoveryPayload, DiscoveryOp, ResetPayload, RESET_FREQ_MS,
+    DiscoveryPayload, DiscoveryOp, ResetPayload,
 };
 
 use std::collections::HashMap;
@@ -19,15 +19,17 @@ struct SidekickConn {
     num_retx: usize,
     num_tx: usize,
     last_reset: Instant,
+    reset_freq: Duration,
     cache: QuackCache,
 }
 
 impl SidekickConn {
-    fn new(cache: QuackCache) -> Self {
+    fn new(cache: QuackCache, reset_freq_ms: u64) -> Self {
         Self {
             num_retx: 0,
             num_tx: 0,
             last_reset: Instant::now(),
+            reset_freq: Duration::from_millis(reset_freq_ms),
             cache,
         }
     }
@@ -99,7 +101,7 @@ impl Sidekick {
         packet: Packet, conn: &mut SidekickConn,
         stream: &mut PacketStream, buf: &mut [u8; BUFFER_SIZE],
     ) -> bool {
-        if conn.last_reset.elapsed() >= Duration::from_millis(RESET_FREQ_MS) {
+        if conn.last_reset.elapsed() >= conn.reset_freq {
             match ResetPayload::build_packet(buf, &packet.data) {
                 Ok(len) => {
                     info!("Sending reset packet");
@@ -196,15 +198,16 @@ impl Sidekick {
                     disc.cache_policy,
                 );
                 self.base_to_sidekick.insert(base, *sidekick_conn);
-                entry.insert(SidekickConn::new(cache));
+                entry.insert(SidekickConn::new(cache, disc.reset_freq_ms));
                 false
             }
         };
         info!("{:?} Received discovery packet from client. \
                Sidekick: {}, Base: {}. Update: {}. \
-               riblt={} offset={} threshold={} cache_policy={:?}",
+               riblt={} offset={} threshold={} cache_policy={:?} reset_fres_ms={}",
               Instant::now(), fmt_hex!(sidekick_conn), fmt_hex!(base), is_update,
-              disc.riblt, disc.id_offset, disc.threshold, disc.cache_policy);
+              disc.riblt, disc.id_offset, disc.threshold, disc.cache_policy,
+              disc.reset_freq_ms);
 
         // Acknowledge the discovery packet
         match disc.build_ack_packet(&mut self.buf, &packet.data) {

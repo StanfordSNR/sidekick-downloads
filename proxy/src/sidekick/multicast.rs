@@ -7,7 +7,7 @@ use sidekick_utils::identifier::IdentifierFunc;
 use sidekick_utils::buffer::{UdpParser, AddrKey};
 use sidekick_utils::packet::{
     RetransmitPayload, DiscoveryPayload, ResetPayload,
-    DiscoveryOp, RESET_FREQ_MS,
+    DiscoveryOp,
 };
 
 use std::collections::HashMap;
@@ -34,13 +34,15 @@ impl BaseConn {
 
 struct SidekickConn {
     last_reset: Instant,
+    reset_freq: Duration,
     num_retx: usize,
 }
 
 impl SidekickConn {
-    fn new() -> Self {
+    fn new(reset_freq_ms: u64) -> Self {
         Self {
             last_reset: Instant::now(),
+            reset_freq: Duration::from_millis(reset_freq_ms),
             num_retx: 0,
         }
     }
@@ -135,7 +137,7 @@ impl SidekickMulticast {
                 debug!("quack {} cache_len={} num_symbols={} last_value={}, Sidekick: {}",
                     quack.count(), base.cache.len(), quack.threshold(),
                     quack.last_value().unwrap(), fmt_hex!(sidekick_conn));
-                if conn.last_reset.elapsed() >= Duration::from_millis(3 * RESET_FREQ_MS) {
+                if conn.last_reset.elapsed() >= conn.reset_freq {
                     match ResetPayload::build_packet(&mut self.buf, &packet.data) {
                         Ok(len) => {
                             info!("Sending reset packet");
@@ -169,10 +171,10 @@ impl SidekickMulticast {
         assert_eq!(self.base_conn.as_ref().unwrap().addr, base, "one base connection");
 
         // Initialize the sidekick connection for this discovery packet
-        let conn = SidekickConn::new();
+        let conn = SidekickConn::new(disc.reset_freq_ms);
         let is_new = self.sidekick_conns.insert(addr_key, conn).is_none();
-        info!("Received discovery packet from client. Sidekick: {}, Base: {}. New: {}.",
-              fmt_hex!(addr_key), fmt_hex!(base), is_new);
+        info!("Received discovery packet from client. Sidekick: {}, Base: {}. New: {}. reset_freq_ms={}",
+              fmt_hex!(addr_key), fmt_hex!(base), is_new, disc.reset_freq_ms);
 
         // Acknowledge the discovery packet
         let threshold = disc.threshold;
