@@ -2,11 +2,11 @@ import re
 from typing import Optional
 from experiment import Treatment, NetworkSetting
 
-DEFAULT_THRESHOLD = 8
+DEFAULT_THRESHOLD = 10
 IBLT_MULTIPLIER = 4
 DEFAULT_FREQ_PKTS = 2
 PROTOCOL = 'media'
-NETWORK_SETTING = NetworkSetting(bw1=50, bw2=20, delay1=10, delay2=30, loss1=10, loss2=0)
+NETWORK_SETTING = NetworkSetting(bw1=50, bw2=20, delay1=50, delay2=100, loss1=10, loss2=0)
 
 def nos(iblt: bool=False, quack_hint: bool=False, quack_nack: bool=False, cache_capacity: Optional[int]=None):
     options = ['--proxy', 'sidekick', '--freq-ms', '0']
