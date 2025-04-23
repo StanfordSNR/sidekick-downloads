@@ -179,7 +179,7 @@ async fn main() -> Result<(), String> {
     };
     let quacker = Arc::new(Mutex::new(UdpQuacker::new(
         args.threshold, args.frequency_pkts, args.frequency_ms,
-        args.target_addr, args.riblt, cache_policy)));
+        args.target_addr, args.riblt, cache_policy, sidekick_utils::packet::RESET_FREQ_MS)));
     if args.frequency_ms > 0 {
         let quacker = quacker.clone();
         tokio::task::spawn(async move {

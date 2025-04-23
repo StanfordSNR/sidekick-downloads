@@ -44,6 +44,7 @@ impl QuackerConfig {
             self.target_addr,
             self.riblt,
             CachePolicy::Optimistic,
+            sidekick_utils::packet::RESET_FREQ_MS,
         )));
 
         // Ensure quACKs are sent at a time interval if specified.

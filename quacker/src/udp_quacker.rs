@@ -28,14 +28,15 @@ pub struct UdpQuacker {
 impl UdpQuacker {
     pub fn new(
         threshold: usize, freq_pkts: u32, freq_ms: u64, addr: SocketAddr,
-        riblt: bool, cache_policy: CachePolicy,
+        riblt: bool, cache_policy: CachePolicy, reset_freq_ms: u64,
     ) -> Self {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
         socket.set_reuse_address(true).unwrap();
         socket.bind(&SockAddr::from(
             "0.0.0.0:0".parse::<SocketAddr>().unwrap())).unwrap();
         Self {
-            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms, cache_policy),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms,
+                cache_policy, reset_freq_ms),
             src_sock: Arc::new(socket.into()),
             dst_addr: addr,
             buf: [0u8; BUFFER_SIZE],
@@ -115,8 +116,10 @@ impl UdpQuacker {
         let threshold: u8 = self.quacker.threshold().try_into().unwrap();
         let riblt = self.quacker.riblt();
         let cache_policy = self.quacker.cache_policy();
+        let reset_freq_ms = self.quacker.reset_freq_ms();
         let bytes = bincode::serialize(
-            &DiscoveryPayload::new(base, op, id_offset, threshold, riblt, cache_policy)
+            &DiscoveryPayload::new(base, op, id_offset, threshold, riblt,
+                cache_policy, reset_freq_ms)
         ).unwrap();
         for i in 0..n {
             if self.src_sock.send_to(&bytes, self.dst_addr).is_err() {

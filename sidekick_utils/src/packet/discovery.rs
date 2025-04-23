@@ -82,6 +82,8 @@ pub struct DiscoveryPayload {
     pub riblt: bool,
     /// Policy when the cache is full.
     pub cache_policy: CachePolicy,
+    /// Hardcoded frequency to retry quACK resets.
+    pub reset_freq_ms: u64,
 }
 
 impl DiscoveryPayload {
@@ -92,6 +94,7 @@ impl DiscoveryPayload {
         threshold: u8,
         riblt: bool,
         cache_policy: CachePolicy,
+        reset_freq_ms: u64,
     ) -> Self {
         trace!("Creating new DiscoveryPayload for base connection {} id_offset {} threshold {} cache_policy {:?}, {:?}",
                fmt_hex!(base_connection_stoc), id_offset, threshold, cache_policy, op);
@@ -103,6 +106,7 @@ impl DiscoveryPayload {
             threshold,
             riblt,
             cache_policy,
+            reset_freq_ms,
         }
     }
 
@@ -124,7 +128,7 @@ impl DiscoveryPayload {
             DiscoveryOp::Teardown => DiscoveryOp::TeardownAck,
             _ => panic!("Invalid operation for ack"),
         };
-        Self::new(self.base_connection_stoc, op, 0, 0, false, CachePolicy::SidekickReset)
+        Self::new(self.base_connection_stoc, op, 0, 0, false, CachePolicy::SidekickReset, 0)
     }
 
     /// Given a DISCOVER DiscoveryPayload, the full packet it came in, and an output buffer,

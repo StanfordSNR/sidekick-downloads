@@ -22,7 +22,7 @@ pub extern "C" fn udp_quacker_new(
         CachePolicy::SidekickReset
     };
     let quacker = UdpQuacker::new(threshold, freq_pkts, freq_ms, addr,
-                                  riblt != 0, cache_policy);
+                                  riblt != 0, cache_policy, sidekick_utils::packet::RESET_FREQ_MS);
     Box::into_raw(Box::new(quacker))
 }
 

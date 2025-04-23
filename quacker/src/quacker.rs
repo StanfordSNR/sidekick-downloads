@@ -31,6 +31,7 @@ pub struct BaseQuacker {
     freq_ms: u64,
     riblt: bool,
     cache_policy: CachePolicy,
+    reset_freq_ms: u64,
 
     last_quack_count: u32,
     last_quack_time: u64,
@@ -39,7 +40,7 @@ pub struct BaseQuacker {
 impl BaseQuacker {
     pub fn new(
         riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
-        cache_policy: CachePolicy,
+        cache_policy: CachePolicy, reset_freq_ms: u64,
     ) -> Self {
         Self {
             quack: QuackWrapper::new(threshold, riblt),
@@ -47,6 +48,7 @@ impl BaseQuacker {
             freq_ms: freq_ms,
             riblt,
             cache_policy,
+            reset_freq_ms,
             last_quack_count: 0,
             last_quack_time: 0,
         }
@@ -62,6 +64,10 @@ impl BaseQuacker {
 
     pub fn cache_policy(&self) -> CachePolicy {
         self.cache_policy
+    }
+
+    pub fn reset_freq_ms(&self) -> u64 {
+        self.reset_freq_ms
     }
 }
 
@@ -119,9 +125,11 @@ mod tests {
 
     const THRESHOLD: usize = 10;
     const IDENTIFIER: u32 = 100;
+    const RESET_FREQ_MS: u64 = 10;
 
     fn new_base_quacker(freq_pkts: u32, freq_ms: u64) -> BaseQuacker {
-        BaseQuacker::new(false, THRESHOLD, freq_pkts, freq_ms, CachePolicy::SidekickReset)
+        BaseQuacker::new(false, THRESHOLD, freq_pkts, freq_ms,
+            CachePolicy::SidekickReset, RESET_FREQ_MS)
     }
 
     #[test]

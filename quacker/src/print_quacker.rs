@@ -10,10 +10,11 @@ pub struct PrintQuacker {
 impl PrintQuacker {
     pub fn new(
         riblt: bool, threshold: usize, freq_pkts: u32, freq_ms: u64,
-        cache_policy: CachePolicy,
+        cache_policy: CachePolicy, reset_freq_ms: u64,
     ) -> Self {
         Self {
-            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms, cache_policy),
+            quacker: BaseQuacker::new(riblt, threshold, freq_pkts, freq_ms,
+                cache_policy, reset_freq_ms),
         }
     }
 }
