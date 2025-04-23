@@ -109,6 +109,7 @@ async fn listen_incoming(
             }
             let stats = Statistics::new();
             let buffer = BufferedPackets::new(FIRST_SEQNO);
+            let quack_buffer = BufferedPackets::new(FIRST_SEQNO);
             let send_task = if should_loop {
                 let tx = tx.clone();
                 let send_task = task::spawn(async move {
@@ -118,7 +119,7 @@ async fn listen_incoming(
             } else {
                 None
             };
-            connection = Some((addr, stats, buffer, send_task));
+            connection = Some((addr, stats, buffer, quack_buffer, send_task));
         }
 
         let current_time = current_time_ms();
@@ -150,14 +151,20 @@ async fn listen_incoming(
         }
 
         // Assume we handle one connection at a time.
-        let (from_addr, ref mut stats, ref mut buffer, send_task) = connection.as_mut().unwrap();
+        let (
+            from_addr,
+            ref mut stats,
+            ref mut buffer,
+            ref mut quack_buffer,
+            send_task,
+        ) = connection.as_mut().unwrap();
         assert_eq!(*from_addr, addr);
 
         // Retransmit data if it's a NACK.
         let now = Instant::now();
         if data.is_nack
         {
-            debug!("retransmit data {}", data.seqno);
+            debug!("retransmit data {} {}", data.seqno, data.seqno + 1);
             let retx = Packet::new_data(data.seqno);
             tx.send((retx, addr.clone())).await.unwrap();
         }
@@ -176,7 +183,13 @@ async fn listen_incoming(
         }
         // Add the data packet to the dejitter buffer and try to play data.
         else {
-            if buffer.recv_seqno(data.seqno, now) {
+            // Each seqno represents two frames of data that overlap with
+            // adjacent seqnos by one frame.
+            buffer.recv_seqno(data.seqno, now);
+            buffer.recv_seqno(data.seqno + 1, now);
+            // Use a separate buffer for identifying spurious *packets* and
+            // when we would need to NACK a *packet* (and not frame).
+            if quack_buffer.recv_seqno(data.seqno, now) {
                 stats.add_spurious();
             }
             if timestamper.is_none() {
@@ -185,7 +198,7 @@ async fn listen_incoming(
                     FIRST_SEQNO, now - num_seqnos * frequency, frequency,
                 ));
             }
-            debug!("receive data {}", data.seqno);
+            debug!("receive data {} {}", data.seqno, data.seqno + 1);
             while let Some(res) = buffer.pop_seqno() {
                 // // dejitter buffer delay
                 // let stat = now - res.time_recv;
@@ -201,10 +214,11 @@ async fn listen_incoming(
                 };
                 stats.add_value(stat);
             }
+            while quack_buffer.pop_seqno().is_some() {}
         }
 
         // Send NACKs for missing data.
-        let (nacks_to_send, num_missing) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
+        let (nacks_to_send, _) = buffer.nacks_to_send(now, nack_frequency, nack_delay);
         for seqno in nacks_to_send {
             debug!("nack {}", seqno);
             let nack = Packet::new_nack(seqno);
@@ -213,6 +227,8 @@ async fn listen_incoming(
         }
 
         // Explicitly send a quACK when missing data.
+        let (quacks_to_send, _) = quack_buffer.nacks_to_send(now, nack_delay.unwrap_or(nack_frequency), None);
+        let num_missing = quacks_to_send.len();
         if should_quack || (send_on_nack && num_missing > 0) {
             if let Some((ref quacker, ref config)) = quacker {
                 let mut quacker = quacker.lock().await;
@@ -255,7 +271,7 @@ async fn gen_data_packets(
     let start = Instant::now();
     for seqno in 1..u32::MAX {
         interval.tick().await;
-        debug!("send data {}", seqno);
+        debug!("send data {} {}", seqno, seqno + 1);
         let data = Packet::new_data(seqno);
         tx.send((data, to.clone())).await?;
         if let Some(timeout) = timeout {
@@ -299,7 +315,7 @@ async fn main() -> io::Result<()> {
         env_logger::init();
     }
     let frequency = Duration::from_millis(args.frequency);
-    let nack_frequency = Duration::from_millis(args.nack_frequency);
+    let nack_frequency = Duration::from_millis((1.1 * args.nack_frequency as f64) as u64);
     let nack_delay = if args.nack_delay > 0 {
         Some(Duration::from_millis(args.nack_delay))
     } else {
