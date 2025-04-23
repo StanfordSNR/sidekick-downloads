@@ -9,7 +9,6 @@ extern "C" {
 
 extern const size_t ID_OFFSET;
 extern const size_t UDP_PAYLOAD_OFFSET;
-extern const uint64_t RESET_FREQ_MS;
 extern const uint64_t DISCOVERY_FREQ_MS;
 extern const size_t NUM_DISCOVERY_PKTS;
 

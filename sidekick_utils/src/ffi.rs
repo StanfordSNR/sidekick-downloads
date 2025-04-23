@@ -12,9 +12,6 @@ pub static ID_OFFSET: usize = crate::ID_OFFSET;
 pub static UDP_PAYLOAD_OFFSET: usize = crate::UDP_PAYLOAD_OFFSET;
 
 #[no_mangle]
-pub static RESET_FREQ_MS: u64 = crate::packet::RESET_FREQ_MS;
-
-#[no_mangle]
 pub static DISCOVERY_FREQ_MS: u64 = crate::packet::DISCOVERY_FREQ_MS;
 
 #[no_mangle]
