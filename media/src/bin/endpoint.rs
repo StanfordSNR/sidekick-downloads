@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::fs::File;
 use std::path::Path;
 
+use futures::FutureExt;
 use clap::{Parser, Subcommand};
 use log::debug;
 use flexi_logger::{Logger, WriteMode, FileSpec};
@@ -348,7 +349,13 @@ async fn main() -> io::Result<()> {
     let send_task = {
         let sock = sock.clone();
         let bound = args.mode.is_client();
-        task::spawn(async move { send_outgoing(rx, sock, bound).await.unwrap() })
+        task::spawn(async move {
+            std::panic::AssertUnwindSafe(async {
+                send_outgoing(rx, sock, bound).await.unwrap();
+            })
+            .catch_unwind()
+            .await
+        })
     };
 
     // Initialize the client quacker if enabled.
@@ -374,23 +381,31 @@ async fn main() -> io::Result<()> {
                 let tx = tx.clone();
                 let sock = sock.clone();
                 task::spawn(async move {
-                    listen_incoming(
-                        false, quacker, tx, sock, frequency, nack_frequency,
-                        nack_delay, args.send_on_nack,
-                    ).await.unwrap()
+                    std::panic::AssertUnwindSafe(async {
+                        listen_incoming(
+                            false, quacker, tx, sock, frequency, nack_frequency,
+                            nack_delay, args.send_on_nack,
+                        ).await.unwrap();
+                    })
+                    .catch_unwind()
+                    .await
                 })
             };
             let data_task = {
                 task::spawn(async move {
-                    let timeout = Duration::from_secs(timeout);
-                    gen_init_packets(tx, timeout, addr).await.unwrap();
+                    std::panic::AssertUnwindSafe(async {
+                        let timeout = Duration::from_secs(timeout);
+                        gen_init_packets(tx, timeout, addr).await.unwrap();
+                    })
+                    .catch_unwind()
+                    .await
                 })
             };
 
             // Wait for tasks to complete.
-            data_task.await?;
-            recv_task.await?;
-            send_task.await?;
+            data_task.await?.unwrap();
+            recv_task.await?.unwrap();
+            send_task.await?.unwrap();
         }
     }
 
