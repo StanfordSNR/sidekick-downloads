@@ -3,27 +3,62 @@ import math
 
 import numpy as np
 import matplotlib.pyplot as plt
+from dataclasses import dataclass
 
 SIDEKICK_HOME = f'{os.environ["HOME"]}/sidekick-downloads'
 DATA_HOME = f'{SIDEKICK_HOME}/data'
 
-plt_label = {
-    'tcp_cubic': 'TCP CUBIC',
-    'tcp_bbr1': 'TCP BBRv1',
-    'tcp_bbr2': 'TCP BBRv2',
-    'tcp_bbr3': 'TCP BBRv3',
-    'tcp_reno': 'TCP Reno',
-    'quic_cubic': 'Chromium QUIC CUBIC',
-    'quic_bbr1': 'Chromium QUIC BBRv1',
-    'quic_bbr3': 'Chromium QUIC BBRv3',
-    'quic_reno': 'Chromium QUIC Reno',
-    'quiche_cubic': 'Cloudflare QUIC CUBIC',
-    'quiche_bbr1': 'Cloudflare QUIC BBRv1',
-    'quiche_bbr2': 'Cloudflare QUIC BBRv2',
-    'quiche_reno': 'Cloudflare QUIC Reno',
-    'picoquic_cubic': 'Picoquic QUIC CUBIC',
-    'picoquic_bbr1': 'Picoquic QUIC BBRv1',
-    'picoquic_bbr3': 'Picoquic QUIC BBRv3',
+@dataclass(frozen=True)
+class PlotStyle:
+    color: str
+    linestyle: str
+    marker: str = '.'
+    markersize: int = None
+
+colors = [
+    "#AEC6CF",  # pastel blue
+    "#FFB347",  # pastel orange
+    "#77DD77",  # pastel green
+    "#FF6961",  # pastel red
+    "#CBAACB",  # pastel purple
+    "#FDFD96",  # pastel yellow
+    "#B39EB5",  # dusty lavender
+    "#D3D3D3",  # light gray
+]
+linestyles = ['-', '--', '-.', ':', '-']
+
+LABEL_MAP = {
+    # HTTP
+    'picoquic': 'End-to-End',
+    'picoquic_split': 'Split Connection',
+    'picoquic_iblt_0ms_hint': 'Packrat (no delay)',
+    'picoquic_iblt_30ms': 'Packrat (no rateless)',
+    'picoquic_iblt_30ms_hint': 'Packrat',
+    'picoquic_iblt_30ms_hint_cache48000': 'Packrat',
+    'picoquic_rtunnel_retx7': 'Tunnel (Unordered)',
+    'picoquic_rtunnel_retx7_ordered32': 'Tunnel (Ordered)',
+    # Media
+    'baseline': 'End-to-End',
+    'baseline_rtunnel_retx7': 'Tunnel (Unordered)',
+    'baseline_rtunnel_retx7_ordered32': 'Tunnel (Ordered)',
+    'iblt_delay0_hint_nack_cache4000': 'Packrat (no delay)',
+    'iblt_delay110': 'Packrat (no nack+rateless)',
+    'iblt_delay110_hint': 'Packrat (no nack)',
+    'iblt_delay110_hint_nack': 'Packrat',
+    'iblt_delay110_hint_nack_cache4000': 'Packrat',
+    # Multicast
+    'iblt_delay30_hint_nack': 'Packrat',
+}
+STYLE = {
+    'End-to-End': PlotStyle(colors[0], linestyles[0]),
+    'Packrat': PlotStyle(colors[1], linestyles[1], '*', markersize=10),
+    'Split Connection': PlotStyle(colors[2], linestyles[2]),
+    'Tunnel (Ordered)': PlotStyle(colors[3], linestyles[3]),
+    'Tunnel (Unordered)': PlotStyle(colors[4], linestyles[4]),
+    'Packrat (no delay)': PlotStyle(colors[5], linestyles[0]),
+    'Packrat (no nack)': PlotStyle(colors[6], linestyles[0]),
+    'Packrat (no nack+rateless)': PlotStyle(colors[7], linestyles[0]),
+    'Packrat (no rateless)': PlotStyle(colors[7], linestyles[0]),
 }
 
 def get_data_size(bottleneck_bw):
