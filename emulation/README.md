@@ -9,7 +9,7 @@ sudo -E python3 emulation/main.py --help
 ## Run TCP benchmark
 
 ```
-sudo -E python3 emulation/main.py -t 5 tcp -n 100K [--pep]
+sudo -E python3 emulation/main.py -t 5 tcp -n 100K [--proxy [proxy_type]]
 ```
 
 ## Start mininet CLI
