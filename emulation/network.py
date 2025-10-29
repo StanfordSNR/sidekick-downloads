@@ -98,7 +98,7 @@ class EmulatedNetwork:
             if lm == 'iid':
                 cmd += f'loss {loss}% '
             elif lm == 'ge':
-                # Validate GE parameters
+                # Validate GE parametersx
                 if (
                     ge_p is None
                     or ge_r is None
@@ -107,7 +107,8 @@ class EmulatedNetwork:
                 ):
                     raise ValueError('Gilbert-Elliott requires ge_p, ge_r, ge_bad_loss, ge_good_loss')
                 # netem gemodel syntax: loss gemodel PERCENT [ R [ 1-H [ 1-K ]]]
-                cmd += f'loss gemodel {ge_p * 100}% {ge_r} {ge_bad_loss} {ge_good_loss} '
+                # ge_p is already provided as a percentage value
+                cmd += f'loss gemodel {ge_p}% {ge_r} {ge_bad_loss} {ge_good_loss} '
             else:
                 raise NotImplementedError(f'Unknown loss_model: {loss_model}')
         if jitter is not None:
