@@ -29,3 +29,4 @@ deps/chromium/
 deps/picoquic/
 deps/smcroute/
 figures/*.pdf
+.venv/
