@@ -94,10 +94,9 @@ class EmulatedNetwork:
         cmd = f'tc qdisc add dev {iface} root handle 2: '\
               f'netem delay {delay}ms '
         if loss is not None and float(loss) > 0:
-            lm = (loss_model or 'iid').lower()
-            if lm == 'iid':
+            if loss_model == 'iid':
                 cmd += f'loss {loss}% '
-            elif lm == 'ge':
+            elif loss_model == 'ge':
                 # Validate GE parametersx
                 if (
                     ge_p is None
