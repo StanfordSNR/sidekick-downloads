@@ -245,6 +245,17 @@ def parse_args(argv=None):
         choices=['red', 'bfifo-large', 'bfifo-small', 'pie', 'codel',
                  'policer', 'fq_codel'],
         help='netem queuing discipline')
+    # Loss model configuration
+    net_config.add_argument('--loss-model', choices=['iid', 'ge'], default='iid',
+        help='Packet loss model: iid (random) or ge (Gilbert-Elliott)')
+    net_config.add_argument('--ge-p', type=float, metavar='PERCENT',
+        help='GE: probability (percent) of starting in bad state (p)')
+    net_config.add_argument('--ge-r', type=float, metavar='PROB',
+        help='GE: probability of exiting bad state (r)')
+    net_config.add_argument('--ge-bad-loss', type=float, metavar='PROB',
+        help='GE: drop probability in bad state (1-h)')
+    net_config.add_argument('--ge-good-loss', type=float, metavar='PROB',
+        help='GE: drop probability in good state (1-k)')
 
     ###########################################################################
     # Proxy configurations
@@ -436,11 +447,15 @@ def main(args):
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
-            perf=args.perf, debug=args.debug, proxy=args.proxy)
+            perf=args.perf, debug=args.debug, proxy=args.proxy,
+            loss_model=args.loss_model, ge_p=args.ge_p, ge_r=args.ge_r,
+            ge_bad_loss=args.ge_bad_loss, ge_good_loss=args.ge_good_loss)
     elif args.topology == 'direct':
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
-            args.qdisc, pacing, perf=args.perf, debug=args.debug)
+            args.qdisc, pacing, perf=args.perf, debug=args.debug,
+            loss_model=args.loss_model, ge_p=args.ge_p, ge_r=args.ge_r,
+            ge_bad_loss=args.ge_bad_loss, ge_good_loss=args.ge_good_loss)
     elif 'multicast' in args.topology:
         if hasattr(args, 'num_clients'):
             num_clients = args.num_clients
@@ -449,7 +464,9 @@ def main(args):
         net = MulticastNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.qdisc, pacing,
             num_clients=num_clients, perf=args.perf, debug=args.debug,
-            proxy=args.proxy)
+            proxy=args.proxy, loss_model=args.loss_model, ge_p=args.ge_p,
+            ge_r=args.ge_r, ge_bad_loss=args.ge_bad_loss,
+            ge_good_loss=args.ge_good_loss)
     else:
         raise NotImplementedError(args.topology)
 
