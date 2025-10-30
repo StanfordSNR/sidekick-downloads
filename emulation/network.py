@@ -60,9 +60,9 @@ class EmulatedNetwork:
         - Loss model: 'iid' (default) or 'ge' (Gilbert-Elliott via netem gemodel)
           When using 'ge', provide:
             ge_p: percentage probability of entering bad state (P)
-            ge_r: probability of exiting bad state (R)
-            ge_bad_loss: loss probability in bad state (1-H)
-            ge_good_loss: loss probability in good state (1-K)
+            ge_r: percentage probability of exiting bad state (R)
+            ge_bad_loss: percentage loss probability in bad state (1-H)
+            ge_good_loss: percentage loss probability in good state (1-K)
         - Delay: <delay>ms delay w/ ±<jitter>ms jitter, <delay_corr>% correlation
         - Base bandwidth: <bw> Mbit/s, range: <bw_min> to <bw_max> Mbit/s
         - Bandwidth-delay product: <bdp> is used to set the queue size
@@ -106,8 +106,7 @@ class EmulatedNetwork:
                 ):
                     raise ValueError('Gilbert-Elliott requires ge_p, ge_r, ge_bad_loss, ge_good_loss')
                 # netem gemodel syntax: loss gemodel PERCENT [ R [ 1-H [ 1-K ]]]
-                # ge_p is already provided as a percentage value
-                cmd += f'loss gemodel {ge_p}% {ge_r} {ge_bad_loss} {ge_good_loss} '
+                cmd += f'loss gemodel {ge_p}% {ge_r}% {ge_bad_loss}% {ge_good_loss}%'
             else:
                 raise NotImplementedError(f'Unknown loss_model: {loss_model}')
         if jitter is not None:
