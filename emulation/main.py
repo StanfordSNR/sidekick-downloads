@@ -248,14 +248,9 @@ def parse_args(argv=None):
     # Loss model configuration
     net_config.add_argument('--loss-model', choices=['iid', 'ge'], default='iid',
         help='Packet loss model: iid (random) or ge (Gilbert-Elliott)')
-    net_config.add_argument('--ge-p', type=float, metavar='PERCENT',
-        help='GE: probability (percent) of starting in bad state (p)')
-    net_config.add_argument('--ge-r', type=float, metavar='PROB',
-        help='GE: probability of exiting bad state (r)')
-    net_config.add_argument('--ge-bad-loss', type=float, metavar='PROB',
-        help='GE: drop probability in bad state (1-h)')
-    net_config.add_argument('--ge-good-loss', type=float, metavar='PROB',
-        help='GE: drop probability in good state (1-k)')
+    net_config.add_argument('--ge', type=str, metavar='P%,R%,BAD_LOSS%,GOOD_LOSS%',
+        help='GE loss model parameters as comma-separated percentages (0-100): "p,r,bad_loss,good_loss". '
+             'All values are percentages. If provided, sets loss-model to ge and parses the parameters.')
 
     ###########################################################################
     # Proxy configurations
@@ -435,6 +430,25 @@ def parse_args(argv=None):
 
 
 def main(args):
+    # If --ge is provided, parse it and set loss_model to 'ge'
+    # Otherwise, loss_model defaults to 'iid' and GE parameters are None
+    if hasattr(args, 'ge') and args.ge is not None:
+        # Parse comma-separated string: "p,r,bad_loss,good_loss"
+        ge_params = [p.strip() for p in args.ge.split(',')]
+        if len(ge_params) != 4:
+            raise ValueError(f'--ge must have 4 comma-separated values, got: {args.ge}')
+        args.loss_model = 'ge'
+        args.ge_p = float(ge_params[0])
+        args.ge_r = float(ge_params[1])
+        args.ge_bad_loss = float(ge_params[2])
+        args.ge_good_loss = float(ge_params[3])
+    else:
+        # Initialize GE parameters to None when using IID mode
+        args.ge_p = None
+        args.ge_r = None
+        args.ge_bad_loss = None
+        args.ge_good_loss = None
+    
     # Some BBR implementations require pacing.
     # This includes Cloudflare quiche and Linux kernel versions <5.0.
     # We automatically set pacing for Linux TCP BBR, but we need to set it
