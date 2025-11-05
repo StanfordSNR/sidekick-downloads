@@ -58,7 +58,7 @@ class EmulatedNetwork:
           should be configured)
         - Loss: <loss>% stochastic packet loss
         - Loss model: 'iid' (default) or 'ge' (Gilbert-Elliott via netem gemodel)
-          When using 'ge', provide:
+          When using 'ge', all parameters are percentages (0-100):
             ge_p: percentage probability of entering bad state (P)
             ge_r: percentage probability of exiting bad state (R)
             ge_bad_loss: percentage loss probability in bad state (1-H)
@@ -97,7 +97,7 @@ class EmulatedNetwork:
             if loss_model == 'iid':
                 cmd += f'loss {loss}% '
             elif loss_model == 'ge':
-                # Validate GE parametersx
+                # Validate GE parameters
                 if (
                     ge_p is None
                     or ge_r is None

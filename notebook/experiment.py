@@ -33,6 +33,7 @@ class NetworkSetting:
         'delay2': 25,
         'loss1': '1',
         'loss2': '0',
+        'ge': None,
         'bw1': 100,
         'bw2': 10,
         'jitter1': None,
@@ -43,16 +44,21 @@ class NetworkSetting:
     def __init__(self, delay1: Optional[int]=None, delay2: Optional[int]=None,
                  loss1: Optional[str]=None, loss2: Optional[str]=None,
                  bw1: Optional[int]=None, bw2: Optional[int]=None,
+                 ge: Optional[str]=None,
                  qdisc: Optional[str]=None,
                  jitter1: Optional[int]=None, jitter2: Optional[int]=None):
         """
         Labels is a list of setting names that are different from default.
+        ge: comma-separated string of GE parameters as percentages (0-100): "p,r,bad_loss,good_loss"
+            All four values must be percentages. Example: "1.0,0.5,10.0,0.1"
+        If ge is None, use IID loss model with loss1 and loss2.
         """
         self.settings = {
             'delay1': delay1,
             'delay2': delay2,
             'loss1': loss1,
             'loss2': loss2,
+            'ge': ge,
             'bw1': bw1,
             'bw2': bw2,
             'jitter1': jitter1,
@@ -85,6 +91,7 @@ class NetworkSetting:
             delay2=self.settings['delay1'],
             loss1=self.settings['loss2'],
             loss2=self.settings['loss1'],
+            ge=self.settings['ge'],
             bw1=self.settings['bw2'],
             bw2=self.settings['bw1'],
             qdisc=self.settings.get('qdisc'),
