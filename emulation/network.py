@@ -57,7 +57,7 @@ class EmulatedNetwork:
         - Netem: whether this is a network emulation node (i.e., delay, loss, etc.
           should be configured)
         - Loss: <loss>% stochastic packet loss
-        - Loss model: 'iid' (default) or 'ge' (Gilbert-Elliott via netem gemodel)
+        - Loss model: 'iid' (default) or 'ge' (Gilbert-Eliott)
           When using 'ge', all parameters are percentages (0-100):
             ge_p: percentage probability of entering bad state (P)
             ge_r: percentage probability of exiting bad state (R)
@@ -93,22 +93,21 @@ class EmulatedNetwork:
         # Add netem with delay variability
         cmd = f'tc qdisc add dev {iface} root handle 2: '\
               f'netem delay {delay}ms '
-        if loss is not None and float(loss) > 0:
-            if loss_model == 'iid':
-                cmd += f'loss {loss}% '
-            elif loss_model == 'ge':
-                # Validate GE parameters
-                if (
-                    ge_p is None
-                    or ge_r is None
-                    or ge_bad_loss is None
-                    or ge_good_loss is None
-                ):
-                    raise ValueError('Gilbert-Elliott requires ge_p, ge_r, ge_bad_loss, ge_good_loss')
-                # netem gemodel syntax: loss gemodel PERCENT [ R [ 1-H [ 1-K ]]]
-                cmd += f'loss gemodel {ge_p}% {ge_r}% {ge_bad_loss}% {ge_good_loss}%'
-            else:
-                raise NotImplementedError(f'Unknown loss_model: {loss_model}')
+        # Configure loss: use GE if loss_model is 'ge', otherwise use IID if loss > 0
+        if loss_model == 'ge':
+            # Validate GE parameters
+            if (
+                ge_p is None
+                or ge_r is None
+                or ge_bad_loss is None
+                or ge_good_loss is None
+            ):
+                raise ValueError('Gilbert-Elliott requires ge_p, ge_r, ge_bad_loss, ge_good_loss')
+            # netem gemodel syntax: loss gemodel PERCENT [ R [ 1-H [ 1-K ]]]
+            cmd += f'loss gemodel {ge_p}% {ge_r}% {ge_bad_loss}% {ge_good_loss}%'
+        elif loss is not None and float(loss) > 0:
+            # IID loss model
+            cmd += f'loss {loss}% '
         if jitter is not None:
             cmd += f'{jitter}ms {DEFAULT_DELAY_CORR}% distribution paretonormal'
         self.popen(host, cmd)
