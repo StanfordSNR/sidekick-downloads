@@ -92,14 +92,15 @@ class RawDataExecutor:
     def _collect_missing_data(
         self,
         missing_data: List[Tuple[RawDataFile, str]],
+        retry: int=3,
     ):
         print(len(missing_data))
         for file, cmd in missing_data:
             start = time.time()
-            self._execute_chunk(file, cmd)
+            self._execute_chunk(file, cmd, retry)
             print(time.time() - start)
 
-    def _execute_chunk(self, file: RawDataFile, cmd: str):
+    def _execute_chunk(self, file: RawDataFile, cmd: str, retry: int):
         # Start the process
         print(cmd, end=' ')
         p = subprocess.Popen(
@@ -138,4 +139,9 @@ class RawDataExecutor:
         exitcode = p.wait()
         if exitcode != 0:
             print(f'execute error: {exitcode}')
-            sys.exit(1)
+            if retry - 1 > 0:
+                print(f'Retrying')
+                self._execute_chunk(file, cmd, retry - 1)
+            else:
+                print(f'Continuing to next experiment')
+            # sys.exit(1)
