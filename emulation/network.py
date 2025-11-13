@@ -103,7 +103,9 @@ class EmulatedNetwork:
                 or ge_good_loss is None
             ):
                 raise ValueError('Gilbert-Elliott requires ge_p, ge_r, ge_bad_loss, ge_good_loss')
-            # netem gemodel syntax: loss gemodel PERCENT [ R [ 1-H [ 1-K ]]]
+            # netem gemodel syntax: loss gemodel p [ r [ 1-h [ 1-k ]]]
+            # p = probability percentage of entering bad state, r = probability percentage of exiting bad state
+            # 1-h = loss probability percentage in bad state, 1-k = loss probability percentage in good state
             cmd += f'loss gemodel {ge_p}% {ge_r}% {ge_bad_loss}% {ge_good_loss}%'
         elif loss is not None and float(loss) > 0:
             # IID loss model
