@@ -36,15 +36,15 @@ def TREATMENTS():
     return [treatment_map(TREATMENT_NAME_TO_LABEL[name]) for name in TREATMENT_ORDER]
 
 
-LOSS1_VALUES = [0, 4, 8, 12, 16, 20]
+LOSS1_VALUES = [0, 4, 8, 12, 16, 20, 24]
 
 GE_SCENARIOS = [
-    {"name": "p=0%,r=100%,b_loss=0%,g_loss=0%", "ge": "0,100,1,0"},
-    {"name": "p=0%,r=100%,b_loss=4%,g_loss=4%", "ge": "0,100,1,4"},
-    {"name": "p=0%,r=100%,b_loss=8%,g_loss=8%", "ge": "0,100,1,8"},
-    {"name": "p=0%,r=100%,b_loss=12%,g_loss=12%", "ge": "0,100,1,12"},
-    {"name": "p=0%,r=100%,b_loss=16%,g_loss=16%", "ge": "0,100,1,16"},
-    {"name": "p=0%,r=100%,b_loss=20%,g_loss=20%", "ge": "0,100,1,20"},
+    {"name": "p=0%,r=100%,b_loss=0%,g_loss=0%", "ge": "0,100,0,0"},
+    {"name": "p=0%,r=100%,b_loss=4%,g_loss=4%", "ge": "0,100,4,4"},
+    {"name": "p=0%,r=100%,b_loss=8%,g_loss=8%", "ge": "0,100,8,8"},
+    {"name": "p=0%,r=100%,b_loss=12%,g_loss=12%", "ge": "0,100,12,12"},
+    {"name": "p=0%,r=100%,b_loss=16%,g_loss=16%", "ge": "0,100,16,16"},
+    {"name": "p=0%,r=100%,b_loss=20%,g_loss=20%", "ge": "0,100,20,20"},
 ]
 
 def NETWORK_SETTINGS_GE(
@@ -59,7 +59,7 @@ def NETWORK_SETTINGS_GE(
             NetworkSetting(
                 bw1=bw1, bw2=bw2,
                 delay1=delay1, delay2=delay2,
-                loss1='0', loss2='0',
+                loss2='0',
                 ge=sc["ge"],
                 qdisc=ns.get('qdisc'),
                 jitter1=ns.get('jitter1'),
@@ -97,7 +97,7 @@ max_networks = {
 
 max_data_sizes = {
     TREATMENT_NAME_TO_LABEL["End-to-End"]: 10000000,
-}
+}   
 
 def collect_loss_vs_metric_data(treatments, network_settings, data_size, n=10, max_networks=max_networks, execute=False, min_i=1):
     if execute:
@@ -189,7 +189,7 @@ def plot_loss_vs_throughput(raw_data, title=None, ncol=2, pdf=None, style=False)
 
 NUM_TRIALS = 3
 
-loss_vs_throughput_data_iid = collect_loss_vs_metric_data(TREATMENTS(), NETWORK_SETTINGS_IID(), DATA_SIZE, n=NUM_TRIALS, execute=True)
+# loss_vs_throughput_data_iid = collect_loss_vs_metric_data(TREATMENTS(), NETWORK_SETTINGS_IID(), DATA_SIZE, n=NUM_TRIALS, execute=True)
 loss_vs_throughput_data_ge = collect_loss_vs_metric_data(TREATMENTS(), NETWORK_SETTINGS_GE(), DATA_SIZE, n=NUM_TRIALS, execute=True)
 
 

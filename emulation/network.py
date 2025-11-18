@@ -740,12 +740,13 @@ class OneHopNetwork(EmulatedNetwork):
         self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc,
                            jitter=jitter1, loss_model=loss_model,
                            ge_p=ge_p, ge_r=ge_r, ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+        # Link2 always uses IID loss model (loss2), regardless of loss_model setting
         self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc,
-                           jitter=jitter2, loss_model=loss_model,
-                           ge_p=ge_p, ge_r=ge_r, ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+                           jitter=jitter2, loss_model='iid',
+                           ge_p=None, ge_r=None, ge_bad_loss=None, ge_good_loss=None)
         self._config_iface('e2-eth1', True, False, delay2, loss2, bw2, bdp, qdisc,
-                           jitter=jitter2, loss_model=loss_model,
-                           ge_p=ge_p, ge_r=ge_r, ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+                           jitter=jitter2, loss_model='iid',
+                           ge_p=None, ge_r=None, ge_bad_loss=None, ge_good_loss=None)
 
         # Save network statistics
         self.rtt = rtt
@@ -881,9 +882,10 @@ class MulticastNetwork(EmulatedNetwork):
                            ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
         for cid in client_ids:
             self._config_iface(f'h{cid}-eth0', False, pacing, disable_checksum=True)
+            # Link2 always uses IID loss model (loss2), regardless of loss_model setting
             self._config_iface(f'e2-eth{cid}', True, False, delay2, loss2, bw2, bdp, qdisc,
-                               loss_model=loss_model, ge_p=ge_p, ge_r=ge_r,
-                               ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+                               loss_model='iid', ge_p=None, ge_r=None,
+                               ge_bad_loss=None, ge_good_loss=None)
 
         # Save network statistics
         self.rtt = rtt
