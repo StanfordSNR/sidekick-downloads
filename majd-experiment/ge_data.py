@@ -39,11 +39,22 @@ TREATMENT_ORDER = [
 ]
 
 # only 4 scenarios
+# from the bad paper
+# GE_SCENARIOS = [
+#     {"name": "p=25%,r=100%,b_loss=80%,g_loss=2%", "ge": "25,100,80,2"},
+#     {"name": "p=66%,r=100%,b_loss=80%,g_loss=2%", "ge": "66,100,80,2"},
+#     {"name": "p=29%,r=78%,b_loss=80%,g_loss=2%", "ge": "29,78,80,2"},
+#     {"name": "p=43%,r=42%,b_loss=80%,g_loss=2%", "ge": "43,42,80,2"},
+# ]
+
+# 3 scenarios from thea/majd meeting
+# b_loss = 80%, g_loss = 2%
 GE_SCENARIOS = [
-    {"name": "p=25%,r=100%,b_loss=80%,g_loss=2%", "ge": "25,100,80,2"},
-    {"name": "p=66%,r=100%,b_loss=80%,g_loss=2%", "ge": "66,100,80,2"},
-    {"name": "p=29%,r=78%,b_loss=80%,g_loss=2%", "ge": "29,78,80,2"},
-    {"name": "p=43%,r=42%,b_loss=80%,g_loss=2%", "ge": "43,42,80,2"},
+    {"name": "p=0%,r=100%", "ge": "0,100,0,0"}, # no loss
+    {"name": "p=1%,r=20%", "ge": "1,20,80,2"}, # bursty
+    {"name": "p=1%,r=30%", "ge": "1,30,80,2"}, # shorter bursts
+    {"name": "p=1%,r=10%", "ge": "1,10,80,2"}, # longer bursts
+    {"name": "p=0.2%,r=3%", "ge": "0.2,3,80,2"}, # long burts, less frequent
 ]
 
 def NETWORK_SETTINGS_GE(
@@ -348,7 +359,7 @@ def plot_ge_vs_throughput_bars_faceted(raw_data, title=None, pdf=None, style=Fal
 
 
 # Run the experiment for each GE setting
-NUM_TRIALS = 5
+NUM_TRIALS = 3
 
 loss_vs_throughput_data_ge = collect_loss_vs_metric_data(TREATMENTS(), NETWORK_SETTINGS_GE(), DATA_SIZE, n=NUM_TRIALS, execute=True)
 
