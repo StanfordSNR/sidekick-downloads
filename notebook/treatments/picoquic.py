@@ -27,8 +27,10 @@ def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None, 
         options += ['--cache-policy', 'reset']
     return options
 
-def pos(ack_delay: Optional[int]=None, cca: Optional[str]=None):
-    options = ['--client-quacker']
+def pos(quacking: Optional[bool]=True, ack_delay: Optional[int]=None, cca: Optional[str]=None):
+    options = []
+    if quacking:
+        options += ['--client-quacker']
     if ack_delay is not None:
         options += ['--ack-delay', str(ack_delay)]
     if cca is not None:
@@ -78,7 +80,7 @@ def generate_treatments():
         treatments.extend([
             Treatment(PROTOCOL, label=f'picoquic{suf}', network_options=[], protocol_options=pos(cca=c)),
             Treatment(PROTOCOL, label=f'picoquic_30ms{suf}', network_options=[], protocol_options=pos(30, cca=c)),
-            Treatment(PROTOCOL, label=f'picoquic_split{suf}', network_options=['--proxy', 'picoquic'], protocol_options=pos(cca=c)),
+            Treatment(PROTOCOL, label=f'picoquic_split{suf}', network_options=['--proxy', 'picoquic'], protocol_options=pos(quacking=False, cca=c)),
         ])
     labels = [treatment.label() for treatment in treatments]
     treatment_map = {}
