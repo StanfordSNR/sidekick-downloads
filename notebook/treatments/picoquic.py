@@ -65,7 +65,7 @@ def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, d
         protocol_options += ['--ack-delay', str(delay)]
     if cca:
         label += f'_{cca}'
-        protocol_options += ['--congestion_control', cca]
+        protocol_options += ['--congestion-control', cca]
     treatment = Treatment(PROTOCOL, label=label,
         network_options=network_options, protocol_options=protocol_options)
     return treatment
