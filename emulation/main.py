@@ -245,6 +245,12 @@ def parse_args(argv=None):
         choices=['red', 'bfifo-large', 'bfifo-small', 'pie', 'codel',
                  'policer', 'fq_codel'],
         help='netem queuing discipline')
+    # Loss model configuration
+    net_config.add_argument('--loss-model', choices=['iid', 'ge'], default='iid',
+        help='Packet loss model: iid (random) or ge (Gilbert-Elliott)')
+    net_config.add_argument('--ge', type=str, metavar='P%,R%,BAD_LOSS%,GOOD_LOSS%',
+        help='GE loss model parameters as comma-separated percentages (0-100): "p,r,bad_loss,good_loss". '
+             'All values are percentages. If provided, sets loss-model to ge and parses the parameters.')
 
     ###########################################################################
     # Proxy configurations
@@ -424,6 +430,25 @@ def parse_args(argv=None):
 
 
 def main(args):
+    # If --ge is provided, parse it and set loss_model to 'ge'
+    # Otherwise, loss_model defaults to 'iid' and GE parameters are None
+    if hasattr(args, 'ge') and args.ge is not None:
+        # Parse comma-separated string: "p,r,bad_loss,good_loss"
+        ge_params = [p.strip() for p in args.ge.split(',')]
+        if len(ge_params) != 4:
+            raise ValueError(f'--ge must have 4 comma-separated values, got: {args.ge}')
+        args.loss_model = 'ge'
+        args.ge_p = float(ge_params[0])
+        args.ge_r = float(ge_params[1])
+        args.ge_bad_loss = float(ge_params[2])
+        args.ge_good_loss = float(ge_params[3])
+    else:
+        # Initialize GE parameters to None when using IID mode
+        args.ge_p = None
+        args.ge_r = None
+        args.ge_bad_loss = None
+        args.ge_good_loss = None
+    
     # Some BBR implementations require pacing.
     # This includes Cloudflare quiche and Linux kernel versions <5.0.
     # We automatically set pacing for Linux TCP BBR, but we need to set it
@@ -436,11 +461,15 @@ def main(args):
     if args.topology == 'one_hop':
         net = OneHopNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.jitter1, args.jitter2, args.qdisc, pacing,
-            perf=args.perf, debug=args.debug, proxy=args.proxy)
+            perf=args.perf, debug=args.debug, proxy=args.proxy,
+            loss_model=args.loss_model, ge_p=args.ge_p, ge_r=args.ge_r,
+            ge_bad_loss=args.ge_bad_loss, ge_good_loss=args.ge_good_loss)
     elif args.topology == 'direct':
         assert args.proxy is None
         net = DirectNetwork(args.delay1, args.loss1, args.bw1, args.jitter1,
-            args.qdisc, pacing, perf=args.perf, debug=args.debug)
+            args.qdisc, pacing, perf=args.perf, debug=args.debug,
+            loss_model=args.loss_model, ge_p=args.ge_p, ge_r=args.ge_r,
+            ge_bad_loss=args.ge_bad_loss, ge_good_loss=args.ge_good_loss)
     elif 'multicast' in args.topology:
         if hasattr(args, 'num_clients'):
             num_clients = args.num_clients
@@ -449,7 +478,9 @@ def main(args):
         net = MulticastNetwork(args.delay1, args.delay2, args.loss1, args.loss2,
             args.bw1, args.bw2, args.qdisc, pacing,
             num_clients=num_clients, perf=args.perf, debug=args.debug,
-            proxy=args.proxy)
+            proxy=args.proxy, loss_model=args.loss_model, ge_p=args.ge_p,
+            ge_r=args.ge_r, ge_bad_loss=args.ge_bad_loss,
+            ge_good_loss=args.ge_good_loss)
     else:
         raise NotImplementedError(args.topology)
 

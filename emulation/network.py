@@ -49,11 +49,20 @@ class EmulatedNetwork:
 
     def _config_iface(self, iface, netem: bool, pacing: bool=False,
                       delay=None, loss=None, bw=None, bdp=None, qdisc=None,
-                      jitter=None, disable_checksum=False):
+                      jitter=None, disable_checksum=False,
+                      loss_model: str='iid',
+                      ge_p: float=None, ge_r: float=None,
+                      ge_bad_loss: float=None, ge_good_loss: float=None):
         """Configures the given interface <iface>:
         - Netem: whether this is a network emulation node (i.e., delay, loss, etc.
           should be configured)
         - Loss: <loss>% stochastic packet loss
+        - Loss model: 'iid' (default) or 'ge' (Gilbert-Eliott)
+          When using 'ge', all parameters are percentages (0-100):
+            ge_p: percentage probability of entering bad state (P)
+            ge_r: percentage probability of exiting bad state (R)
+            ge_bad_loss: percentage loss probability in bad state (1-H)
+            ge_good_loss: percentage loss probability in good state (1-K)
         - Delay: <delay>ms delay w/ ±<jitter>ms jitter, <delay_corr>% correlation
         - Base bandwidth: <bw> Mbit/s, range: <bw_min> to <bw_max> Mbit/s
         - Bandwidth-delay product: <bdp> is used to set the queue size
@@ -84,7 +93,22 @@ class EmulatedNetwork:
         # Add netem with delay variability
         cmd = f'tc qdisc add dev {iface} root handle 2: '\
               f'netem delay {delay}ms '
-        if loss is not None and float(loss) > 0:
+        # Configure loss: use GE if loss_model is 'ge', otherwise use IID if loss > 0
+        if loss_model == 'ge':
+            # Validate GE parameters
+            if (
+                ge_p is None
+                or ge_r is None
+                or ge_bad_loss is None
+                or ge_good_loss is None
+            ):
+                raise ValueError('Gilbert-Elliott requires ge_p, ge_r, ge_bad_loss, ge_good_loss')
+            # netem gemodel syntax: loss gemodel p [ r [ 1-h [ 1-k ]]]
+            # p = probability percentage of entering bad state, r = probability percentage of exiting bad state
+            # 1-h = loss probability percentage in bad state, 1-k = loss probability percentage in good state
+            cmd += f'loss gemodel {ge_p}% {ge_r}% {ge_bad_loss}% {ge_good_loss}%'
+        elif loss is not None and float(loss) > 0:
+            # IID loss model
             cmd += f'loss {loss}% '
         if jitter is not None:
             cmd += f'{jitter}ms {DEFAULT_DELAY_CORR}% distribution paretonormal'
@@ -565,7 +589,10 @@ e2 also handles L3 routing from h1 to h2.
 class OneHopNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, jitter1, jitter2,
                  qdisc, pacing, perf: bool=False, debug: bool=False,
-                 proxy: Optional[ProxyType]=None):
+                 proxy: Optional[ProxyType]=None,
+                 loss_model: str='iid', ge_p: Optional[float]=None,
+                 ge_r: Optional[float]=None, ge_bad_loss: Optional[float]=None,
+                 ge_good_loss: Optional[float]=None):
         """
         Parameters:
         - pacing: Whether Linux should be configured to use pacing (for BBR).
@@ -707,10 +734,19 @@ class OneHopNetwork(EmulatedNetwork):
         self._config_iface('p1-eth0', False, pacing)
         self._config_iface('p1-eth1', False, pacing)
         self._config_iface('h2-eth0', False, pacing, disable_checksum=tunnel)
-        self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
-        self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc, jitter=jitter1)
-        self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
-        self._config_iface('e2-eth1', True, False, delay2, loss2, bw2, bdp, qdisc, jitter=jitter2)
+        self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc,
+                           jitter=jitter1, loss_model=loss_model,
+                           ge_p=ge_p, ge_r=ge_r, ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+        self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc,
+                           jitter=jitter1, loss_model=loss_model,
+                           ge_p=ge_p, ge_r=ge_r, ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+        # Link2 always uses IID loss model (loss2), regardless of loss_model setting
+        self._config_iface('e2-eth0', True, False, delay2, loss2, bw2, bdp, qdisc,
+                           jitter=jitter2, loss_model='iid',
+                           ge_p=None, ge_r=None, ge_bad_loss=None, ge_good_loss=None)
+        self._config_iface('e2-eth1', True, False, delay2, loss2, bw2, bdp, qdisc,
+                           jitter=jitter2, loss_model='iid',
+                           ge_p=None, ge_r=None, ge_bad_loss=None, ge_good_loss=None)
 
         # Save network statistics
         self.rtt = rtt
@@ -753,7 +789,10 @@ bandwidth, jitter). e2 also handles L3 routing from h0 to the other hosts.
 class MulticastNetwork(EmulatedNetwork):
     def __init__(self, delay1, delay2, loss1, loss2, bw1, bw2, qdisc, pacing,
                  num_clients, perf=False, debug=False,
-                 proxy: Optional[ProxyType]=None):
+                 proxy: Optional[ProxyType]=None,
+                 loss_model: str='iid', ge_p: Optional[float]=None,
+                 ge_r: Optional[float]=None, ge_bad_loss: Optional[float]=None,
+                 ge_good_loss: Optional[float]=None):
         """
         Parameters:
         - num_clients: Number of data receivers.
@@ -835,11 +874,18 @@ class MulticastNetwork(EmulatedNetwork):
         self._config_iface('h0-eth0', False, pacing, disable_checksum=True)
         self._config_iface('p1-eth0', False, pacing)
         self._config_iface('p1-eth1', False, pacing)
-        self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc)
-        self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc)
+        self._config_iface('e1-eth0', True, False, delay1, loss1, bw1, bdp, qdisc,
+                           loss_model=loss_model, ge_p=ge_p, ge_r=ge_r,
+                           ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+        self._config_iface('e1-eth1', True, False, delay1, loss1, bw1, bdp, qdisc,
+                           loss_model=loss_model, ge_p=ge_p, ge_r=ge_r,
+                           ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
         for cid in client_ids:
             self._config_iface(f'h{cid}-eth0', False, pacing, disable_checksum=True)
-            self._config_iface(f'e2-eth{cid}', True, False, delay2, loss2, bw2, bdp, qdisc)
+            # Link2 always uses IID loss model (loss2), regardless of loss_model setting
+            self._config_iface(f'e2-eth{cid}', True, False, delay2, loss2, bw2, bdp, qdisc,
+                               loss_model='iid', ge_p=None, ge_r=None,
+                               ge_bad_loss=None, ge_good_loss=None)
 
         # Save network statistics
         self.rtt = rtt
@@ -884,7 +930,10 @@ The link has a node (e1) that emulates link properties (e.g., delay, loss,
 bandwidth, jitter). Pacing is configured on each host interface.
 """
 class DirectNetwork(EmulatedNetwork):
-    def __init__(self, delay, loss, bw, jitter, qdisc, pacing, perf=False, debug=False):
+    def __init__(self, delay, loss, bw, jitter, qdisc, pacing, perf=False, debug=False,
+                 loss_model: str='iid', ge_p: Optional[float]=None,
+                 ge_r: Optional[float]=None, ge_bad_loss: Optional[float]=None,
+                 ge_good_loss: Optional[float]=None):
         super().__init__(perf=perf, debug=debug)
 
         # Add hosts and switches
@@ -924,6 +973,10 @@ class DirectNetwork(EmulatedNetwork):
         rtt = 2 * delay
         self._config_iface('h1-eth0', False, pacing)
         self._config_iface('h2-eth0', False, pacing)
-        self._config_iface('e1-eth0', True, False, delay, loss, bw, bdp, qdisc, jitter=jitter)
-        self._config_iface('e1-eth1', True, False, delay, loss, bw, bdp, qdisc, jitter=jitter)
+        self._config_iface('e1-eth0', True, False, delay, loss, bw, bdp, qdisc,
+                           jitter=jitter, loss_model=loss_model,
+                           ge_p=ge_p, ge_r=ge_r, ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
+        self._config_iface('e1-eth1', True, False, delay, loss, bw, bdp, qdisc,
+                           jitter=jitter, loss_model=loss_model,
+                           ge_p=ge_p, ge_r=ge_r, ge_bad_loss=ge_bad_loss, ge_good_loss=ge_good_loss)
         self.cwnd = self._calculate_cwnd(bdp)
