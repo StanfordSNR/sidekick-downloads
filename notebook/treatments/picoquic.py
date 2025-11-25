@@ -27,13 +27,15 @@ def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None, 
         options += ['--cache-policy', 'reset']
     return options
 
-def pos(ack_delay: Optional[int]=None):
+def pos(ack_delay: Optional[int]=None, cca: Optional[str]=None):
     options = ['--client-quacker']
     if ack_delay is not None:
         options += ['--ack-delay', str(ack_delay)]
+    if cca is not None:
+        options += ['--congestion-control', cca]
     return options
 
-def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]=None, cache_capacity: Optional[int]=None, reset: bool=False):
+def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]=None, cache_capacity: Optional[int]=None, reset: bool=False, cca: Optional[str]=None):
     label = f'picoquic_{ty}_{delay}ms'
     if hint:
         label += '_hint'
@@ -43,13 +45,15 @@ def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]
         label += f'_cache{cache_capacity}'
     if reset:
         label += f'_reset'
+    if cca:
+        label +=f'_{cca}'
     network_options = nos(iblt=ty =='iblt', hint=hint, cache_capacity=cache_capacity, reset=reset, freq_pkts=freq_pkts)
-    protocol_options = pos(delay)
+    protocol_options = pos(delay, cca)
     treatment = Treatment(PROTOCOL, label=label,
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
-def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, delay: Optional[int]=None):
+def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, delay: Optional[int]=None, cca: Optional[str]=None):
     label = f'picoquic_rtunnel_retx{max_num_retx}'
     network_options = ['--proxy', 'rtunnel', '--max-num-retx', str(max_num_retx)]
     protocol_options = []
@@ -59,16 +63,23 @@ def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, d
     if delay:
         label += f'_{delay}ms'
         protocol_options += ['--ack-delay', str(delay)]
+    if cca:
+        label += f'_{cca}'
+        protocol_options += ['--congestion_control', cca]
     treatment = Treatment(PROTOCOL, label=label,
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
 def generate_treatments():
-    treatments = [
-        Treatment(PROTOCOL, label=f'picoquic', network_options=[], protocol_options=[]),
-        Treatment(PROTOCOL, label=f'picoquic_30ms', network_options=[], protocol_options=pos(30)),
-        Treatment(PROTOCOL, label=f'picoquic_split', network_options=['--proxy', 'picoquic'], protocol_options=[]),
-    ]
+    ccas = [None, 'bbr', 'bbr1'] # Cubic, BBRv3, BBRv1
+    treatments = []
+    for c in ccas:
+        suf = f'_{c}' if c else ''
+        treatments.extend([
+            Treatment(PROTOCOL, label=f'picoquic{suf}', network_options=[], protocol_options=pos(cca=c)),
+            Treatment(PROTOCOL, label=f'picoquic_30ms{suf}', network_options=[], protocol_options=pos(30, cca=c)),
+            Treatment(PROTOCOL, label=f'picoquic_split{suf}', network_options=['--proxy', 'picoquic'], protocol_options=pos(cca=c)),
+        ])
     labels = [treatment.label() for treatment in treatments]
     treatment_map = {}
     for label, treatment in zip(labels, treatments):
@@ -81,6 +92,14 @@ def treatment_map(label, treatments=_treatment_map):
     if label in treatments:
         return treatments[label]
 
+    cca = None
+    label, bbr1 = re.subn(r'_bbr1$', '', label)
+    if bbr1:
+        cca = 'bbr1'
+    label, bbr3 = re.subn(r'_bbr$', '', label)
+    if bbr3:
+        cca = 'bbr'
+
     # Generate an rtunnel treatment on the fly
     pattern = re.compile(
         r'^picoquic_rtunnel_retx(?P<max_num_retx>\d+)'
@@ -90,7 +109,7 @@ def treatment_map(label, treatments=_treatment_map):
     match = pattern.fullmatch(label)
     if match:
         match = match.groupdict()
-        return generate_rtunnel_treatment(match['max_num_retx'], match['ordered'], match['delay'])
+        return generate_rtunnel_treatment(match['max_num_retx'], match['ordered'], match['delay'], cca=cca)
 
     # Generate a different treatment on the fly
     pattern = re.compile(
@@ -108,6 +127,8 @@ def treatment_map(label, treatments=_treatment_map):
         return generate_treatment(
             match['ty'], match['delay'], 'hint' in label,
             freq_pkts=match['freq_pkts'],
-            cache_capacity=match['cache_capacity'], reset='reset' in label
+            cache_capacity=match['cache_capacity'],
+            reset='reset' in label,
+            cca=cca
         )
     raise Exception(label)
