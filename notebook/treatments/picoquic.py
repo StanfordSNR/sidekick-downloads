@@ -27,7 +27,7 @@ def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None, 
         options += ['--cache-policy', 'reset']
     return options
 
-def pos(quacking: Optional[bool]=True, ack_delay: Optional[int]=None, cca: Optional[str]=None):
+def pos(ack_delay: Optional[int]=None, cca: Optional[str]=None, quacking: Optional[bool]=True):
     options = []
     if quacking:
         options += ['--client-quacker']
@@ -50,7 +50,7 @@ def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]
     if cca:
         label +=f'_{cca}'
     network_options = nos(iblt=ty =='iblt', hint=hint, cache_capacity=cache_capacity, reset=reset, freq_pkts=freq_pkts)
-    protocol_options = pos(delay, cca)
+    protocol_options = pos(ack_delay=delay, cca=cca)
     treatment = Treatment(PROTOCOL, label=label,
         network_options=network_options, protocol_options=protocol_options)
     return treatment
@@ -79,7 +79,7 @@ def generate_treatments():
         suf = f'_{c}' if c else ''
         treatments.extend([
             Treatment(PROTOCOL, label=f'picoquic{suf}', network_options=[], protocol_options=pos(cca=c)),
-            Treatment(PROTOCOL, label=f'picoquic_30ms{suf}', network_options=[], protocol_options=pos(30, cca=c)),
+            Treatment(PROTOCOL, label=f'picoquic_30ms{suf}', network_options=[], protocol_options=pos(ack_delay=30, cca=c)),
             Treatment(PROTOCOL, label=f'picoquic_split{suf}', network_options=['--proxy', 'picoquic'], protocol_options=pos(quacking=False, cca=c)),
         ])
     labels = [treatment.label() for treatment in treatments]
