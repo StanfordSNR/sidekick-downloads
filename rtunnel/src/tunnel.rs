@@ -12,6 +12,8 @@ use crate::ack::{BlockAck, BLOCK_SIZE};
 use crate::buffer::SockSendBuffer;
 use crate::net::Packet;
 
+pub const CACHE_SIZE: u32 = BLOCK_SIZE * 8;
+
 struct CachedItem {
     datagram: Vec<u8>,
     time_tx: Instant,
@@ -62,7 +64,7 @@ impl Tunnel {
             max_num_retx,
             max_seqno_acked: 0,
             max_time_acked: Instant::now(),
-            cache: HashMap::with_capacity(BLOCK_SIZE as usize),
+            cache: HashMap::with_capacity(CACHE_SIZE as usize),
             ack: BlockAck::new(),
             ordered: ordered.is_some(),
             buffer: SockSendBuffer::new(sock, src_mac, dst_mac, ordered.unwrap_or(1))?,
@@ -74,7 +76,7 @@ impl Tunnel {
         &mut self, ip_datagram: Vec<u8>,
     ) -> Result<(), String> {
         // if there's too many unacked packets, drop it
-        if self.cache.len() >= (BLOCK_SIZE as usize) {
+        if self.cache.len() >= (CACHE_SIZE as usize) {
             let mut seqnos: Vec<_> = self.cache.keys().collect();
             seqnos.sort();
             debug!("[sender] cache is full, dropping datagram cache={:?}", seqnos);

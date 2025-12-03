@@ -72,6 +72,8 @@ class EmulatedNetwork:
         # Turn off segmentation offloading to send MTU-sized packets
         self.popen(host, f'ethtool -K {iface} gso off tso off')
         self.popen(host, f'ethtool -K {iface} tx-udp-segmentation off')
+        self.popen(host, f'ethtool -K {iface} gso off lro off')
+        self.popen(host, f'ethtool -K {iface} gso off gro off')
 
         if disable_checksum:
             # For some reason, this needs to be disabled at the endpoints in
@@ -575,6 +577,143 @@ class EmulatedNetwork:
             notified = condition.wait(timeout=timeout)
             if not notified:
                 raise TimeoutError(f'start_picoquic_splitter timeout {timeout}s')
+
+
+'''
+Retransmission mechanism over a tunnel
+
+h2 -> p1 -> r1 -> r2 -> h1
+Where `p1` is proxy and `r1 -> r2` is tunnel
+Emulation over p1 -> r1 and r1 -> r2
+h2 -> [e1] -> p1 -> [e2] -> r1 -> [e3] -> r2 -> h1
+'''
+class TwoHopTunnelNetwork(EmulatedNetwork):
+    def __init__(self, delay1, delay2, delay3, loss1, loss2, loss3,
+                 bw1, bw2, bw3, jitter1, jitter2, jitter3,
+                 qdisc, pacing, perf: bool=False, debug: bool=False,
+                 proxy: Optional[ProxyType]=None,
+                 loss_model: str='iid', ge_p: Optional[float]=None,
+                 ge_r: Optional[float]=None, ge_bad_loss: Optional[float]=None,
+                 ge_good_loss: Optional[float]=None):
+        assert proxy not in [ProxyType.SIDEKICK_MULTICAST, ProxyType.RTUNNEL]
+        super().__init__(perf=perf, debug=debug)
+
+        self.h1 = self.net.addHost('h1', ip=self._ip(1, 10), mac=self._mac(101))
+        self.h2 = self.net.addHost('h2', ip=self._ip(2, 10), mac=self._mac(102))
+        self.p1 = self.net.addHost('p1', ip=self._ip(1, 11))
+        self.r1 = self.net.addHost('r1', ip=self._ip(1, 21))
+        self.r1 = self.net.addHost('r2', ip=self._ip(1, 22))
+        self.e1 = self.net.addHost('e1') # emulation nodes
+        self.e2 = self.net.addHost('e2')
+        self.e1 = self.net.addHost('e3')
+
+        self.net.addLink(self.h2, self.e1)
+        self.net.addLink(self.e1, self.p1)
+        self.net.addLink(self.p1, self.e2)
+        self.net.addLink(self.e2, self.r1)
+        self.net.addLink(self.r1, self.e3)
+        self.net.addLink(self.e3, self.h1)
+        self.net.build()
+
+        self.primary_ifaces = [
+            'h1-eth0',
+            'h2-eth0',
+            'p1-eth0',
+            'p1-eth1'
+            'r1-eth0',
+            'r1-eth1'
+            'r2-eth0',
+            'r2-eth1'
+        ]
+        self.iface_to_host = {
+            'h1-eth0': self.h1,
+            'p1-eth0': self.p1,
+            'p1-eth1': self.p1,
+            'h2-eth0': self.h2,
+            'r1-eth0': self.r1,
+            'r1-eth1': self.r1,
+            'r2-eth0': self.r2,
+            'r2-eth1': self.r2,
+            'e1-eth0': self.e1,
+            'e1-eth1': self.e1,
+            'e2-eth0': self.e2,
+            'e2-eth1': self.e2,
+        }
+
+        self.reset_statistics()
+
+        self.setup_bridging_node(self.e1, mac=self._mac(51))
+        self.setup_bridging_node(self.e3, mac=self._mac(52))
+        if proxy != ProxyType.PEPSAL:
+            self.setup_router_node(self.e2, self._mac(11), self._mac(21))
+
+        if proxy == ProxyType.PEPSAL:
+            self.setup_router_node(self.p1, self._mac(11), self._mac(21))
+        elif proxy is None:
+            self.setup_bridging_node(self.p1, mac=self._mac(53))
+            self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'br0')
+            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'br0')
+
+        if proxy is None:
+            self.popen(self.p1, "ifconfig p1-eth0 0")
+            self.popen(self.p1, "ifconfig p1-eth1 0")
+            # IP needs to be assigned to bridge; put on same subnet as h1
+            self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev br0")
+            # Don't forward packets destined for the proxy
+            self.popen(self.p1, f'ebtables -A FORWARD -d {self.p1.MAC()} -j DROP')
+            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev br0')
+        elif proxy != ProxyType.PEPSAL:
+            self.popen(self.p1, "ifconfig p1-eth0 0")
+            self.popen(self.p1, "ifconfig p1-eth1 0")
+            self.popen(self.p1, f"ip link set dev p1-eth0 address {self._mac(40)}")
+            self.popen(self.p1, f"ip link set dev p1-eth1 address {self._mac(41)}")
+            self.popen(self.p1, f"ip addr add {self._ip(1, 11)} dev p1-eth0")
+            self.popen(self.p1, f"ip addr add {self._ip(1, 12)} dev p1-eth1")
+            self.popen(self.p1, 'ip route add 172.16.2.0/24 via 172.16.1.1 dev p1-eth1')
+            self.popen(self.p1, 'ip link set dev p1-eth0 up')
+            self.popen(self.p1, 'ip link set dev p1-eth1 up')
+
+        # Set up tunnel
+        setup_tunnel_node("r1",
+            [self._mac(42), self._mac(43)],
+            [self._ip(1, 21), self._ip(1, 22)])
+        setup_tunnel_node("r2",
+            [self._mac(44), self._mac(45)],
+            [self._ip(1, 23), self._ip(1, 24)])
+
+        # Populate ARP table
+        if proxy is None:
+            self._set_arp_table(self.h1, '172.16.1.11', self._mac(53), 'h1-eth0')
+            self._set_arp_table(self.e2, '172.16.1.11', self._mac(53), 'e2-eth0')
+        elif proxy != ProxyType.PEPSAL:
+            self._set_arp_table(self.h1, '172.16.1.11', self._mac(40), 'h1-eth0')
+            self._set_arp_table(self.p1, self.h1.IP(), self.h1.MAC(), 'p1-eth0')
+            self._set_arp_table(self.p1, '172.16.1.1', self._mac(11), 'p1-eth1')
+            self._set_arp_table(self.e2, '172.16.1.12', self._mac(41), 'e2-eth0')
+            self._set_arp_table(self.e2, '172.16.1.11', self._mac(41), 'e2-eth0')
+
+        for host in [self.h1, self.e1, self.p1, self.e2, self.h2, self.r1, self.r2]:
+            self.popen(host, 'ip neigh flush all')
+
+
+        def setup_tunnel_node(node, macs, ips):
+            self.popen(self.p0, f"ifconfig {node}-eth0 0")
+            self.popen(self.p0, f"ifconfig {node}-eth1 0")
+            self.popen(self.p0, f"ip link set dev {node}-eth0 address {macs[0]}")
+            self.popen(self.p0, f"ip link set dev {node}-eth1 address {macs[1]}")
+            self.popen(self.p0, f"ip addr add {ips[0]} dev {node}-eth0")
+            self.popen(self.p0, f"ip addr add {ips[1]} dev {node}-eth1")
+            self.popen(self.p0, f'ip route add {self.h1.IP()} dev {node}-eth0')
+            self.popen(self.h1, f'ip route add 172.16.1.21 dev {node}-eth0')
+            self.popen(self.p0, f'ip route add 172.16.1.11 dev {node}-eth1')
+            self.popen(self.p1, f'ip route add 172.16.1.22 dev {node}-eth0')
+            self.popen(self.p0, f'ip link set dev {node}-eth0 up')
+            self.popen(self.p0, f'ip link set dev {node}-eth1 up')
+
+
+
+
+
 
 
 """

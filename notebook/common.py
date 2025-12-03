@@ -34,6 +34,8 @@ LABEL_MAP = {
     'picoquic_iblt_0ms_hint': 'Packrat (no delay)',
     'picoquic_iblt_30ms': 'Packrat (no rateless)',
     'picoquic_iblt_30ms_hint': 'Packrat',
+    'picoquic_iblt_50ms_hint': 'Packrat',
+    'picoquic_iblt_110ms_hint': 'Packrat',
     'picoquic_iblt_30ms_hint_cache48000': 'Packrat',
     'picoquic_rtunnel_retx7': 'Tunnel (Unordered)',
     'picoquic_rtunnel_retx7_ordered32': 'Tunnel (Ordered)',
