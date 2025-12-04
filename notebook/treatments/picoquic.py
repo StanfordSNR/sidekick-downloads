@@ -1,20 +1,34 @@
 import re
 from typing import Optional
 from experiment import Treatment, NetworkSetting
+from treatments.network_settings import *
 
 DEFAULT_FREQ_MS = 10
 DEFAULT_FREQ_PKTS = 16
+E2E_ACK_DELAYS = [ACK_DELAY_WIFI, ACK_DELAY_SAT, ACK_DELAY_CELL]
 DEFAULT_THRESHOLD = lambda freq_pkts: freq_pkts * 5 // 2
 IBLT_MULTIPLIER = 4
 PROTOCOL = 'picoquic'
+# Default network setting (note: use `network_setting.py` instead)
 NETWORK_SETTING = NetworkSetting(bw1=50, bw2=20, delay1=2, delay2=30, loss1=4, loss2=0)
 
-def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None, reset: bool=False, freq_pkts: Optional[int]=None):
+'''
+Configure Packrat proxy options.
+TODO rename `sidekick` to `packrat`
+'''
+def nos(iblt: bool=False,
+        hint: bool=False,
+        cache_capacity: Optional[int]=None,
+        reset: bool=False,
+        freq_pkts: Optional[int]=None,
+        freq_ms: Optional[int]=None):
     options = ['--proxy', 'sidekick']
     if not freq_pkts:
         freq_pkts = DEFAULT_FREQ_PKTS
+    if not freq_ms:
+        freq_ms = DEFAULT_FREQ_MS
     threshold = DEFAULT_THRESHOLD(freq_pkts)
-    options += ['--freq-pkts', str(freq_pkts), '--freq-ms', str(DEFAULT_FREQ_MS)]
+    options += ['--freq-pkts', str(freq_pkts), '--freq-ms', str(freq_ms)]
     if iblt:
         options += ['--threshold', str(threshold * IBLT_MULTIPLIER), '--riblt']
     else:
@@ -27,6 +41,9 @@ def nos(iblt: bool=False, hint: bool=False, cache_capacity: Optional[int]=None, 
         options += ['--cache-policy', 'reset']
     return options
 
+'''
+Configure picoquic protocol options.
+'''
 def pos(ack_delay: Optional[int]=None, cca: Optional[str]=None, quacking: Optional[bool]=True):
     options = []
     if quacking:
@@ -37,7 +54,16 @@ def pos(ack_delay: Optional[int]=None, cca: Optional[str]=None, quacking: Option
         options += ['--congestion-control', cca]
     return options
 
-def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]=None, cache_capacity: Optional[int]=None, reset: bool=False, cca: Optional[str]=None):
+'''
+Generate a treatment with a label and options.
+'''
+def generate_treatment(ty: str,
+    delay: int,
+    hint: bool,
+    freq_pkts: Optional[int]=None,
+    cache_capacity: Optional[int]=None,
+    reset: bool=False,
+    cca: Optional[str]=None):
     label = f'picoquic_{ty}_{delay}ms'
     if hint:
         label += '_hint'
@@ -55,6 +81,9 @@ def generate_treatment(ty: str, delay: int, hint: bool, freq_pkts: Optional[int]
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
+'''
+Special config function for the reliable tunnel (ordered or unordered)
+'''
 def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, delay: Optional[int]=None, cca: Optional[str]=None):
     label = f'picoquic_rtunnel_retx{max_num_retx}'
     network_options = ['--proxy', 'rtunnel', '--max-num-retx', str(max_num_retx)]
@@ -72,6 +101,9 @@ def generate_rtunnel_treatment(max_num_retx: int, ordered: Optional[int]=None, d
         network_options=network_options, protocol_options=protocol_options)
     return treatment
 
+'''
+Initialize default treatments
+'''
 def generate_treatments():
     ccas = [None, 'bbr', 'bbr1'] # Cubic, BBRv3, BBRv1
     treatments = []
@@ -79,9 +111,14 @@ def generate_treatments():
         suf = f'_{c}' if c else ''
         treatments.extend([
             Treatment(PROTOCOL, label=f'picoquic{suf}', network_options=[], protocol_options=pos(cca=c)),
-            Treatment(PROTOCOL, label=f'picoquic_30ms{suf}', network_options=[], protocol_options=pos(ack_delay=30, cca=c)),
             Treatment(PROTOCOL, label=f'picoquic_split{suf}', network_options=['--proxy', 'picoquic'], protocol_options=pos(quacking=False, cca=c)),
         ])
+        for e2e_ack_delay in E2E_ACK_DELAYS:
+            treatments.append(
+                Treatment(PROTOCOL, label=f'picoquic_{e2e_ack_delay}ms{suf}',
+                          network_options=[],
+                          protocol_options=pos(ack_delay=e2e_ack_delay, cca=c)),
+            )
     labels = [treatment.label() for treatment in treatments]
     treatment_map = {}
     for label, treatment in zip(labels, treatments):
@@ -90,10 +127,15 @@ def generate_treatments():
 
 labels, _treatment_map = generate_treatments()
 
+'''
+Initialize new experiment treatment (excluding network settings)
+with new `label`. Determine settings based on patterns in label.
+'''
 def treatment_map(label, treatments=_treatment_map):
     if label in treatments:
         return treatments[label]
 
+    # Extract the CCA
     cca = None
     label, bbr1 = re.subn(r'_bbr1$', '', label)
     if bbr1:
@@ -102,7 +144,7 @@ def treatment_map(label, treatments=_treatment_map):
     if bbr3:
         cca = 'bbr'
 
-    # Generate an rtunnel treatment on the fly
+    # Case 1 - rtunnel.
     pattern = re.compile(
         r'^picoquic_rtunnel_retx(?P<max_num_retx>\d+)'
         r'(?:_ordered(?P<ordered>\d+))?'
@@ -113,7 +155,7 @@ def treatment_map(label, treatments=_treatment_map):
         match = match.groupdict()
         return generate_rtunnel_treatment(match['max_num_retx'], match['ordered'], match['delay'], cca=cca)
 
-    # Generate a different treatment on the fly
+    # Case 2 - other.
     pattern = re.compile(
         r'^picoquic_'
         r'(?P<ty>(iblt|sidekick))_'
@@ -133,4 +175,5 @@ def treatment_map(label, treatments=_treatment_map):
             reset='reset' in label,
             cca=cca
         )
+    # Unknown treatment
     raise Exception(label)

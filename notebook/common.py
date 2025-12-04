@@ -1,5 +1,6 @@
 import os
 import math
+from treatments.network_settings import *
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,9 +33,12 @@ LABEL_MAP = {
     'picoquic': 'End-to-End',
     'picoquic_split': 'Split Connection',
     'picoquic_iblt_0ms_hint': 'Packrat (no delay)',
-    'picoquic_iblt_30ms': 'Packrat (no rateless)',
-    'picoquic_iblt_30ms_hint': 'Packrat',
-    'picoquic_iblt_30ms_hint_cache48000': 'Packrat',
+    f'picoquic_iblt_{ACK_DELAY_WIFI}ms': 'Packrat (no rateless)',
+    f'picoquic_iblt_{ACK_DELAY_SAT}ms': 'Packrat (no rateless)',
+    f'picoquic_iblt_{ACK_DELAY_CELL}ms': 'Packrat (no rateless)',
+    f'picoquic_iblt_{ACK_DELAY_WIFI}ms_hint': 'Packrat',
+    f'picoquic_iblt_{ACK_DELAY_SAT}ms_hint': 'Packrat',
+    f'picoquic_iblt_{ACK_DELAY_CELL}ms_hint': 'Packrat',
     'picoquic_rtunnel_retx7': 'Tunnel (Unordered)',
     'picoquic_rtunnel_retx7_ordered32': 'Tunnel (Ordered)',
     # Media
