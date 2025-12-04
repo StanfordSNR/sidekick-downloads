@@ -56,7 +56,7 @@ def ge_configs(overall_loss_pct):
         # transition probabilities
         p_pct = round(p_bad * scale * 100, 2)
         r_pct = round(p_good * scale * 100, 2)
-        settings.append(f"{p_pct},{r_pct},{loss_bad},{loss_good}")
+        settings.append(f"{p_pct},{r_pct},{loss_bad_pct},{loss_good_pct}")
 
     return settings
 
@@ -75,7 +75,7 @@ def ge_to_burst_size(ge_str):
     parts = ge_str.split(',')
     p = float(parts[0]) / 100.0
     r = float(parts[1]) / 100.0
-    if p == 1.0:
+    if r == 0:
         return 1.0  # IID loss
     avg_bad_length = 1.0 / r
-    return (1.0 / r) * 100
+    return avg_bad_length * 100
