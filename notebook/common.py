@@ -31,7 +31,9 @@ linestyles = ['-', '--', '-.', ':', '-']
 LABEL_MAP = {
     # HTTP
     'picoquic': 'End-to-End',
+    'picoquic_bbr': 'End-to-End',
     'picoquic_split': 'Split Connection',
+    'picoquic_split_bbr': 'Split Connection',
     'picoquic_iblt_0ms_hint': 'Packrat (no delay)',
     f'picoquic_iblt_{ACK_DELAY_WIFI}ms': 'Packrat (no rateless)',
     f'picoquic_iblt_{ACK_DELAY_SAT}ms': 'Packrat (no rateless)',
@@ -39,8 +41,16 @@ LABEL_MAP = {
     f'picoquic_iblt_{ACK_DELAY_WIFI}ms_hint': 'Packrat',
     f'picoquic_iblt_{ACK_DELAY_SAT}ms_hint': 'Packrat',
     f'picoquic_iblt_{ACK_DELAY_CELL}ms_hint': 'Packrat',
+    f'picoquic_iblt_{ACK_DELAY_WIFI}ms_bbr': 'Packrat (no rateless)',
+    f'picoquic_iblt_{ACK_DELAY_SAT}ms_bbr': 'Packrat (no rateless)',
+    f'picoquic_iblt_{ACK_DELAY_CELL}ms_bbr': 'Packrat (no rateless)',
+    f'picoquic_iblt_{ACK_DELAY_WIFI}ms_hint_bbr': 'Packrat',
+    f'picoquic_iblt_{ACK_DELAY_SAT}ms_hint_bbr': 'Packrat',
+    f'picoquic_iblt_{ACK_DELAY_CELL}ms_hint_bbr': 'Packrat',
     'picoquic_rtunnel_retx7': 'Tunnel (Unordered)',
     'picoquic_rtunnel_retx7_ordered32': 'Tunnel (Ordered)',
+    'picoquic_rtunnel_retx7_bbr': 'Tunnel (Unordered)',
+    'picoquic_rtunnel_retx7_ordered32_bbr': 'Tunnel (Ordered)',
     # Media
     'baseline': 'End-to-End',
     'baseline_rtunnel_retx7': 'Tunnel (Unordered)',
