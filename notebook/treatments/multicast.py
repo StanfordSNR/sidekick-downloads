@@ -1,5 +1,6 @@
 from typing import Optional
 from experiment import Treatment, NetworkSetting
+from treatments.network_settings import *
 
 DEFAULT_THRESHOLD = 10
 IBLT_MULTIPLIER = 4
@@ -55,7 +56,8 @@ def generate_treatments():
     ]
     # Various delays, hint, nack
     for ty in ['psum', 'iblt']:
-        for delay in [0, 5, 10, 15, 30, 45, 90]:
+        delays = set([0, 5, 10, 15, 30, 45, 90, ACK_DELAY_WIFI, ACK_DELAY_CELL, ACK_DELAY_SAT, ])
+        for delay in delays:
             treatments.append(generate_treatment(ty, delay, False, False))
             treatments.append(generate_treatment(ty, delay, True, False))
             treatments.append(generate_treatment(ty, delay, False, True))
