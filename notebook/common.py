@@ -60,10 +60,13 @@ LABEL_MAP = {
     'iblt_delay110_hint': 'Packrat (no nack)',
     f'iblt_delay{ACK_DELAY_CELL}_hint_nack': 'Packrat',
     f'iblt_delay{ACK_DELAY_CELL}_hint_nack_cache4000': 'Packrat',
+    f'iblt_delay{ACK_DELAY_CELL}': 'Packrat (no rateless)',
     f'iblt_delay{ACK_DELAY_WIFI}_hint_nack': 'Packrat',
     f'iblt_delay{ACK_DELAY_WIFI}_hint_nack_cache4000': 'Packrat',
+    f'iblt_delay{ACK_DELAY_WIFI}': 'Packrat (no rateless)',
     f'iblt_delay{ACK_DELAY_SAT}_hint_nack': 'Packrat',
     f'iblt_delay{ACK_DELAY_SAT}_hint_nack_cache4000': 'Packrat',
+    f'iblt_delay{ACK_DELAY_SAT}': 'Packrat (no rateless)',
     # Multicast
     f'baseline' : 'End-to-End',
     f'iblt_delay{ACK_DELAY_WIFI}_hint_nack': 'Packrat',
