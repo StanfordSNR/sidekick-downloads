@@ -4,7 +4,7 @@ from treatments.network_settings import *
 
 DEFAULT_THRESHOLD = 10
 IBLT_MULTIPLIER = 4
-DEFAULT_FREQ_PKTS = 2
+DEFAULT_FREQ_PKTS = 16
 PROTOCOL = 'multicast'
 # Default network setting (note: use `network_setting.py` instead)
 NETWORK_SETTING = NetworkSetting(bw1=20, bw2=50, delay1=30, delay2=10, loss1=0, loss2=10)
