@@ -12,6 +12,7 @@ NS_LABELS = {"wifi": NETWORK_SETTING_WIFI, "sat": NETWORK_SETTING_SAT, "sat_long
 ACK_DELAY_WIFI = 20
 ACK_DELAY_SAT = 60
 ACK_DELAY_CELL = 40
+ACK_DELAY_SAT_LONG = 110
 
 # TODO fix this later - args are flipped for the multicast case
 NETWORK_SETTING_WIFI_MCAST = NetworkSetting(bw2=50, bw1=20, delay2=2, delay1=30, loss2=4, loss1=0)
