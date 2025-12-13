@@ -3,7 +3,7 @@ from typing import Optional
 from experiment import Treatment, NetworkSetting
 from treatments.network_settings import *
 
-DEFAULT_FREQ_MS = 2
+DEFAULT_FREQ_MS = 10
 DEFAULT_FREQ_PKTS = 16
 E2E_ACK_DELAYS = [ACK_DELAY_WIFI, ACK_DELAY_SAT, ACK_DELAY_CELL]
 DEFAULT_THRESHOLD = lambda freq_pkts: freq_pkts * 5 // 2
