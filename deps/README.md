@@ -91,6 +91,81 @@ openssl x509 -noout -pubkey < out/leaf_cert.pem | \
 Check that the files `leaf_cert.pem`, `leaf_cert.pkcs8`, and `leaf_cert.key`
 exist in `deps/certs/out/`.
 
+## QUIC Benchmarks (PicoQUIC)
+
+### Build and Install PicoQUIC
+
+This is a fork of picoquic on the main branch as of January 2024. The picoquic
+library is unchanged, but the sample server has been modified to always return
+N bytes, regardless of the client request, where N is an argument provided by
+the CLI. There will also be some ongoing sidekick modifications...
+
+```
+cd $SIDEKICK_HOME/deps
+git clone --recursive https://github.com/ygina/picoquic.git
+./build_deps.sh 4
+```
+
+Building the repository may take a few minutes.
+
+### Generate certificates
+
+See the section on generating certificates under "TCP Benchmarks".
+
+## Media Benchmark
+
+### Build the endpoint binary
+
+```
+cd $SIDEKICK_HOME/deps
+./build_deps.sh 6
+```
+
+## Multicast Benchmark
+
+### Install dependencies
+
+Adapted from [https://github.com/jimpick/mininet-multicast-routing/](https://github.com/jimpick/mininet-multicast-routing/).
+
+```
+cd $SIDEKICK_HOME/deps
+git clone git@github.com:troglobit/smcroute.git
+cd smcroute
+./autogen.sh
+./configure --prefix=/opt/smcroute --sysconfdir=/etc --localstatedir=/var
+make
+sudo make install
+```
+
+### Build the endpoint binary
+
+```
+cd $SIDEKICK_HOME/deps
+./build_deps.sh 6
+```
+
+# Running cycle experiments
+
+Getting accurate cycle measurements will benefit from isolating the CPU running the sidekick proxy. We can pin this process to a core at runtime, but forcing isolation likely requires modifying GRUB and rebooting.
+
+Choose a CPU to isolate. This must be the CPU ID passed in to both the GRUB settings and as the `--cpu-id` argument for the `sidekick` application. (Check available CPUs with `lscpu`.)
+
+To update GRUB:
+
+```
+GRUB_CMDLINE_LINUX="isolcpus=3" # replace "3" with chosen CPU ID
+sudo update-grub
+sudo reboot now
+```
+
+Alternatively, we can try to isolate the CPU at runtime. However, this only guarantees partial isolation and may fail if some processes cannot be migrated from the core. To do this, install `cpuset` and pass `--isol-cpu` as an argument to the `sidekick` application.
+
+```
+sudo apt-get install -y cpuset
+```
+
+# Optional: Other QUIC Versions
+
 ## QUIC Benchmarks (Google)
 
 Skip this section if not running QUIC benchmarks. It takes around an hour.
@@ -164,76 +239,3 @@ Building the repository may take a few minutes.
 ### Generate certificates
 
 See the section on generating certificates under "TCP Benchmarks".
-
-## QUIC Benchmarks (PicoQUIC)
-
-### Build and Install PicoQUIC
-
-This is a fork of picoquic on the main branch as of January 2024. The picoquic
-library is unchanged, but the sample server has been modified to always return
-N bytes, regardless of the client request, where N is an argument provided by
-the CLI. There will also be some ongoing sidekick modifications...
-
-```
-cd $SIDEKICK_HOME/deps
-git clone --recursive https://github.com/ygina/picoquic.git
-./build_deps.sh 4
-```
-
-Building the repository may take a few minutes.
-
-### Generate certificates
-
-See the section on generating certificates under "TCP Benchmarks".
-
-## Media Benchmark
-
-### Build the endpoint binary
-
-```
-cd $SIDEKICK_HOME/deps
-./build_deps.sh 6
-```
-
-## Multicast Benchmark
-
-### Install dependencies
-
-Adapted from [https://github.com/jimpick/mininet-multicast-routing/](https://github.com/jimpick/mininet-multicast-routing/).
-
-```
-cd $SIDEKICK_HOME/deps
-git clone git@github.com:troglobit/smcroute.git
-cd smcroute
-./autogen.sh
-./configure --prefix=/opt/smcroute --sysconfdir=/etc --localstatedir=/var
-make
-sudo make install
-```
-
-### Build the endpoint binary
-
-```
-cd $SIDEKICK_HOME/deps
-./build_deps.sh 6
-```
-
-# Running cycle experiments
-
-Getting accurate cycle measurements will benefit from isolating the CPU running the sidekick proxy. We can pin this process to a core at runtime, but forcing isolation likely requires modifying GRUB and rebooting.
-
-Choose a CPU to isolate. This must be the CPU ID passed in to both the GRUB settings and as the `--cpu-id` argument for the `sidekick` application. (Check available CPUs with `lscpu`.)
-
-To update GRUB:
-
-```
-GRUB_CMDLINE_LINUX="isolcpus=3" # replace "3" with chosen CPU ID
-sudo update-grub
-sudo reboot now
-```
-
-Alternatively, we can try to isolate the CPU at runtime. However, this only guarantees partial isolation and may fail if some processes cannot be migrated from the core. To do this, install `cpuset` and pass `--isol-cpu` as an argument to the `sidekick` application.
-
-```
-sudo apt-get install -y cpuset
-```
