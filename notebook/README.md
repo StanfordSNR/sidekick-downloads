@@ -41,4 +41,10 @@ In the local machine, copy and paste the URL as instructed:
 http://localhost:8888/tree?token=<TOKEN>
 ```
 
-Click `data_analysis.ipynb` or a different notebook.
+Click any notebook to replicate experiments.
+
+## Troubleshooting
+
+Make sure that the notebook can execute commands as root. 
+
+Check the output logs in `data/` for specific errors. Each experiment produces stdout and stderr logs for the hosts and, if applicable, proxy/router.
