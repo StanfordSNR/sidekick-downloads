@@ -1,0 +1,210 @@
+% LaTeX template for Artifact Evaluation V20240722
+%
+% Prepared by Grigori Fursin with contributions from Bruce Childers,
+%   Michael Heroux, Michela Taufer and other colleagues.
+%
+% (C)opyright 2014-2024 cTuning.org
+%
+% CC BY 4.0 license
+%
+%\documentclass{sigplanconf}
+\documentclass[sigplan,review]{acmart}
+\usepackage{hyperref}
+
+\title{Artifact Appendix}
+
+\begin{document}
+\special{papersize=8.5in,11in}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% When adding this appendix to your paper,
+% please remove above part
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendix
+\section{Artifact Appendix}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Abstract}
+
+Packrat is a ``sidekick'' protocol that provides in-network retransmissions to a data receiver.
+We open-source our implementation of the Packrat proxy, rIBLT-based acknowledgment library, and client integrations, as well as scripts to replicate emulation-based experiments presented in the paper.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Artifact check-list (meta-information)}
+
+{\small
+\begin{itemize}
+  \item {\bf Algorithm: } Rateless Invertible Bloom Lookup Table (rIBLT); receiver-side selective ACK withholding.
+  \item {\bf Program: } Packrat proxy (Rust); eACK library (Rust); Packrat client library (Rust); Picoquic QUIC client integration (C, modified fork); media streaming client (Rust); IP multicast client (Rust).
+  \item {\bf Compilation: } Rust toolchain (nightly-2024-01-26) via Cargo; Picoquic built from source via CMake.
+  \item {\bf Binary: } All components are built from source or downloaded as dependencies; see \texttt{deps/}.
+  \item {\bf Model: } N/A.
+  \item {\bf Data set: } No external data sets. Benchmarks write emulation results to a \texttt{data/} directory.
+  \item {\bf Run-time environment: } x86-64 Linux server (we tested on Ubuntu 24.04 LTS);
+    mininet; tc-netem; passwordless \texttt{sudo} required for network emulation.
+  \item {\bf Hardware: } x86-64 server with enough RAM and CPU power to emulate multi-node networks.
+  Experiments in the paper used an AWS EC2 m4.xlarge (4-core Intel Xeon E5 at 2.30\,GHz, 16\,GB RAM).
+  \item {\bf Run-time state: } N/A.
+  \item {\bf Execution: } Automated via Jupyter notebooks in
+    \texttt{notebook/} that invoke \texttt{emulation/main.py} as
+    subprocesses.
+  \item {\bf Metrics: } HTTP/3 goodput (Mbit/s); audio packet one-way
+    latency (ms, CDF); end-to-end NACKs per client per second (multicast);
+    spurious retransmission count; link overhead (bytes and packets sent
+    per link); proxy memory (packet cache utilization); proxy CPU cycles
+    per packet and per eACK.
+  \item {\bf Output: } Per-run goodput measurements, latency CDFs,
+    NACK/retransmission counts, link traffic statistics, and cache/CPU
+    logs. Plots are saved as PDFs to the \texttt{figures/} directory.
+  \item {\bf Experiments: } Emulation experiments across four
+    network topologies (Wi-Fi, Cellular, LEO Satellite, LEO Satellite
+    Long) with IP loss rates swept over
+    $\{0,1,2,3,4,5,6,7,8,10\}$\,\% and, for bursty-loss experiments,
+    Gilbert-Elliott Markov chain parameters.
+  \item {\bf How much disk space required (approximately)?: } Should be $<$1\,GB
+    for source code, dependencies, and outputted data.
+  \item {\bf How much time is needed to prepare workflow (approximately)?:} $<$1 hour of active time (install dependencies, build from source, and configure mininet).
+  \item {\bf How much time is needed to complete experiments (approximately)?: } Potentially several hours to run all experiments over all topologies for multiple trials (e.g., 20 trials). Individual benchmarks complete in seconds to a few minutes.
+  \item {\bf Publicly available?: } Yes.
+  \item {\bf Code licenses (if publicly available)?: } MIT License.
+  \item {\bf Data licenses (if publicly available)?: } N/A (no external data sets).
+  \item {\bf Workflow automation framework used?: } N/A
+  \item {\bf Archived (provide DOI)?: } \url{https://doi.org/10.1145/3808664}
+\end{itemize}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Description}
+
+\subsubsection{How to access}
+
+The source code is available at:
+\begin{center}
+  \url{https://github.com/StanfordSNR/sidekick-downloads/}
+\end{center}
+
+Instructions in \texttt{deps/README} describe how to set up experiments and install dependencies.
+
+\subsubsection{Hardware dependencies}
+
+Experiments require an x86-64 machine capable of running mininet with
+kernel-level traffic shaping (tc-netem). The proxy's CPU cycle
+measurements use \texttt{rdtsc()} and are specific to x86-64.
+The paper's results were
+produced on an AWS EC2 m4.xlarge instance (4-core Intel Xeon E5 at
+2.30\,GHz, 16\,GB RAM).
+
+\subsubsection{Software dependencies}
+
+All software dependencies are described in \texttt{deps/}.
+
+\subsubsection{Data sets}
+
+No external data sets used or required.
+
+\subsubsection{Models}
+
+Not applicable. Loss patterns are emulated using tc-netem's IID loss
+model and the Gilbert-Elliott two-state Markov chain model for
+bursty-loss experiments (Section~7.1).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Installation}
+
+Detailed build and installation instructions are provided in
+\texttt{deps/README.md}. At a high level:
+
+\begin{enumerate}
+  \item Clone the repository:
+    \begin{verbatim}
+git clone https://github.com/StanfordSNR/sidekick-downloads/
+    \end{verbatim}
+  \item Install system dependencies (mininet, iproute2, CMake, libssl-dev, etc.)
+  \item Install Rust nightly and the \texttt{quack} eACK library.
+  \item Build the proxy, client, and server applications using the \texttt{deps/build\_deps.sh} script.
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Experiment workflow}
+
+All experiments run inside a mininet topology with five virtual hosts:
+a data sender (\texttt{h2}), an on-path Packrat proxy (\texttt{p1}),
+a data receiver (\texttt{h1}), and two emulation nodes that enforce network conditions (\texttt{e1},
+\texttt{e2}).
+The two path segments are parameterized independently in
+delay, bandwidth, and loss using tc-netem.
+The network topologies we use can be found in Table 3 of the paper.
+
+Experiments are driven by Jupyter notebooks in \texttt{notebook/},
+which invoke \texttt{emulation/main.py} as subprocesses.
+Note that \texttt{emulation/main.py} must run as root to create Mininet topologies.
+
+\textbf{Main Application-Driven Experiments}:
+
+\begin{itemize}
+  \item \textbf{HTTP/3 file download} (\texttt{http3\_benchmark.ipynb}):
+    The Picoquic client requests 25\,MB of data; goodput is measured as
+    data size divided by connection time. 20 trials per configuration are
+    run; median and IQR are reported. Loss is swept over
+    $\{0,1,\ldots,8,10\}$\,\%.
+  \item \textbf{Low-latency media with FEC}
+    (\texttt{media\_benchmark.ipynb}): The server emits one 240-byte
+    packet every 20\,ms. The client measures one-way latency (data
+    production to buffer availability) over a 180-second run.
+  \item \textbf{Reliable IP multicast}
+    (\texttt{multicast\_benchmark.ipynb}): A server streams 240-byte
+    packets to a multicast group; clients send end-to-end NACKs for
+    losses. NACKs per client per second are reported over a 180-second
+    run, scaling from 1 to 16 clients.
+\end{itemize}
+
+\textbf{Other Experiments}:
+
+\begin{itemize}
+    \item \textbf{eACK Benchmarks} (\texttt{quack\_microbenchmarks.ipynb}): Compares the rIBLT and power sum eACK implementations.
+    \item \textbf{Link Overhead} (\texttt{network\_statistics.ipynb}): Measures the number of bytes and packets sent between the client, proxy, and server.
+    \item \textbf{Spurious Retransmissions} (\texttt{spurious\_retransmissions.ipynb}): Evaluates the impact of receiver-side delayed acknowledgments on spurious retransmissions.
+    \item \textbf{Cache Performance} (\texttt{proxy\_statistics.ipynb}): The number of bytes in the proxy's cache during experiments.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Evaluation and expected results}
+
+Running the full evaluation sweep should reproduce the following key
+results from the paper:
+
+\begin{itemize}
+  \item \texttt{http3\_benchmark} $\rightarrow$ Figure~5 (IID loss) and Figure~10 (bursty loss).
+  \item \texttt{media\_benchmark} $\rightarrow$ Figure~6.
+  \item \texttt{multicast\_benchmark} $\rightarrow$ Figure~7.
+  \item \texttt{quack\_microbenchmarks} $\rightarrow$ Figures~3 and 4.
+  \item \texttt{spurious\_retransmissions} $\rightarrow$ Figure~8.
+  \item \texttt{network\_statistics} $\rightarrow$ Figure~9.
+  \item \texttt{proxy\_statistics} $\rightarrow$ Figure~11.
+\end{itemize}
+
+Due to variability in network emulation, individual runs may differ
+slightly from reported medians; 20-trial averaging is recommended for
+the HTTP/3 benchmark. The notebook system saves data incrementally and
+can resume after partial failures.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Experiment customization}
+
+The experiment scripts accept parameters. See \texttt{emulation/main.py} for options.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Methodology}
+
+Submission, reviewing and badging methodology:
+
+\begin{itemize}
+  \item \url{https://www.acm.org/publications/policies/artifact-review-and-badging-current}
+  \item \url{https://cTuning.org/ae}
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% When adding this appendix to your paper,
+% please remove below part
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
+
